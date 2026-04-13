@@ -1,0 +1,368 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  .gitlab-ci.yml  —  Pipeline CI WipeWash
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  Architecture :
+#    GitLab Runner (shell executor, réseau lab)
+#       ├── external_test_runner.py  → BCM RPi (Redis :6379)
+#       │                            → Sim RPi (TCP :5000)
+#       └── rapports → JUnit XML + JSON (artefacts GitLab)
+#
+#  Variables à définir dans GitLab → Settings → CI/CD → Variables :
+#    BCM_HOST   : IP du RPi BCM (ex: 192.168.1.10)  — masked
+#    SIM_HOST   : IP du RPi Simulateur (ex: 192.168.1.20) — masked
+#
+#  Déclenchement :
+#    - Push sur main / develop
+#    - Merge Request
+#    - Planifié (nightly)
+#    - Manuel via bouton GitLab
+# ══════════════════════════════════════════════════════════════════════════════
+
+default:
+  # Runner dédié dans le réseau du banc HIL
+  tags:
+    - wipewash-hil
+
+  # Politique de retry : relance automatique sur erreur runner
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+
+# ── Déclencheurs globaux ──────────────────────────────────────────────────────
+workflow:
+  rules:
+    # Push sur les branches principales
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
+    # Toute Merge Request
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    # Déclenchement planifié (nightly)
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    # Lancement manuel depuis l'interface GitLab
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+# ── Variables globales ────────────────────────────────────────────────────────
+variables:
+  # Répertoire des rapports (partagé entre jobs via artefacts)
+  REPORT_DIR: "reports"
+  # Timeout par test (secondes) — peut être surchargé au lancement manuel
+  TEST_TIMEOUT: "45"
+  # Laisser vide pour exécuter tous les tests, ou ex: "T01,T30,T36"
+  TEST_IDS: ""
+  # pip cache
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  key: "${CI_JOB_NAME}"
+  paths:
+    - .cache/pip/
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STAGES
+# ══════════════════════════════════════════════════════════════════════════════
+stages:
+  - preflight     # Vérification connectivité banc
+  - install       # Installation dépendances Python
+  - test          # Exécution des tests automatiques
+  - report        # Publication des résultats
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STAGE 1 — PREFLIGHT : ping banc HIL
+# ══════════════════════════════════════════════════════════════════════════════
+check_hil_connectivity:
+  stage: preflight
+  script:
+    - echo "=== Vérification connectivité banc HIL ==="
+    # Vérifier BCM
+    - |
+      if [ -n "$BCM_HOST" ]; then
+        echo "Ping BCM ($BCM_HOST)..."
+        if ping -c 3 -W 2 "$BCM_HOST" > /dev/null 2>&1; then
+          echo "✅ BCM joignable"
+        else
+          echo "❌ BCM INJOIGNABLE — vérifiez l'alimentation du RPi BCM"
+          exit 1
+        fi
+      else
+        echo "⚠ BCM_HOST non défini — mode dry-run"
+      fi
+    # Vérifier Simulateur
+    - |
+      if [ -n "$SIM_HOST" ]; then
+        echo "Ping Simulateur ($SIM_HOST)..."
+        if ping -c 3 -W 2 "$SIM_HOST" > /dev/null 2>&1; then
+          echo "✅ Simulateur joignable"
+        else
+          echo "⚠ Simulateur injoignable — tests d'injection désactivés"
+        fi
+      else
+        echo "⚠ SIM_HOST non défini"
+      fi
+    - echo "=== Preflight OK ==="
+  allow_failure: false
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STAGE 2 — INSTALL : dépendances Python
+# ══════════════════════════════════════════════════════════════════════════════
+install_dependencies:
+  stage: install
+  script:
+    - echo "=== Installation des dépendances ==="
+    - python3 --version
+    - pip3 install --upgrade pip --quiet
+    # Dépendances runtime de la platform (sans Qt pour le runner headless)
+    - pip3 install redis numpy --quiet
+    - echo "=== Installation terminée ==="
+  needs:
+    - check_hil_connectivity
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STAGE 3 — TEST : exécution des tests automatiques
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 3a. Tests de cycles réseau (T01-T07, écoute passive) ─────────────────────
+test_network_cycles:
+  stage: test
+  variables:
+    TEST_IDS: "T01,T02,T03,T04,T05,T06,T07"
+  script:
+    - echo "=== Tests de cycles réseau (T01-T07) ==="
+    - mkdir -p "$REPORT_DIR/cycles"
+    - python3 external_test_runner.py
+        --bcm-host "$BCM_HOST"
+        --sim-host "$SIM_HOST"
+        --tests    "$TEST_IDS"
+        --output   "$REPORT_DIR/cycles"
+        --timeout  "$TEST_TIMEOUT"
+  artifacts:
+    when: always
+    reports:
+      junit: "$REPORT_DIR/cycles/junit.xml"
+    paths:
+      - "$REPORT_DIR/cycles/"
+    expire_in: 30 days
+  needs:
+    - install_dependencies
+
+# ── 3b. Tests de timeout réseau (T10, T11) ───────────────────────────────────
+test_network_timeouts:
+  stage: test
+  variables:
+    TEST_IDS: "T10,T11"
+  script:
+    - echo "=== Tests de timeout réseau (T10, T11) ==="
+    - mkdir -p "$REPORT_DIR/timeouts"
+    - python3 external_test_runner.py
+        --bcm-host "$BCM_HOST"
+        --sim-host "$SIM_HOST"
+        --tests    "$TEST_IDS"
+        --output   "$REPORT_DIR/timeouts"
+        --timeout  "$TEST_TIMEOUT"
+  artifacts:
+    when: always
+    reports:
+      junit: "$REPORT_DIR/timeouts/junit.xml"
+    paths:
+      - "$REPORT_DIR/timeouts/"
+    expire_in: 30 days
+  needs:
+    - install_dependencies
+
+# ── 3c. Tests fonctionnels BCM (T30-T45) ─────────────────────────────────────
+test_functional_bcm:
+  stage: test
+  variables:
+    TEST_IDS: "T30,T31,T32,T33,T34,T35,T36,T37,T38,T39,T40,T43,T44,T45,T50"
+  script:
+    - echo "=== Tests fonctionnels BCM (T30-T50) ==="
+    - mkdir -p "$REPORT_DIR/functional"
+    - python3 external_test_runner.py
+        --bcm-host "$BCM_HOST"
+        --sim-host "$SIM_HOST"
+        --tests    "$TEST_IDS"
+        --output   "$REPORT_DIR/functional"
+        --timeout  "$TEST_TIMEOUT"
+  artifacts:
+    when: always
+    reports:
+      junit: "$REPORT_DIR/functional/junit.xml"
+    paths:
+      - "$REPORT_DIR/functional/"
+    expire_in: 30 days
+  needs:
+    - install_dependencies
+
+# ── 3d. Tests de sécurité LIN/CAN (TC_*) ─────────────────────────────────────
+test_security:
+  stage: test
+  variables:
+    TEST_IDS: "TC_LIN_002,TC_LIN_004,TC_LIN_005,TC_CAN_003,TC_GEN_001,TC_SPD_001,TC_AUTO_004,TC_FSR_008,TC_FSR_010,TC_COM_001,TC_B2103,TC_LIN_CS"
+  script:
+    - echo "=== Tests de sécurité LIN/CAN (TC_*) ==="
+    - mkdir -p "$REPORT_DIR/security"
+    - python3 external_test_runner.py
+        --bcm-host "$BCM_HOST"
+        --sim-host "$SIM_HOST"
+        --tests    "$TEST_IDS"
+        --output   "$REPORT_DIR/security"
+        --timeout  "$TEST_TIMEOUT"
+  artifacts:
+    when: always
+    reports:
+      junit: "$REPORT_DIR/security/junit.xml"
+    paths:
+      - "$REPORT_DIR/security/"
+    expire_in: 30 days
+  needs:
+    - install_dependencies
+
+# ── 3e. Tests pompe / injection de défauts (T21, T22) ────────────────────────
+test_pump_faults:
+  stage: test
+  variables:
+    TEST_IDS: "T21,T22"
+  script:
+    - echo "=== Tests pompe et injection de défauts (T21, T22) ==="
+    - mkdir -p "$REPORT_DIR/pump"
+    - python3 external_test_runner.py
+        --bcm-host "$BCM_HOST"
+        --sim-host "$SIM_HOST"
+        --tests    "$TEST_IDS"
+        --output   "$REPORT_DIR/pump"
+        --timeout  "$TEST_TIMEOUT"
+  artifacts:
+    when: always
+    reports:
+      junit: "$REPORT_DIR/pump/junit.xml"
+    paths:
+      - "$REPORT_DIR/pump/"
+    expire_in: 30 days
+  needs:
+    - install_dependencies
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STAGE 4 — REPORT : agrégation et publication
+# ══════════════════════════════════════════════════════════════════════════════
+aggregate_report:
+  stage: report
+  script:
+    - echo "=== Agrégation des rapports ==="
+    - python3 - <<'EOF'
+import json, pathlib, xml.etree.ElementTree as ET
+from datetime import datetime
+
+report_dir = pathlib.Path("reports")
+all_results = []
+
+# Lire tous les results.json des sous-dossiers
+for f in sorted(report_dir.glob("*/results.json")):
+    data = json.loads(f.read_text())
+    all_results.extend(data["tests"])
+
+# Écrire rapport JSON global
+summary = {
+    "generated_at": datetime.utcnow().isoformat(),
+    "pipeline": "$CI_PIPELINE_ID",
+    "commit":   "$CI_COMMIT_SHORT_SHA",
+    "branch":   "$CI_COMMIT_BRANCH",
+    "summary": {
+        "total":   len(all_results),
+        "pass":    sum(1 for r in all_results if r["status"] == "PASS"),
+        "fail":    sum(1 for r in all_results if r["status"] == "FAIL"),
+        "timeout": sum(1 for r in all_results if r["status"] == "TIMEOUT"),
+    },
+    "tests": all_results,
+}
+out = report_dir / "global_results.json"
+out.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
+print(f"Rapport global : {out}")
+print(f"TOTAL={summary['summary']['total']}  "
+      f"PASS={summary['summary']['pass']}  "
+      f"FAIL={summary['summary']['fail']}  "
+      f"TIMEOUT={summary['summary']['timeout']}")
+
+# Sortir en erreur si des tests ont échoué
+n_fail = summary['summary']['fail'] + summary['summary']['timeout']
+if n_fail > 0:
+    import sys; sys.exit(1)
+EOF
+  artifacts:
+    when: always
+    paths:
+      - reports/global_results.json
+    expose_as: "Rapport global WipeWash"
+    expire_in: 90 days
+  needs:
+    - test_network_cycles
+    - test_network_timeouts
+    - test_functional_bcm
+    - test_security
+    - test_pump_faults
+  allow_failure: false
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  JOB MANUEL : exécution d'un sous-ensemble de tests
+# ══════════════════════════════════════════════════════════════════════════════
+run_custom_tests:
+  stage: test
+  rules:
+    # Uniquement disponible via déclenchement manuel (bouton GitLab)
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+  variables:
+    # Surcharger TEST_IDS depuis l'interface GitLab → Run pipeline → Variables
+    TEST_IDS: ""   # ex: "T30,T36,TC_FSR_008"
+  script:
+    - echo "=== Tests personnalisés : ${TEST_IDS:-tous} ==="
+    - mkdir -p "$REPORT_DIR/custom"
+    - python3 external_test_runner.py
+        --bcm-host "$BCM_HOST"
+        --sim-host "$SIM_HOST"
+        --tests    "$TEST_IDS"
+        --output   "$REPORT_DIR/custom"
+        --timeout  "$TEST_TIMEOUT"
+  artifacts:
+    when: always
+    reports:
+      junit: "$REPORT_DIR/custom/junit.xml"
+    paths:
+      - "$REPORT_DIR/custom/"
+    expire_in: 7 days
+  needs:
+    - install_dependencies
+  allow_failure: true
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  JOB PLANIFIÉ : exécution complète nightly (tous les tests)
+# ══════════════════════════════════════════════════════════════════════════════
+nightly_full:
+  stage: test
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  variables:
+    TEST_IDS: ""   # vide = tous les tests
+    TEST_TIMEOUT: "60"
+  script:
+    - echo "=== Exécution nightly — TOUS les tests ==="
+    - mkdir -p "$REPORT_DIR/nightly"
+    - python3 external_test_runner.py
+        --bcm-host "$BCM_HOST"
+        --sim-host "$SIM_HOST"
+        --output   "$REPORT_DIR/nightly"
+        --timeout  "$TEST_TIMEOUT"
+  artifacts:
+    when: always
+    reports:
+      junit: "$REPORT_DIR/nightly/junit.xml"
+    paths:
+      - "$REPORT_DIR/nightly/"
+    expire_in: 90 days
+  needs:
+    - install_dependencies

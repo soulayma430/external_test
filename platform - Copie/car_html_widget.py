@@ -1,0 +1,521 @@
+
+"""
+car_html_widget.py — Deux widgets voiture pour la plateforme HIL.
+
+CarHTMLWidget   → car_simulator.html      (onglet LIN / CRS / Vehicle)
+CarXRayWidget   → controldesk-xray.html   (onglet Motor / Pump)
+
+Les deux héritent de _CarBaseWidget qui gère le chargement HTML,
+la file JS et l'API Python commune.
+"""
+
+from pathlib import Path
+
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWebEngineCore    import QWebEngineSettings, QWebEnginePage
+from PySide6.QtCore             import QUrl, QTimer
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  JS injecté pour car_simulator.html  (onglet LIN / CRS / Vehicle)
+# ════════════════════════════════════════════════════════════════════════════
+_SIMULATOR_API_JS = """
+<style>
+  .ww-panel, #bottom-controls { display: none !important; }
+  .lock-btn, #lock-btn, #lock-status { display: none !important; }
+  body { padding-top: 2px !important; align-items: center; }
+  .hud-title { margin-top: 4px !important; margin-bottom: 4px !important; }
+  .status-bar { margin-bottom: 4px !important; }
+  .main-layout { justify-content: center; width: 100%; }
+  .car-stage { transform-origin: top center; }
+</style>
+<script>
+window.addEventListener('load', function () {
+
+  window.controlAPI = {
+
+    setSpeed: function (v) {
+      v = parseFloat(v) || 0;
+      speed = Math.max(0, Math.min(200, v));
+      if (typeof updateGauges    === 'function') updateGauges();
+      if (typeof drawSpeedometer === 'function') drawSpeedometer();
+    },
+
+    setRain: function (pct) {
+      pct = parseFloat(pct) || 0;
+      var mode = pct <= 0 ? 'off' : pct <= 30 ? 'light' : pct <= 65 ? 'medium' : 'heavy';
+      if (typeof setRain === 'function') setRain(mode);
+    },
+
+    setGear: function (g) {
+      if (typeof setGear === 'function') setGear(g);
+    },
+
+    setIgnition: function (state) {
+      var s = (state || '').toLowerCase();
+      if (s === 'on' || s === 'acc' || s === 'off') {
+        if (typeof setIgnition === 'function') setIgnition(s);
+      }
+    },
+
+    setWiperOp: function (op) {
+      op = parseInt(op);
+      switch (op) {
+        case 0:
+          if(typeof setFrontWiper==='function') setFrontWiper('off');
+          if(typeof setRearWiper ==='function') setRearWiper ('off');
+          break;
+        case 1:
+          if(typeof setFrontWiper==='function') setFrontWiper('slow');
+          break;
+        case 2:
+          if(typeof setFrontWiper==='function') setFrontWiper('slow');
+          if(typeof setRearWiper ==='function') setRearWiper ('off');
+          break;
+        case 3:
+          if(typeof setFrontWiper==='function') setFrontWiper('fast');
+          if(typeof setRearWiper ==='function') setRearWiper ('off');
+          break;
+        case 4:
+          if(typeof setFrontWiper==='function') setFrontWiper('auto');
+          if(typeof setRearWiper ==='function') setRearWiper ('off');
+          break;
+        case 5:
+          if(typeof setFrontWiper==='function') setFrontWiper('slow');
+          if(typeof setRearWiper ==='function') setRearWiper ('off');
+          if(typeof startWash    ==='function') startWash('front');
+          break;
+        case 6:
+          if(typeof setFrontWiper==='function') setFrontWiper('off');
+          if(typeof setRearWiper ==='function') setRearWiper ('on');
+          if(typeof startWash    ==='function') startWash('rear');
+          break;
+        case 7:
+          if(typeof setFrontWiper==='function') setFrontWiper('off');
+          if(typeof setRearWiper ==='function') setRearWiper ('on');
+          break;
+        default:
+          if(typeof setFrontWiper==='function') setFrontWiper('off');
+          if(typeof setRearWiper ==='function') setRearWiper ('off');
+      }
+    },
+
+    setWiperFromBCM: function (motor_on, op, state) {
+      var isRearOp = (op === 6 || op === 7);
+      if (motor_on || isRearOp) {
+        window.controlAPI.setWiperOp(op);
+      } else {
+        if (op === 0) {
+          if(typeof setFrontWiper==='function') setFrontWiper('off');
+          if(typeof setRearWiper ==='function') setRearWiper ('off');
+        }
+      }
+    }
+  };
+
+  console.log('[CarHTMLWidget] controlAPI ready — car_simulator');
+});
+</script>
+"""
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  JS injecté pour controldesk-xray.html  (onglet Motor / Pump)
+# ════════════════════════════════════════════════════════════════════════════
+_XRAY_API_JS = """
+<style>
+  /* Masquer panneaux manuels — l'UI Python les remplace */
+  .ww-panel, #bottom-controls,
+  .lock-btn, #lock-btn, #lock-status, .lock-bar,
+  .wmode-row, .wmode-panel,
+  .accel-bar, .accel-btn,
+  .door-panel
+  { display: none !important; }
+
+  body {
+    padding-top: 4px !important;
+    background: #0d1117 !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+  }
+  .bg-grid, .bg-glow { display: block !important; }
+  .status-bar { margin-bottom: 4px !important; font-size: 8.5px !important; }
+  .hud-title  { margin-top: 4px !important; margin-bottom: 4px !important; }
+  .main-layout {
+    justify-content: center !important;
+    width: 100% !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+  /* ── Remplissage viewport complet ── */
+  html, body {
+    height: 100vh !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  .main-layout {
+    height: 100vh !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0 !important;
+  }
+  .bg-grid, .bg-glow { display: none !important; }
+  .car-stage {
+    transform-origin: center center !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  .showroom-bg {
+    width: 500px !important;
+    height: 500px !important;
+    border-radius: 50% !important;
+    border: 3px solid #FFFFFFF !important;
+    box-shadow:
+      0 0 0 2px  #F28E79,
+      0 0 12px 4px  #F28E79,
+      0 0 32px 8px rgba(57,255,20,0.5),
+      inset 0 0 24px rgba(57,255,20,0.08) !important;
+    overflow: hidden !important;
+  }
+  .status-bar, .hud-title { display: none !important; }
+  body { background: #FFFFFFF !important; }
+</style>
+
+<script>
+/* ── Auto-scale : voiture centrée qui remplit toute la hauteur ── */
+(function () {
+  var CAR_H = 550;
+  var CAR_W = 550;
+  function scaleCarToFit () {
+    var stage = document.querySelector('.car-stage');
+    if (!stage) return;
+    var vh = window.innerHeight;
+    var vw = window.innerWidth;
+    var scale = Math.min(vh / CAR_H, vw / CAR_W) * 0.98;
+    stage.style.transform = 'scale(' + scale + ')';
+    stage.style.width  = CAR_W + 'px';
+    stage.style.height = CAR_H + 'px';
+  }
+  window.scaleCarToFit = scaleCarToFit;
+  window.addEventListener('load',   scaleCarToFit);
+  window.addEventListener('resize', scaleCarToFit);
+  if (document.readyState === 'complete') scaleCarToFit();
+})();
+
+window.addEventListener('load', function () {
+
+  window.controlAPI = {
+
+    setSpeed: function (v) {
+      v = parseFloat(v) || 0;
+      speed = Math.max(0, Math.min(200, v));
+      if (typeof updateGauges    === 'function') updateGauges();
+      if (typeof drawSpeedometer === 'function') drawSpeedometer();
+    },
+
+    setRain: function (pct) {
+      pct = parseFloat(pct) || 0;
+      var mode = pct <= 0 ? 'off' : pct <= 30 ? 'light' : pct <= 65 ? 'medium' : 'heavy';
+      if (typeof setRain === 'function') setRain(mode);
+    },
+
+    setGear: function (g) {
+      if (typeof g === 'boolean') g = g ? 'R' : 'D';
+      if (typeof setGear === 'function') setGear(g);
+    },
+
+    setIgnition: function (state) {
+      var s = (state || 'off').toLowerCase();
+      if (s !== 'on' && s !== 'acc') s = 'off';
+      if (typeof setIgnition === 'function') setIgnition(s);
+    },
+
+    setPump: function (active) {
+      if (active) { if (typeof startPump === 'function') startPump(); }
+      else         { if (typeof stopPump  === 'function') stopPump();  }
+    },
+
+    /* WOP 0-7 */
+    setWiperOp: function (op) {
+      op = parseInt(op);
+      var isWash = (op === 5 || op === 6);
+      if (!isWash) {
+        if (typeof stopWash === 'function') { stopWash('front'); stopWash('rear'); }
+        if (typeof stopPump === 'function') stopPump();
+      }
+      switch (op) {
+        case 0:
+          if (typeof setFrontWiper === 'function') setFrontWiper('off');
+          if (typeof setRearWiper  === 'function') setRearWiper('off');
+          break;
+        case 1:
+          if (typeof setFrontWiper === 'function') setFrontWiper('slow');
+          setTimeout(function(){
+            if (typeof setFrontWiper === 'function') setFrontWiper('off');
+          }, 2800);
+          break;
+        case 2:
+          if (typeof setFrontWiper === 'function') setFrontWiper('slow');
+          if (typeof setRearWiper  === 'function') setRearWiper('off');
+          break;
+        case 3:
+          if (typeof setFrontWiper === 'function') setFrontWiper('fast');
+          if (typeof setRearWiper  === 'function') setRearWiper('off');
+          break;
+        case 4:
+          if (typeof setFrontWiper === 'function') setFrontWiper('auto');
+          if (typeof setRearWiper  === 'function') setRearWiper('off');
+          break;
+        case 5:
+          if (typeof setFrontWiper === 'function') setFrontWiper('slow');
+          if (typeof setRearWiper  === 'function') setRearWiper('off');
+          if (typeof startPump     === 'function') startPump();
+          if (typeof startWash     === 'function') startWash('front');
+          break;
+        case 6:
+          if (typeof setFrontWiper === 'function') setFrontWiper('off');
+          if (typeof setRearWiper  === 'function') setRearWiper('on');
+          if (typeof startPump     === 'function') startPump();
+          if (typeof startWash     === 'function') startWash('rear');
+          break;
+        case 7:
+          if (typeof setFrontWiper === 'function') setFrontWiper('off');
+          if (typeof setRearWiper  === 'function') setRearWiper('on');
+          break;
+        default:
+          if (typeof setFrontWiper === 'function') setFrontWiper('off');
+          if (typeof setRearWiper  === 'function') setRearWiper('off');
+      }
+    },
+
+    setWiperFromBCM: function (motor_on, op, state) {
+      var isRearOp = (op === 6 || op === 7);
+      if (motor_on || isRearOp) {
+        window.controlAPI.setWiperOp(op);
+      } else {
+        if (op === 0) {
+          if (typeof setFrontWiper === 'function') setFrontWiper('off');
+          if (typeof setRearWiper  === 'function') setRearWiper('off');
+          if (typeof stopPump      === 'function') stopPump();
+        }
+      }
+    },
+
+    /* Pompe hydraulique : impeller + fluid lines */
+    setPumpState: function (state, fault) {
+      var active = !fault && (state === 'FORWARD' || state === 'BACKWARD');
+      window.controlAPI.setPump(active);
+      var carEl = document.getElementById('car');
+      if (carEl) {
+        carEl.classList.toggle('pump-active',       active);
+        carEl.classList.toggle('pump-front-active', active && state === 'FORWARD');
+        carEl.classList.toggle('pump-rear-active',  active && state === 'BACKWARD');
+      }
+    }
+  };
+
+  console.log('[CarXRayWidget] controlAPI ready — controldesk-xray');
+});
+</script>
+"""
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Page silencieuse (supprime les messages JS en console)
+# ════════════════════════════════════════════════════════════════════════════
+class _SilentPage(QWebEnginePage):
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        # print(f"[JS {level.name}] {source}:{line}  {message}")
+        pass
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Classe de base commune aux deux widgets
+# ════════════════════════════════════════════════════════════════════════════
+class _CarBaseWidget(QWebEngineView):
+    """
+    Base commune : chargement HTML, file JS, état interne, API Python.
+    Sous-classes doivent définir HTML_FILE et CONTROL_API_JS.
+    """
+
+    HTML_FILE       = ""          # à surcharger
+    CONTROL_API_JS  = ""          # à surcharger
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setPage(_SilentPage(self))
+
+        s = self.page().settings()
+        s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls,   True)
+        s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        s.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages,                  True)
+        s.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled,               True)
+        s.setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture,     False)
+
+        self._ready   = False
+        self._pending: list[str] = []
+        self.loadFinished.connect(self._on_loaded)
+
+        self._state = {
+            "speed":      0.0,
+            "rain":       0,
+            "gear":       "D",
+            "ign":        "off",
+            "op":         0,
+            "pump_state": "OFF",
+            "pump_fault": False,
+        }
+
+        self._load_html()
+
+    # ── Chargement ───────────────────────────────────────────────────────────
+
+    def _load_html(self) -> None:
+        html_path = Path(__file__).parent / self.HTML_FILE
+        if not html_path.exists():
+            self._show_fallback()
+            return
+        try:
+            html = html_path.read_text(encoding="utf-8")
+        except Exception as e:
+            self._show_fallback(str(e))
+            return
+        html = html.replace("</body>", self.CONTROL_API_JS + "\n</body>")
+        base_url = QUrl.fromLocalFile(str(html_path.parent) + "/")
+        self.setHtml(html, base_url)
+
+    def _show_fallback(self, err: str = "") -> None:
+        self.setHtml(f"""
+        <html><body style="background:#0d1117;color: #FFFFFFF;font-family:monospace;
+            display:flex;align-items:center;justify-content:center;height:100vh;">
+        <div style="text-align:center">
+            <div style="font-size:48px">&#128663;</div>
+            <div style="font-size:16px;margin-top:12px">Fichier voiture introuvable</div>
+            <div style="font-size:11px;color:#666;margin-top:6px">{err}</div>
+            <div style="font-size:10px;color:#444;margin-top:4px">
+                Placer {self.HTML_FILE} dans le même dossier que ce script</div>
+        </div></body></html>
+        """)
+
+    def _on_loaded(self, ok: bool) -> None:
+        self._ready = True
+        for js in self._pending:
+            self.page().runJavaScript(js)
+        self._pending.clear()
+        QTimer.singleShot(300, self._restore_state)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # Déclenche le rescale JS quand Qt redimensionne le widget
+        self._js("if(typeof scaleCarToFit==='function') scaleCarToFit(); "
+                 "else { var e=new Event('resize'); window.dispatchEvent(e); }")
+
+    def _restore_state(self) -> None:
+        s = self._state
+        self._js(f"if(window.controlAPI) controlAPI.setIgnition('{s['ign']}');")
+        self._js(f"if(window.controlAPI) controlAPI.setGear('{s['gear']}');")
+        self._js(f"if(window.controlAPI) controlAPI.setSpeed({s['speed']});")
+        self._js(f"if(window.controlAPI) controlAPI.setRain({s['rain']});")
+        self._js(f"if(window.controlAPI) controlAPI.setWiperOp({s['op']});")
+
+    def _js(self, code: str) -> None:
+        if self._ready:
+            self.page().runJavaScript(code)
+        else:
+            self._pending.append(code)
+
+    # ── API Python commune ───────────────────────────────────────────────────
+
+    def set_speed(self, speed_kmh: float) -> None:
+        v = max(0.0, min(200.0, float(speed_kmh)))
+        self._state["speed"] = v
+        self._js(f"if(window.controlAPI) controlAPI.setSpeed({v});")
+
+    def set_rain(self, intensity_pct: int) -> None:
+        v = max(0, min(100, int(intensity_pct)))
+        self._state["rain"] = v
+        self._js(f"if(window.controlAPI) controlAPI.setRain({v});")
+
+    def set_reverse(self, is_reverse: bool) -> None:
+        gear = "R" if is_reverse else "D"
+        self._state["gear"] = gear
+        self._js(f"if(window.controlAPI) controlAPI.setGear('{gear}');")
+
+    def set_ignition(self, state: str) -> None:
+        s = (state or "off").lower()
+        if s not in ("on", "off", "acc"):
+            s = "off"
+        self._state["ign"] = s
+        self._js(f"if(window.controlAPI) controlAPI.setIgnition('{s}');")
+
+    def set_wiper_op(self, op: int) -> None:
+        op = max(0, min(7, int(op)))
+        self._state["op"] = op
+        self._js(f"if(window.controlAPI) controlAPI.setWiperOp({op});")
+
+    def set_wiper_from_bcm(
+        self,
+        motor_on:  bool,
+        rest_raw:  bool = False,
+        bcm_state: str  = "OFF",
+        op:        int  = 0,
+    ) -> None:
+        self._state["op"] = op
+        js_motor = "true" if motor_on else "false"
+        self._js(
+            f"if(window.controlAPI) "
+            f"controlAPI.setWiperFromBCM({js_motor}, {op}, '{bcm_state}');"
+        )
+
+    def set_pump_state(self, state: str, fault: bool = False) -> None:
+        """Pompe hydraulique — implémentée dans CarXRayWidget, no-op ici."""
+        pass
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  CarHTMLWidget — car_simulator.html  (onglet LIN / CRS / Vehicle)
+# ════════════════════════════════════════════════════════════════════════════
+class CarHTMLWidget(_CarBaseWidget):
+    """
+    Voiture car_simulator.html pour l'onglet LIN / CRS / Vehicle.
+    Utilisée pour piloter les wipers et le véhicule depuis les panneaux CRS/LIN.
+    """
+    HTML_FILE      = "car_simulator.html"
+    CONTROL_API_JS = _SIMULATOR_API_JS
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  CarXRayWidget — controldesk-xray.html  (onglet Motor / Pump)
+# ════════════════════════════════════════════════════════════════════════════
+class CarXRayWidget(_CarBaseWidget):
+    """
+    Voiture controldesk-xray.html pour l'onglet Motor / Pump.
+    Affiche les animations moteur (impeller, gear rotor, fluid lines, wipers).
+    """
+    HTML_FILE      = "controldesk-xray.html"
+    CONTROL_API_JS = _XRAY_API_JS
+
+    def _restore_state(self) -> None:
+        super()._restore_state()
+        s = self._state
+        fault_js = str(s["pump_fault"]).lower()
+        self._js(f"if(window.controlAPI) controlAPI.setPumpState('{s['pump_state']}', {fault_js});")
+
+    def set_pump_state(self, state: str, fault: bool = False) -> None:
+        """
+        Anime la pompe hydraulique (impeller + fluid lines).
+        state : 'FORWARD' | 'BACKWARD' | 'OFF'
+        fault : True si défaut (stoppe la pompe)
+        """
+        self._state["pump_state"] = state
+        self._state["pump_fault"] = fault
+        js_fault = "true" if fault else "false"
+        self._js(
+            f"if(window.controlAPI) "
+            f"controlAPI.setPumpState('{state}', {js_fault});"
+        )

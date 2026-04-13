@@ -1,0 +1,1959 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>ControlDesk — BMW</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   CONTROLDESK — BMW HUD THEME
+   KPIT Green #8DC63F | Pearl White | Black
+   ======================================== */
+:root {
+  --bg: #FFFFF;
+  --surface: rgba(15,15,15,0.93);
+  --border: rgba(141,198,63,0.2);
+  --border-bright: rgba(141,198,63,0.6);
+  --green: #8DC63F;
+  --green-glow: rgba(141,198,63,0.35);
+  --green-dim: rgba(141,198,63,0.15);
+  --white: #ffffff;
+  --white-dim: rgba(255,255,255,0.55);
+  --white-faint: rgba(255,255,255,0.1);
+  --open-color: #8DC63F;
+  --closed-color: rgba(255,255,255,0.25);
+  --danger: #ff4040;
+  --wash-blue: #4fc3f7;
+  --wash-blue-glow: rgba(79,195,247,0.3);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+
+body {
+  background: var(--bg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 10px;
+  font-family: 'Rajdhani', sans-serif;
+  color: var(--white);
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* ---- BACKGROUND ---- */
+.bg-grid {
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(141,198,63,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(141,198,63,0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none; z-index: 0;
+}
+.bg-glow {
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse 55% 40% at 50% 55%, rgba(141,198,63,0.06) 0%, transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+
+/* ---- HEADER supprimé ---- */
+
+/* ---- STATUS BAR ---- */
+.status-bar {
+  position: relative; z-index: 10;
+  display: flex; gap: 24px; margin-bottom: 10px;
+  font-family: 'Share Tech Mono', monospace; font-size: 9.5px;
+  letter-spacing: 0.15em; color: var(--white-dim);
+}
+.status-item { display: flex; align-items: center; gap: 7px; }
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--closed-color);
+  transition: background 0.4s, box-shadow 0.4s;
+}
+.status-dot.active { background: var(--green); box-shadow: 0 0 10px var(--green-glow); animation: pulse 2.5s infinite; }
+.status-dot.locked { background: var(--danger); box-shadow: 0 0 8px rgba(255,64,64,0.5); }
+.status-dot.open-dot { background: var(--green); box-shadow: 0 0 10px var(--green-glow); }
+.status-dot.wash-dot { background: var(--wash-blue); box-shadow: 0 0 10px var(--wash-blue-glow); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ---- MAIN LAYOUT ---- */
+.main-layout {
+  position: relative; z-index: 10;
+  display: flex; align-items: center; gap: 18px;
+}
+
+/* ---- PANELS ---- */
+.panel {
+  width: 160px; min-height: 200px;
+  display: flex; flex-direction: column; gap: 11px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 12px;
+  backdrop-filter: blur(16px); position: relative;
+}
+.panel::after {
+  content: ''; position: absolute; top: 0; left: 16px; right: 16px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--green), transparent); opacity: 0.5;
+}
+.panel-label {
+  font-size: 9px; letter-spacing: 0.35em; color: var(--green);
+  font-family: 'Share Tech Mono', monospace; text-align: center;
+  padding-bottom: 9px; border-bottom: 1px solid rgba(141,198,63,0.15); margin-bottom: 2px;
+}
+.door-control {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px; border-radius: 7px; border: 1px solid transparent;
+  transition: border-color 0.3s, background 0.3s;
+}
+.door-control.is-open { border-color: rgba(141,198,63,0.35); background: rgba(141,198,63,0.06); }
+.door-btn {
+  width: 38px; height: 38px; border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05);
+  color: var(--white-dim); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s; flex-shrink: 0;
+}
+.door-btn:hover { background: var(--green-dim); border-color: var(--green); color: var(--green); box-shadow: 0 0 12px var(--green-glow); transform: scale(1.06); }
+.door-btn:active { transform: scale(0.95); }
+.door-btn.is-open { border-color: var(--green); color: var(--green); background: var(--green-dim); box-shadow: 0 0 14px var(--green-glow); }
+.door-info { display: flex; flex-direction: column; gap: 3px; }
+.door-name { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--white); }
+.door-state { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--white-dim); transition: color 0.3s; }
+.door-state.open { color: var(--green); text-shadow: 0 0 8px var(--green-glow); }
+
+/* ---- CAR STAGE ---- */
+.car-stage {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  position: relative;
+}
+/* White showroom floor with green reflection from the car */
+.showroom-bg {
+  position: absolute;
+  width: 580px; height: 570px;
+  border-radius: 32px;
+  /* Pure white base */
+  background: #ffffff;
+  /* Green reflection blob cast by the car lights/body */
+  box-shadow:
+    inset 0 0 0 1px rgba(141,198,63,0.18),
+    0 0 0 2px rgba(141,198,63,0.08);
+  pointer-events: none; z-index: 0;
+  overflow: hidden;
+}
+/* Green reflection SVG overlay inside showroom */
+.showroom-bg::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    /* central green glow from car underbody */
+    radial-gradient(ellipse 60% 45% at 50% 52%,
+      rgba(141,198,63,0.22) 0%,
+      rgba(141,198,63,0.10) 38%,
+      transparent 70%),
+    /* tail-light green hotspot (top) */
+    radial-gradient(ellipse 30% 12% at 25% 18%,
+      rgba(141,198,63,0.30) 0%,
+      transparent 70%),
+    radial-gradient(ellipse 30% 12% at 75% 18%,
+      rgba(141,198,63,0.30) 0%,
+      transparent 70%),
+    /* headlight white hotspot (bottom) */
+    radial-gradient(ellipse 18% 8% at 22% 87%,
+      rgba(255,255,255,0.9) 0%,
+      transparent 70%),
+    radial-gradient(ellipse 18% 8% at 78% 87%,
+      rgba(255,255,255,0.9) 0%,
+      transparent 70%),
+    /* subtle ground shadow under car */
+    radial-gradient(ellipse 55% 18% at 50% 90%,
+      rgba(0,0,0,0.10) 0%,
+      transparent 70%);
+}
+/* Subtle scanline shimmer for "waxed floor" effect */
+.showroom-bg::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: 32px;
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0px,
+    transparent 28px,
+    rgba(141,198,63,0.025) 28px,
+    rgba(141,198,63,0.025) 29px
+  );
+  animation: shimmer 8s linear infinite;
+}
+@keyframes shimmer {
+  0%   { background-position: 0 0; }
+  100% { background-position: 80px 80px; }
+}
+.showroom-floor {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  width: 380px; height: 45px;
+  background: radial-gradient(ellipse 85% 100% at 50% 100%,
+    rgba(141,198,63,0.28) 0%,
+    rgba(141,198,63,0.08) 60%,
+    transparent 100%);
+  pointer-events: none;
+}
+.car-glow-ring {
+  position: absolute; width: 330px; height: 330px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(141,198,63,0.07) 0%, transparent 70%);
+  top: 50%; left: 50%; transform: translate(-50%,-50%);
+  pointer-events: none; animation: ringPulse 4s ease-in-out infinite;
+}
+@keyframes ringPulse {
+  0%,100%{opacity:0.4;transform:translate(-50%,-50%) scale(1)}
+  50%{opacity:1;transform:translate(-50%,-50%) scale(1.05)}
+}
+#car {
+  position: relative; z-index: 2;
+  filter:
+    drop-shadow(0 0 22px rgba(141,198,63,0.28))
+    drop-shadow(0 8px 28px rgba(0,0,0,0.55))
+    drop-shadow(0 -2px 8px rgba(141,198,63,0.15));
+  transition: filter 0.4s;
+}
+#car:hover {
+  filter:
+    drop-shadow(0 0 36px rgba(141,198,63,0.45))
+    drop-shadow(0 8px 28px rgba(0,0,0,0.55));
+}
+
+/* ---- DOOR ANIMATIONS ---- */
+.g32682-toggle { transform: rotate(-40deg); transform-origin: 67px 175px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
+.g32696-toggle { transform: rotate(-45deg) skewY(39deg); transform-origin: 76px 132px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
+.g130-toggle   { transform: rotate(40deg); transform-origin: 125px 175px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
+.g136-toggle   { transform: rotate(45deg) skewY(-39deg); transform-origin: 119px 132px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
+.path32797-toggle { transform: scale(1,0.68); transform-origin: 80px 95px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
+
+/* ---- LOCK BUTTON ---- */
+.lock-btn {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 22px; position: relative; z-index: 2;
+  background: rgba(255,64,64,0.08); border: 1px solid rgba(255,64,64,0.45);
+  border-radius: 7px; color: #ff7070;
+  font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 700;
+  letter-spacing: 0.2em; cursor: pointer; transition: all 0.3s;
+}
+.lock-btn:hover { background: rgba(255,64,64,0.16); box-shadow: 0 0 16px rgba(255,64,64,0.25); }
+.lock-btn.unlocked { background: var(--green-dim); border-color: rgba(141,198,63,0.55); color: var(--green); }
+.lock-btn.unlocked:hover { box-shadow: 0 0 16px var(--green-glow); }
+
+/* ---- BOTTOM CONTROLS ---- */
+.bottom-controls {
+  position: relative; z-index: 10;
+  display: flex; gap: 12px; margin-top: 8px;
+}
+.action-btn {
+  padding: 9px 24px; background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;
+  color: var(--white-dim); font-family: 'Rajdhani', sans-serif;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.2em;
+  cursor: pointer; transition: all 0.2s;
+}
+.action-btn:hover { background: var(--green-dim); border-color: var(--green); color: var(--green); box-shadow: 0 0 12px var(--green-glow); }
+.action-btn-close:hover { background: rgba(255,64,64,0.1); border-color: rgba(255,64,64,0.5); color: #ff7070; box-shadow: 0 0 12px rgba(255,64,64,0.2); }
+
+/* ================================================
+   WIPE & WASH SYSTEM
+   ================================================ */
+.ww-panel {
+  position: relative; z-index: 10;
+  margin-top: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 18px;
+  backdrop-filter: blur(16px);
+  width: 100%;
+  max-width: 580px;
+}
+.ww-panel::after {
+  content: ''; position: absolute; top: 0; left: 24px; right: 24px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--wash-blue), var(--green), var(--wash-blue), transparent);
+  opacity: 0.55;
+}
+.ww-title {
+  font-size: 10px; letter-spacing: 0.4em; color: var(--green);
+  font-family: 'Share Tech Mono', monospace; text-align: center;
+  padding-bottom: 10px; border-bottom: 1px solid rgba(141,198,63,0.12);
+  margin-bottom: 12px;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.ww-icon { font-size: 14px; }
+.ww-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 10px;
+}
+.ww-section {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px; padding: 10px 10px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.ww-sec-label {
+  font-size: 8.5px; letter-spacing: 0.3em; color: var(--white-dim);
+  font-family: 'Share Tech Mono', monospace; text-align: center;
+  text-transform: uppercase;
+}
+.wmode-row { display: flex; gap: 4px; }
+.wmode-btn {
+  flex: 1; padding: 6px 4px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 5px; color: var(--white-dim);
+  font-family: 'Share Tech Mono', monospace; font-size: 8px;
+  letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s;
+  text-align: center;
+}
+.wmode-btn:hover { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+.wmode-btn.active {
+  background: var(--green-dim); border-color: var(--green);
+  color: var(--green); box-shadow: 0 0 8px var(--green-glow);
+}
+.wmode-btn.active-wash {
+  background: rgba(79,195,247,0.12); border-color: var(--wash-blue);
+  color: var(--wash-blue); box-shadow: 0 0 8px var(--wash-blue-glow);
+}
+.wash-btn {
+  width: 100%; padding: 9px 6px;
+  background: rgba(79,195,247,0.06);
+  border: 1px solid rgba(79,195,247,0.3);
+  border-radius: 6px; color: var(--wash-blue);
+  font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.15em; cursor: pointer; transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  user-select: none;
+}
+.wash-btn:hover { background: rgba(79,195,247,0.14); box-shadow: 0 0 12px var(--wash-blue-glow); }
+.wash-btn.active-wash { background: rgba(79,195,247,0.2); box-shadow: 0 0 18px var(--wash-blue-glow); animation: washPulse 0.5s infinite; }
+@keyframes washPulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
+.wiper-speed-indicator {
+  font-family: 'Share Tech Mono', monospace; font-size: 9px;
+  color: var(--white-dim); text-align: center; letter-spacing: 0.1em;
+  transition: color 0.3s;
+}
+.wiper-speed-indicator.running { color: var(--green); text-shadow: 0 0 6px var(--green-glow); }
+.wiper-speed-indicator.washing { color: var(--wash-blue); text-shadow: 0 0 6px var(--wash-blue-glow); }
+.rear-wmode-row { display: flex; gap: 4px; }
+.rear-btn { flex: 1; }
+
+/* ================================================
+   WIPER SVG ANIMATIONS
+   ================================================ */
+/* These classes applied to wiper groups inside the SVG */
+.wiper-arm { display: none; }
+.wiper-arm.visible { display: block; }
+
+/* Front left wiper — pivot in SVG coords: (22, 111) */
+@keyframes swipe-fl-slow {
+  0%   { transform: rotate(-38deg); }
+  50%  { transform: rotate(28deg); }
+  100% { transform: rotate(-38deg); }
+}
+@keyframes swipe-fl-fast {
+  0%   { transform: rotate(-38deg); }
+  50%  { transform: rotate(28deg); }
+  100% { transform: rotate(-38deg); }
+}
+/* Front right wiper — pivot: (47, 111) */
+@keyframes swipe-fr-slow {
+  0%   { transform: rotate(38deg); }
+  50%  { transform: rotate(-28deg); }
+  100% { transform: rotate(38deg); }
+}
+/* Rear wiper — pivot: (34, 47) */
+@keyframes swipe-rear {
+  0%   { transform: rotate(-30deg); }
+  50%  { transform: rotate(30deg); }
+  100% { transform: rotate(-30deg); }
+}
+
+#wiper-fl { transform-origin: 22px 111px; }
+#wiper-fr { transform-origin: 47px 111px; }
+#wiper-rear { transform-origin: 34px 47px; }
+
+.wiper-slow #wiper-fl { animation: swipe-fl-slow 2.6s ease-in-out infinite; }
+.wiper-slow #wiper-fr { animation: swipe-fr-slow 2.6s ease-in-out infinite; animation-delay: 0.05s; }
+.wiper-fast #wiper-fl { animation: swipe-fl-slow 0.85s ease-in-out infinite; }
+.wiper-fast #wiper-fr { animation: swipe-fr-slow 0.85s ease-in-out infinite; animation-delay: 0.04s; }
+.wiper-auto #wiper-fl { animation: swipe-fl-slow 1.7s ease-in-out infinite; }
+.wiper-auto #wiper-fr { animation: swipe-fr-slow 1.7s ease-in-out infinite; animation-delay: 0.05s; }
+
+.wiper-rear-on #wiper-rear { animation: swipe-rear 2s ease-in-out infinite; }
+.wiper-rear-int #wiper-rear { animation: swipe-rear 2s ease-in-out infinite 0s 1 forwards; animation-iteration-count: infinite; animation-duration: 3.5s; }
+
+/* Wash droplet animation */
+@keyframes dropFall {
+  0%   { opacity: 0; transform: translate(0,0) scale(0.4); }
+  15%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.8); }
+}
+.wash-drop {
+  animation: dropFall 0.7s ease-out forwards;
+  transform-origin: center;
+}
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+
+<!-- HEADER supprimé -->
+
+<!-- MAIN LAYOUT -->
+<div class="main-layout">
+
+  <!-- LEFT PANEL HIDDEN (doors removed per requirements) -->
+
+  <!-- CAR STAGE -->
+  <div class="car-stage">
+    <div class="showroom-bg"></div>
+    <!-- RAIN CANVAS OVERLAY over the car -->
+    <canvas id="rainCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;border-radius:32px;"></canvas>
+    <div class="showroom-floor"></div>
+    <div class="car-glow-ring"></div>
+
+    <!-- LARGER SVG (540×560) with WHITE body + wipers - WIDER CAR -->
+    <svg
+      id="car"
+      width="540"
+      height="560"
+      viewBox="-32 0 136 150.56797"
+      xmlns="http://www.w3.org/2000/svg">
+
+      <defs>
+        <!-- Body: rich black with subtle sheen (original) -->
+        <linearGradient id="bodyMain" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stop-color="#0d0d0d"/>
+          <stop offset="22%"  stop-color="#1c1c1c"/>
+          <stop offset="45%"  stop-color="#2d2d2d"/>
+          <stop offset="55%"  stop-color="#303030"/>
+          <stop offset="78%"  stop-color="#1c1c1c"/>
+          <stop offset="100%" stop-color="#0d0d0d"/>
+        </linearGradient>
+        <!-- Highlight sheen (original) -->
+        <linearGradient id="sheenH" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stop-color="#fff" stop-opacity="0"/>
+          <stop offset="38%"  stop-color="#fff" stop-opacity="0.07"/>
+          <stop offset="52%"  stop-color="#fff" stop-opacity="0.18"/>
+          <stop offset="65%"  stop-color="#fff" stop-opacity="0.05"/>
+          <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+        </linearGradient>
+        <!-- Window glass: transparent with light blue tint -->
+        <linearGradient id="glassGrad" x1="10%" y1="0%" x2="90%" y2="100%">
+          <stop offset="0%"  stop-color="#a8d4f5" stop-opacity="0.30"/>
+          <stop offset="40%" stop-color="#c5e8ff" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="#80c0f0" stop-opacity="0.25"/>
+        </linearGradient>
+        <linearGradient id="glassGlare" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.22"/>
+          <stop offset="50%"  stop-color="#d0eeff" stop-opacity="0.10"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0.06"/>
+        </linearGradient>
+        <!-- Chrome/silver -->
+        <linearGradient id="chromeV" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#d0d0d0"/>
+          <stop offset="35%"  stop-color="#ffffff"/>
+          <stop offset="65%"  stop-color="#e8e8e8"/>
+          <stop offset="100%" stop-color="#888"/>
+        </linearGradient>
+        <linearGradient id="chromeH" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stop-color="#888"/>
+          <stop offset="30%"  stop-color="#e8e8e8"/>
+          <stop offset="50%"  stop-color="#ffffff"/>
+          <stop offset="70%"  stop-color="#e8e8e8"/>
+          <stop offset="100%" stop-color="#888"/>
+        </linearGradient>
+        <!-- Tyre -->
+        <radialGradient id="tyreGrad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"  stop-color="#2a2a2a"/>
+          <stop offset="60%" stop-color="#141414"/>
+          <stop offset="100%" stop-color="#080808"/>
+        </radialGradient>
+        <!-- Rim -->
+        <radialGradient id="rimGrad" cx="40%" cy="35%" r="60%">
+          <stop offset="0%"  stop-color="#e0e0e0"/>
+          <stop offset="50%" stop-color="#a0a0a0"/>
+          <stop offset="100%" stop-color="#606060"/>
+        </radialGradient>
+        <!-- KPIT green tail lights -->
+        <radialGradient id="tailLight" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"   stop-color="#8DC63F"/>
+          <stop offset="60%"  stop-color="#6a9e2e"/>
+          <stop offset="100%" stop-color="#3d6010" stop-opacity="0.7"/>
+        </radialGradient>
+        <!-- White headlights -->
+        <radialGradient id="headLight" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"  stop-color="#ffffff"/>
+          <stop offset="60%" stop-color="#dddddd"/>
+          <stop offset="100%" stop-color="#aaaaaa" stop-opacity="0.6"/>
+        </radialGradient>
+        <!-- Door panel inner (original dark) -->
+        <linearGradient id="doorPanel" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"  stop-color="#181818"/>
+          <stop offset="50%" stop-color="#222222"/>
+          <stop offset="100%" stop-color="#181818"/>
+        </linearGradient>
+        <!-- Green accent strip -->
+        <linearGradient id="greenStrip" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stop-color="#8DC63F" stop-opacity="0"/>
+          <stop offset="30%"  stop-color="#8DC63F" stop-opacity="0.9"/>
+          <stop offset="70%"  stop-color="#8DC63F" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#8DC63F" stop-opacity="0"/>
+        </linearGradient>
+        <!-- Ground shadow -->
+        <radialGradient id="groundShadow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"  stop-color="#000" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+        </radialGradient>
+        <!-- Filters -->
+        <filter id="glowGreen" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="1.2" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glowWhite" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="1.5" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="bodyDropShadow">
+          <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#8DC63F" flood-opacity="0.20"/>
+        </filter>
+        <!-- Wash droplet blur -->
+        <filter id="dropBlur">
+          <feGaussianBlur stdDeviation="0.3"/>
+        </filter>
+        <!-- Wiper glow -->
+        <filter id="wiperGlow">
+          <feGaussianBlur stdDeviation="0.6" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <!-- Clip front windshield -->
+        <clipPath id="frontWS-clip">
+          <path d="m 76.769879,158.46897
+               c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487
+               1.87685,7.70946 4.19508,17.51444 4.19508,17.51444
+               l 0.4195,7.13163
+               c 0,0 -10.31198,4.90514 -24.436309,4.92921
+               -13.704819,0.0241 -24.121684,-4.71946 -24.121684,-4.71946
+               l 0.314632,-6.92187
+               c 0,0 2.56054,-9.89684 4.40483,-18.03882 z"
+               transform="translate(-62.420581,-72.080961)"/>
+        </clipPath>
+        <clipPath id="rearWS-clip">
+          <path d="m 76.138579,93.273644
+               c 0.05453,12.002696 0.260395,27.789346 0.260395,27.789346
+               0,0 12.258858,-2.83888 18.90718,-2.92577
+               6.783606,-0.0887 21.055356,2.45562 21.055356,2.45562
+               0,0 0.38302,-18.95612 0.23508,-27.268555
+               -7.82954,-3.590432 -13.59743,-4.545434 -20.686495,-4.517043
+               -6.788702,0.02719 -10.992865,0.787988 -19.771516,4.466402 z"
+               transform="translate(-62.420581,-72.080961)"/>
+        </clipPath>
+      </defs>
+
+      <!-- ===== MAIN CAR BODY GROUP (world coordinates) ===== -->
+      <g transform="translate(-62.420581,-72.080961)">
+
+        <!-- GROUND SHADOW -->
+        <ellipse cx="96.3" cy="228" rx="34" ry="6.5" fill="url(#groundShadow)"/>
+
+        <!-- TYRES -->
+        <ellipse cx="68" cy="176" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
+        <ellipse cx="68" cy="176" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
+        <ellipse cx="68" cy="176" rx="2.2" ry="2.4" fill="#181818"/>
+        <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
+          <line x1="68" y1="170.8" x2="68" y2="173.6"/><line x1="72.8" y1="173" x2="70.7" y2="174.8"/>
+          <line x1="71" y1="178.9" x2="69.3" y2="177.3"/><line x1="65" y1="178.9" x2="66.7" y2="177.3"/>
+          <line x1="63.2" y1="173" x2="65.3" y2="174.8"/>
+        </g>
+
+        <ellipse cx="68" cy="120" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
+        <ellipse cx="68" cy="120" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
+        <ellipse cx="68" cy="120" rx="2.2" ry="2.4" fill="#181818"/>
+        <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
+          <line x1="68" y1="114.8" x2="68" y2="117.6"/><line x1="72.8" y1="117" x2="70.7" y2="118.8"/>
+          <line x1="71" y1="122.9" x2="69.3" y2="121.3"/><line x1="65" y1="122.9" x2="66.7" y2="121.3"/>
+          <line x1="63.2" y1="117" x2="65.3" y2="118.8"/>
+        </g>
+
+        <ellipse cx="125" cy="176" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
+        <ellipse cx="125" cy="176" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
+        <ellipse cx="125" cy="176" rx="2.2" ry="2.4" fill="#181818"/>
+        <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
+          <line x1="125" y1="170.8" x2="125" y2="173.6"/><line x1="129.8" y1="173" x2="127.7" y2="174.8"/>
+          <line x1="128" y1="178.9" x2="126.3" y2="177.3"/><line x1="122" y1="178.9" x2="123.7" y2="177.3"/>
+          <line x1="120.2" y1="173" x2="122.3" y2="174.8"/>
+        </g>
+
+        <ellipse cx="125" cy="120" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
+        <ellipse cx="125" cy="120" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
+        <ellipse cx="125" cy="120" rx="2.2" ry="2.4" fill="#181818"/>
+        <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
+          <line x1="125" y1="114.8" x2="125" y2="117.6"/><line x1="129.8" y1="117" x2="127.7" y2="118.8"/>
+          <line x1="128" y1="122.9" x2="126.3" y2="121.3"/><line x1="122" y1="122.9" x2="123.7" y2="121.3"/>
+          <line x1="120.2" y1="117" x2="122.3" y2="118.8"/>
+        </g>
+
+        <!-- MAIN WHITE BODY -->
+        <path style="fill:url(#bodyMain)" filter="url(#bodyDropShadow)"
+          d="m 70.894176,80.187691 c 3.417738,-2.734443 15.364246,-8.914729 25.639467,-8.01877
+             0.469179,45.842279 0.308415,150.479219 0.308415,150.479219
+             0,0 -21.665918,0.39993 -29.131692,-16.65436
+             -1.189515,-10.13623 -0.476072,-26.49672 -0.476072,-26.49672
+             l 2.326557,-3.92867 4.150141,-19.51081
+             c 0,0 0.08521,-22.13264 -0.802119,-47.78644
+             -5.019741,3.38846 -6.076964,7.19544 -6.076964,7.19544
+             0,0 -0.915901,-24.608352 4.062267,-35.278889 z"/>
+        <path style="fill:url(#bodyMain)"
+          d="m 122.17311,80.187691 c -3.41774,-2.734443 -15.36425,-8.914729 -25.639467,-8.01877
+             -0.469179,45.842279 -0.308415,150.479219 -0.308415,150.479219
+             0,0 21.665922,0.39993 29.131692,-16.65436
+             1.18952,-10.13623 0.47607,-26.49672 0.47607,-26.49672
+             l -2.32655,-3.92867 -4.15015,-19.51081
+             c 0,0 -0.0852,-22.13264 0.80212,-47.78644
+             5.01974,3.38846 6.07697,7.19544 6.07697,7.19544
+             0,0 0.9159,-24.608352 -4.06227,-35.278889 z"/>
+        <!-- Green sheen reflection -->
+        <path style="fill:url(#sheenH);pointer-events:none"
+          d="m 70.894176,80.187691 c 3.417738,-2.734443 15.364246,-8.914729 25.639467,-8.01877
+             0.469179,45.842279 0.308415,150.479219 0.308415,150.479219
+             0,0 -21.665918,0.39993 -29.131692,-16.65436
+             -1.189515,-10.13623 -0.476072,-26.49672 -0.476072,-26.49672
+             l 2.326557,-3.92867 4.150141,-19.51081
+             c 0,0 0.08521,-22.13264 -0.802119,-47.78644
+             -5.019741,3.38846 -6.076964,7.19544 -6.076964,7.19544
+             0,0 -0.915901,-24.608352 4.062267,-35.278889 z"/>
+        <path style="fill:url(#sheenH);pointer-events:none"
+          d="m 122.17311,80.187691 c -3.41774,-2.734443 -15.36425,-8.914729 -25.639467,-8.01877
+             -0.469179,45.842279 -0.308415,150.479219 -0.308415,150.479219
+             0,0 21.665922,0.39993 29.131692,-16.65436
+             1.18952,-10.13623 0.47607,-26.49672 0.47607,-26.49672
+             l -2.32655,-3.92867 -4.15015,-19.51081
+             c 0,0 -0.0852,-22.13264 0.80212,-47.78644
+             5.01974,3.38846 6.07697,7.19544 6.07697,7.19544
+             0,0 0.9159,-24.608352 -4.06227,-35.278889 z"/>
+
+        <!-- DOOR SEAM LINES (original dark) -->
+        <line x1="76.8" y1="99" x2="76.8" y2="193" stroke="#080808" stroke-width="1.2"/>
+        <line x1="116.2" y1="99" x2="116.2" y2="193" stroke="#080808" stroke-width="1.2"/>
+        <line x1="76.8" y1="135.5" x2="116.2" y2="135.5" stroke="#080808" stroke-width="0.9"/>
+        <line x1="77.4" y1="99" x2="77.4" y2="193" stroke="#555" stroke-width="0.35" opacity="0.7"/>
+        <line x1="115.6" y1="99" x2="115.6" y2="193" stroke="#555" stroke-width="0.35" opacity="0.7"/>
+
+        <!-- REAR WINDOW (transparent blue tint) -->
+        <path style="fill:url(#glassGrad);stroke:#4a8ab5;stroke-width:0.6;stroke-opacity:0.5"
+          d="m 76.138579,93.273644
+             c 0.05453,12.002696 0.260395,27.789346 0.260395,27.789346
+             0,0 12.258858,-2.83888 18.90718,-2.92577
+             6.783606,-0.0887 21.055356,2.45562 21.055356,2.45562
+             0,0 0.38302,-18.95612 0.23508,-27.268555
+             -7.82954,-3.590432 -13.59743,-4.545434 -20.686495,-4.517043
+             -6.788702,0.02719 -10.992865,0.787988 -19.771516,4.466402 z"/>
+        <path style="fill:url(#glassGlare)"
+          d="m 76.138579,93.273644
+             c 0.05453,12.002696 0.260395,27.789346 0.260395,27.789346
+             0,0 12.258858,-2.83888 18.90718,-2.92577
+             6.783606,-0.0887 21.055356,2.45562 21.055356,2.45562
+             0,0 0.38302,-18.95612 0.23508,-27.268555
+             -7.82954,-3.590432 -13.59743,-4.545434 -20.686495,-4.517043
+             -6.788702,0.02719 -10.992865,0.787988 -19.771516,4.466402 z"/>
+        <path style="fill:#ffffff;opacity:0.07"
+          d="m 79,94.5 c 4,-1.8 9,-2.8 13.5,-2.9 l 0,10.5 c -4.5,0.6 -9.5,1.6 -13.5,2.9 z"/>
+
+        <!-- FRONT WINDOW (transparent blue tint) -->
+        <path style="fill:url(#glassGrad);stroke:#4a8ab5;stroke-width:0.6;stroke-opacity:0.5"
+          d="m 76.769879,158.46897
+             c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487
+             1.87685,7.70946 4.19508,17.51444 4.19508,17.51444
+             l 0.4195,7.13163
+             c 0,0 -10.31198,4.90514 -24.436309,4.92921
+             -13.704819,0.0241 -24.121684,-4.71946 -24.121684,-4.71946
+             l 0.314632,-6.92187
+             c 0,0 2.56054,-9.89684 4.40483,-18.03882 z"/>
+        <path style="fill:url(#glassGlare)"
+          d="m 76.769879,158.46897
+             c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487
+             1.87685,7.70946 4.19508,17.51444 4.19508,17.51444
+             l 0.4195,7.13163
+             c 0,0 -10.31198,4.90514 -24.436309,4.92921
+             -13.704819,0.0241 -24.121684,-4.71946 -24.121684,-4.71946
+             l 0.314632,-6.92187
+             c 0,0 2.56054,-9.89684 4.40483,-18.03882 z"/>
+        <path style="fill:#ffffff;opacity:0.06"
+          d="m 79,160 c 7,2 14,2.4 18,2.2 l -1.2,9 c -5,-0.5 -11.5,-2 -16.5,-4 z"/>
+
+        <!-- CHROME TRIM -->
+        <path style="fill:none;stroke:url(#chromeH);stroke-width:0.65;opacity:0.8"
+          d="m 76.8,121 c 9,-1.8 28,-1.8 39.5,0"/>
+        <path style="fill:none;stroke:url(#chromeH);stroke-width:0.65;opacity:0.8"
+          d="m 76.8,135.5 c 9,-1.2 28,-1.2 39.5,0"/>
+        <rect x="68.5" y="148" width="6" height="0.8" rx="0.4" fill="url(#greenStrip)" opacity="0.85"/>
+        <rect x="118.5" y="148" width="6" height="0.8" rx="0.4" fill="url(#greenStrip)" opacity="0.85"/>
+
+        <!-- DOOR PANELS -->
+        <rect x="69.2" y="106" width="6.5" height="24" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
+        <rect x="117.3" y="106" width="6.5" height="24" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
+        <rect x="69.2" y="138" width="6.5" height="35" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
+        <rect x="117.3" y="138" width="6.5" height="35" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
+
+        <!-- RIGHT BACK DOOR (g32696) -->
+        <g id="g32696">
+          <path style="fill:#141414"
+            d="m 72.908871,108.27114 c 0,0 -4.48587,3.09726 -6.076963,7.19544
+               1.187985,6.61867 0.318981,19.36709 0.318981,19.36709 l 6.382658,-2.52647 z"/>
+          <path style="fill:#1e1e1e"
+            d="m 73.533547,132.3072 -4.065482,1.39366
+               c 0,0 -0.02502,-15.51524 3.355947,-24.02857
+               0.285247,9.50922 0.709535,22.63491 0.709535,22.63491 z"/>
+          <rect x="66.8" y="118.5" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.95"/>
+          <rect x="66.8" y="118.3" width="4.2" height="0.3" rx="0.15" fill="#fff" opacity="0.4"/>
+        </g>
+
+        <!-- RIGHT FRONT DOOR (g32682) -->
+        <g id="g32682">
+          <path style="fill:#141414"
+            d="m 67.234294,179.49706 2.326555,-3.92867 4.150143,-19.51081
+               -0.177445,-23.75038 -6.382658,2.52647 z"/>
+          <path style="fill:#1e1e1e"
+            d="m 67.186023,136.25138 c 0,0 -0.761804,2.38758 -0.805426,3.62442
+               -0.05342,1.51465 0.671187,4.49696 0.671187,4.49696
+               l 0.536954,-0.7383 c 0,0 -0.640888,-2.40018 -0.604071,-3.62443
+               0.03312,-1.10124 0.738307,-3.2217 0.738307,-3.2217 z"/>
+          <path style="fill:#1e1e1e"
+            d="m 73.495201,134.77476 -3.825777,1.94645 0.201355,34.90183
+               0.469832,-0.40272 3.370381,-15.16274 z"/>
+          <path style="fill:#222"
+            d="m 71.405993,166.87993 -1.468094,0.24614 v 2.41628
+               l -1.141021,-0.13424 -0.134239,-0.60406
+               c 0,0 -2.849954,-0.40563 -6.242058,-2.4834
+               0.122824,3.33483 4.899679,5.83934 4.899679,5.83934
+               l 1.073904,-0.3356 1.409496,0.3356 0.201356,1.47661 z"/>
+          <path style="fill:none;stroke:url(#chromeV);stroke-width:0.4;opacity:0.8"
+            d="m 71.405993,166.87993 -1.468094,0.24614 v 2.41628
+               l -1.141021,-0.13424 -0.134239,-0.60406
+               c 0,0 -2.849954,-0.40563 -6.242058,-2.4834"/>
+          <rect x="66.8" y="154" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.95"/>
+          <rect x="66.8" y="153.8" width="4.2" height="0.3" rx="0.15" fill="#fff" opacity="0.4"/>
+        </g>
+
+        <!-- LEFT BACK DOOR (g136) -->
+        <g id="g136">
+          <path style="fill:#141414"
+            d="m 120.15841,108.27114 c 0,0 4.48587,3.09726 6.07696,7.19544
+               -1.18798,6.61867 -0.31898,19.36709 -0.31898,19.36709 l -6.38266,-2.52647 z"/>
+          <path style="fill:#1e1e1e"
+            d="m 119.53373,132.3072 4.06549,1.39366
+               c 0,0 0.025,-15.51524 -3.35595,-24.02857
+               -0.28525,9.50922 -0.70954,22.63491 -0.70954,22.63491 z"/>
+          <rect x="122" y="118.5" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.95"/>
+          <rect x="122" y="118.3" width="4.2" height="0.3" rx="0.15" fill="#fff" opacity="0.4"/>
+        </g>
+
+        <!-- LEFT FRONT DOOR (g130) -->
+        <g id="g130">
+          <path style="fill:#141414"
+            d="m 125.83299,179.49706 -2.32656,-3.92867 -4.15014,-19.51081
+               0.17744,-23.75038 6.38266,2.52647 z"/>
+          <path style="fill:#1e1e1e"
+            d="m 125.88126,136.25138 c 0,0 0.7618,2.38758 0.80542,3.62442
+               0.0534,1.51465 -0.67118,4.49696 -0.67118,4.49696
+               l -0.53696,-0.7383 c 0,0 0.64089,-2.40018 0.60407,-3.62443
+               -0.0331,-1.10124 -0.7383,-3.2217 -0.7383,-3.2217 z"/>
+          <path style="fill:#1e1e1e"
+            d="m 119.57208,134.77476 3.82578,1.94645 -0.20136,34.90183
+               -0.46983,-0.40272 -3.37038,-15.16274 z"/>
+          <!-- Mirror housing -->
+          <path style="fill:#222"
+            d="m 121.66129,166.87993 1.46809,0.24614 v 2.41628
+               l 1.14102,-0.13424 0.13424,-0.60406
+               c 0,0 2.84995,-0.40563 6.24206,-2.4834
+               -0.12283,3.33483 -4.89968,5.83934 -4.89968,5.83934
+               l -1.0739,-0.3356 -1.4095,0.3356 -0.20136,1.47661 z"/>
+          <path style="fill:none;stroke:url(#chromeV);stroke-width:0.4;opacity:0.8"
+            d="m 121.66129,166.87993 1.46809,0.24614 v 2.41628
+               l 1.14102,-0.13424 0.13424,-0.60406
+               c 0,0 2.84995,-0.40563 6.24206,-2.4834"/>
+          <rect x="120" y="154" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.95"/>
+          <rect x="120" y="153.8" width="4.2" height="0.3" rx="0.15" fill="#fff" opacity="0.4"/>
+        </g>
+
+        <!-- TRUNK (original dark) -->
+        <path id="path32798" style="fill:#1a1a1a;opacity:0.5"
+          d="m 80.125937,75.606668 c -3.146306,5.453596 -5.162573,10.831431 -3.987358,16.608641
+             10.950061,-5.570942 29.002691,-6.289797 40.458011,0.05064
+             1.4446,-5.802346 -0.95145,-11.205685 -4.09778,-16.659283
+             -15.965167,-4.496079 -15.965167,-4.496079 -32.372873,2e-6 z"/>
+        <path id="path32797" style="fill:#101010"
+          d="m 80.125937,75.606668 c -3.146306,5.453596 -5.162573,10.831431 -3.987358,16.608641
+             10.950061,-5.570942 29.002691,-6.289797 40.458011,0.05064
+             1.4446,-5.802346 -0.95145,-11.205685 -4.09778,-16.659283
+             -15.965167,-4.496079 -15.965167,-4.496079 -32.372873,2e-6 z"/>
+        <!-- Trunk sheen (original) -->
+        <path style="fill:url(#sheenH);opacity:0.5"
+          d="m 80.125937,75.606668 c -3.146306,5.453596 -5.162573,10.831431 -3.987358,16.608641
+             10.950061,-5.570942 29.002691,-6.289797 40.458011,0.05064
+             1.4446,-5.802346 -0.95145,-11.205685 -4.09778,-16.659283
+             -15.965167,-4.496079 -15.965167,-4.496079 -32.372873,2e-6 z"/>
+        <path style="fill:none;stroke:url(#chromeH);stroke-width:0.55;opacity:0.75"
+          d="m 82.5,82 c 7,-2.5 20,-2.5 28,-0.5"/>
+
+        <!-- BMW KIDNEY GRILLE -->
+        <rect x="89" y="76" width="5.8" height="9" rx="2.8" fill="none" stroke="url(#chromeH)" stroke-width="0.8" opacity="0.9"/>
+        <rect x="96.4" y="76" width="5.8" height="9" rx="2.8" fill="none" stroke="url(#chromeH)" stroke-width="0.8" opacity="0.9"/>
+        <circle cx="96.3" cy="80.5" r="3.5" fill="none" stroke="url(#chromeH)" stroke-width="0.55" opacity="0.9"/>
+        <circle cx="96.3" cy="80.5" r="2.5" fill="#111"/>
+        <path d="m 96.3,78 a 2.5,2.5 0 0,1 2.5,2.5 l -2.5,0 z" fill="#1c47a8" opacity="0.85"/>
+        <path d="m 96.3,83 a 2.5,2.5 0 0,1 -2.5,-2.5 l 2.5,0 z" fill="#1c47a8" opacity="0.85"/>
+        <path d="m 93.8,80.5 a 2.5,2.5 0 0,1 2.5,-2.5 l 0,2.5 z" fill="#f0f0f0" opacity="0.9"/>
+        <path d="m 98.8,80.5 a 2.5,2.5 0 0,1 -2.5,2.5 l 0,-2.5 z" fill="#f0f0f0" opacity="0.9"/>
+        <circle cx="96.3" cy="80.5" r="0.8" fill="none" stroke="url(#chromeH)" stroke-width="0.4" opacity="0.9"/>
+
+        <!-- ControlDesk TEXT -->
+        <text x="96.3" y="151" text-anchor="middle"
+          font-family="Rajdhani, sans-serif" font-size="5.8" font-weight="700"
+          letter-spacing="0.5" fill="#8DC63F" opacity="0.88">ControlDesk</text>
+        <line x1="80" y1="152.5" x2="112.5" y2="152.5" stroke="#8DC63F" stroke-width="0.35" opacity="0.4"/>
+
+        <!-- KPIT LOGO (small, centered on car body, white text only) -->
+        <text x="96.3" y="144" text-anchor="middle"
+          font-family="Arial Black, sans-serif" font-size="6.5" font-weight="900"
+          letter-spacing="1.2" fill="#ffffff" opacity="0.90">KPIT</text>
+
+        <!-- TAIL LIGHTS (KPIT green) -->
+        <path filter="url(#glowGreen)" style="fill:url(#tailLight)"
+          d="m 122.35729,91.242887 c 0.54338,-5.632185 -1.25853,-8.809659 -1.25853,-8.809659
+             l -8.59995,-5.768226 3.04145,3.670688 0.10488,1.782908
+             c 0,0 3.63667,2.58239 6.71215,9.124289 z"/>
+        <path filter="url(#glowGreen)" style="fill:url(#tailLight)"
+          d="m 70.267512,91.242887 c -0.543377,-5.632185 1.258522,-8.809659 1.258522,-8.809659
+             l 8.599903,-5.768226 -3.041428,3.670688 -0.104878,1.782908
+             c 0,0 -3.636655,2.58239 -6.712119,9.124289 z"/>
+
+        <!-- FRONT LIGHTS (white) -->
+        <path filter="url(#glowWhite)" style="fill:url(#headLight);opacity:0.9"
+          d="m 69.3,200 c -1.5,-2 -2.8,-5 -2.5,-7 l 3,1 z"/>
+        <path filter="url(#glowWhite)" style="fill:url(#headLight);opacity:0.9"
+          d="m 123.7,200 c 1.5,-2 2.8,-5 2.5,-7 l -3,1 z"/>
+
+        <!-- CHROME BUMPER -->
+        <path style="fill:url(#chromeH);opacity:0.88"
+          d="m 79.182046,215.62687 3.041428,4.0902
+             c 12.135649,3.93965 16.660877,3.65944 28.421636,0
+             l 3.04143,-4.0902
+             c -12.92568,5.24513 -21.354188,5.23836 -34.504494,0 z"/>
+
+        <!-- REAR REFLECTORS -->
+        <path filter="url(#glowWhite)" style="fill:#e0e0e0;opacity:0.75"
+          d="m 112.95718,217.40499 c 0,0 5.61703,-3.66512 10.80232,-15.83641
+             -0.85267,3.48874 -0.0214,4.23515 -1.04877,5.97798
+             -3.90467,6.624 -9.75355,9.85843 -9.75355,9.85843 z"/>
+        <path filter="url(#glowWhite)" style="fill:#e0e0e0;opacity:0.75"
+          d="m 79.916183,217.72441 c 0,0 -5.617028,-3.66512 -10.802318,-15.83641
+             0.852672,3.48874 0.02142,4.23515 1.048768,5.97798
+             3.90467,6.624 9.75355,9.85843 9.75355,9.85843 z"/>
+
+        <!-- GREEN ACCENT STRIPE -->
+        <path style="fill:none;stroke:#8DC63F;stroke-width:0.45;opacity:0.6"
+          d="m 70,200 c 9,4 43,4 53,0"/>
+
+        <!-- ===== WASH SPRAY NOZZLES (on hood, above front windshield) ===== -->
+        <!-- Left nozzle dot -->
+        <circle id="nozzle-fl" cx="84" cy="158" r="0.8" fill="#4fc3f7" opacity="0.7"/>
+        <!-- Right nozzle dot -->
+        <circle id="nozzle-fr" cx="109" cy="158" r="0.8" fill="#4fc3f7" opacity="0.7"/>
+        <!-- Rear nozzle -->
+        <circle id="nozzle-rear" cx="96.3" cy="121.5" r="0.7" fill="#4fc3f7" opacity="0.7"/>
+
+        <!-- WASH SPRAY DROPLETS (dynamically added via JS) -->
+        <g id="spray-front" opacity="0"></g>
+        <g id="spray-rear" opacity="0"></g>
+
+      </g><!-- end main car group (world coords) -->
+
+      <!-- ===== WIPERS (SVG coordinate space, OUTSIDE translate group) ===== -->
+      <!-- The SVG viewBox: -21.7 0 113 150.57 -->
+      <!-- Front windshield in SVG space: x≈14-54, y≈86-111 -->
+      <!-- Front wiper LEFT — pivot at SVG (22, 111) -->
+      <g id="wiper-fl" class="wiper-arm">
+        <!-- Arm -->
+        <line x1="22" y1="111" x2="19.5" y2="88.5"
+          stroke="#111111" stroke-width="1.1" stroke-linecap="round"/>
+        <!-- Blade -->
+        <line x1="18.2" y1="89.5" x2="23" y2="87.5"
+          stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
+        <!-- Blade rubber -->
+        <line x1="18.5" y1="89.2" x2="22.7" y2="87.8"
+          stroke="#222222" stroke-width="0.7" stroke-linecap="round" opacity="0.95"/>
+      </g>
+      <!-- Front wiper RIGHT — pivot at SVG (47, 111) -->
+      <g id="wiper-fr" class="wiper-arm">
+        <line x1="47" y1="111" x2="49.5" y2="88.5"
+          stroke="#111111" stroke-width="1.1" stroke-linecap="round"/>
+        <line x1="46" y1="87.5" x2="50.8" y2="89.5"
+          stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="46.3" y1="87.8" x2="50.5" y2="89.2"
+          stroke="#222222" stroke-width="0.7" stroke-linecap="round" opacity="0.95"/>
+      </g>
+      <!-- Rear window: SVG x≈14-54, y≈21-49 -->
+      <!-- Rear wiper — pivot at SVG (34, 47) -->
+      <g id="wiper-rear" class="wiper-arm">
+        <line x1="34" y1="47" x2="34" y2="26"
+          stroke="#111111" stroke-width="0.9" stroke-linecap="round"/>
+        <line x1="29.5" y1="26.5" x2="38.5" y2="25.5"
+          stroke="#000000" stroke-width="1.4" stroke-linecap="round"/>
+        <line x1="30" y1="26.2" x2="38" y2="25.8"
+          stroke="#222222" stroke-width="0.6" stroke-linecap="round" opacity="0.95"/>
+      </g>
+
+    </svg><!-- end SVG -->
+
+    <button class="lock-btn" id="lock-btn" onclick="toggleLock()">
+      <svg id="lock-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      <span id="lock-text">UNLOCK</span>
+    </button>
+  </div><!-- end car-stage -->
+
+  <!-- RIGHT PANEL HIDDEN (doors/trunk removed per requirements) -->
+
+</div><!-- end main-layout -->
+
+<!-- BOTTOM DOOR CONTROLS REMOVED -->
+
+<!-- ================================================
+     WIPE & WASH CONTROL PANEL
+     ================================================ -->
+<div class="ww-panel">
+  <div class="ww-title">
+    <span>💧</span>
+    <span>WIPE &amp; WASH SYSTEM</span>
+    <span>🌧</span>
+  </div>
+  <div class="ww-grid" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr;">
+
+    <!-- RAIN SIMULATION -->
+    <div class="ww-section" style="grid-column:1/-1;flex-direction:row;align-items:center;gap:10px;padding:8px 14px;">
+      <span style="font-family:'Share Tech Mono',monospace;font-size:8.5px;letter-spacing:0.3em;color:var(--wash-blue);text-transform:uppercase;white-space:nowrap;">🌧 RAIN</span>
+      <button class="wmode-btn" id="rain-off-btn"  onclick="setRain('off')"    style="flex:1;">OFF</button>
+      <button class="wmode-btn" id="rain-light-btn" onclick="setRain('light')" style="flex:1;">LIGHT</button>
+      <button class="wmode-btn" id="rain-med-btn"  onclick="setRain('medium')" style="flex:1;">MEDIUM</button>
+      <button class="wmode-btn" id="rain-heavy-btn" onclick="setRain('heavy')" style="flex:1;">HEAVY</button>
+      <div class="wiper-speed-indicator" id="rain-ind" style="white-space:nowrap;min-width:70px;">● NO RAIN</div>
+    </div>
+
+    <!-- FRONT WIPER MODE -->
+    <div class="ww-section">
+      <div class="ww-sec-label">FRONT WIPERS</div>
+      <div class="wmode-row">
+        <button class="wmode-btn active" data-front="off"   onclick="setFrontWiper('off')">OFF</button>
+        <button class="wmode-btn"        data-front="slow"  onclick="setFrontWiper('slow')">SLOW</button>
+        <button class="wmode-btn"        data-front="fast"  onclick="setFrontWiper('fast')">FAST</button>
+        <button class="wmode-btn"        data-front="auto"  onclick="setFrontWiper('auto')">AUTO</button>
+      </div>
+      <div class="wiper-speed-indicator" id="front-wiper-ind">● STANDBY</div>
+    </div>
+
+    <!-- FRONT WASH -->
+    <div class="ww-section">
+      <div class="ww-sec-label">FRONT WASH</div>
+      <button class="wash-btn" id="front-wash-btn"
+        onmousedown="startWash('front')" onmouseup="stopWash('front')"
+        ontouchstart="startWash('front')" ontouchend="stopWash('front')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2 C8 8 4 12 4 16 a8 8 0 0 0 16 0 C20 12 16 8 12 2z"/>
+          <path d="M8 18 C8 20 10 21 12 21" stroke-width="1.5"/>
+        </svg>
+        WASH
+      </button>
+      <div class="wiper-speed-indicator" id="front-wash-ind">● READY</div>
+    </div>
+
+    <!-- REAR WIPER -->
+    <div class="ww-section">
+      <div class="ww-sec-label">REAR WIPER</div>
+      <div class="rear-wmode-row wmode-row">
+        <button class="wmode-btn rear-btn active" data-rear="off"  onclick="setRearWiper('off')">OFF</button>
+        <button class="wmode-btn rear-btn"        data-rear="int"  onclick="setRearWiper('int')">INT</button>
+        <button class="wmode-btn rear-btn"        data-rear="on"   onclick="setRearWiper('on')">ON</button>
+      </div>
+      <div class="wiper-speed-indicator" id="rear-wiper-ind">● STANDBY</div>
+    </div>
+
+    <!-- REAR WASH -->
+    <div class="ww-section">
+      <div class="ww-sec-label">REAR WASH</div>
+      <button class="wash-btn" id="rear-wash-btn"
+        onmousedown="startWash('rear')" onmouseup="stopWash('rear')"
+        ontouchstart="startWash('rear')" ontouchend="stopWash('rear')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2 C8 8 4 12 4 16 a8 8 0 0 0 16 0 C20 12 16 8 12 2z"/>
+          <path d="M8 18 C8 20 10 21 12 21" stroke-width="1.5"/>
+        </svg>
+        WASH
+      </button>
+      <div class="wiper-speed-indicator" id="rear-wash-ind">● READY</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================================================
+     VEHICLE SIMULATION PANEL
+     ================================================ -->
+<div class="ww-panel" id="vehicle-sim-panel" style="margin-top:14px; max-width:580px;">
+  <div class="ww-title">
+    <span>🚗</span>
+    <span>VEHICLE SIMULATION</span>
+    <span>⚡</span>
+  </div>
+
+  <!-- ROW 1: IGNITION + SPEED + GEAR -->
+  <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;margin-bottom:10px;">
+
+    <!-- IGNITION COLUMN -->
+    <div class="ww-section" style="gap:7px;">
+      <div class="ww-sec-label">IGNITION</div>
+      <button class="wmode-btn" id="btn-off" onclick="setIgnition('off')" style="padding:7px 4px;font-size:9px;">OFF</button>
+      <button class="wmode-btn" id="btn-acc" onclick="setIgnition('acc')" style="padding:7px 4px;font-size:9px;">ACC</button>
+      <button class="wmode-btn" id="btn-on"  onclick="setIgnition('on')"  style="padding:7px 4px;font-size:9px;">ON</button>
+      <div class="wiper-speed-indicator" id="ign-ind" style="margin-top:2px;">● OFF</div>
+    </div>
+
+    <!-- SPEEDOMETER COLUMN -->
+    <div class="ww-section" style="align-items:center;">
+      <div class="ww-sec-label">SPEED</div>
+      <canvas id="speedCanvas" width="130" height="80" style="display:block;margin:0 auto;"></canvas>
+      <div style="display:flex;gap:6px;margin-top:4px;justify-content:center;">
+        <button class="wmode-btn" id="btn-accel"
+          onmousedown="startAccel()" onmouseup="stopAccel()"
+          ontouchstart="startAccel()" ontouchend="stopAccel()"
+          style="padding:6px 10px;font-size:9px;">▲ ACCEL</button>
+        <button class="wmode-btn" id="btn-brake"
+          onmousedown="startBrake()" onmouseup="stopBrake()"
+          ontouchstart="startBrake()" ontouchend="stopBrake()"
+          style="padding:6px 10px;font-size:9px;">▼ BRAKE</button>
+      </div>
+    </div>
+
+    <!-- GEAR / REVERSE COLUMN -->
+    <div class="ww-section" style="gap:7px;">
+      <div class="ww-sec-label">GEAR</div>
+      <button class="wmode-btn" id="btn-park"    onclick="setGear('P')" style="padding:7px 4px;font-size:9px;">P</button>
+      <button class="wmode-btn" id="btn-reverse" onclick="setGear('R')" style="padding:7px 4px;font-size:9px;">R</button>
+      <button class="wmode-btn" id="btn-neutral" onclick="setGear('N')" style="padding:7px 4px;font-size:9px;">N</button>
+      <button class="wmode-btn" id="btn-drive"   onclick="setGear('D')" style="padding:7px 4px;font-size:9px;">D</button>
+      <div class="wiper-speed-indicator" id="gear-ind" style="margin-top:2px;">P</div>
+    </div>
+  </div>
+
+  <!-- ROW 2: ENGINE RPM + PUMP STATUS -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <div class="ww-section" style="align-items:center;">
+      <div class="ww-sec-label">ENGINE RPM</div>
+      <canvas id="rpmCanvas" width="130" height="60" style="display:block;margin:0 auto;"></canvas>
+      <div class="wiper-speed-indicator" id="rpm-ind" style="margin-top:2px;">● ENGINE OFF</div>
+    </div>
+    <div class="ww-section" style="align-items:center;">
+      <div class="ww-sec-label">WASHER PUMP</div>
+      <div style="width:60px;height:60px;margin:0 auto;position:relative;display:flex;align-items:center;justify-content:center;">
+        <svg width="60" height="60" viewBox="0 0 60 60">
+          <circle cx="30" cy="30" r="26" fill="none" stroke="rgba(79,195,247,0.2)" stroke-width="3"/>
+          <circle id="pump-ring" cx="30" cy="30" r="26" fill="none" stroke="#4fc3f7" stroke-width="3"
+            stroke-dasharray="163" stroke-dashoffset="163" stroke-linecap="round"
+            transform="rotate(-90 30 30)" style="transition:stroke-dashoffset 0.3s"/>
+          <circle cx="30" cy="30" r="14" fill="rgba(79,195,247,0.08)" stroke="rgba(79,195,247,0.3)" stroke-width="1"/>
+          <text id="pump-icon" x="30" y="35" text-anchor="middle" font-size="14" fill="#4fc3f7">💧</text>
+        </svg>
+      </div>
+      <div class="wiper-speed-indicator" id="pump-ind">● IDLE</div>
+    </div>
+  </div>
+</div>
+
+<style>
+#car.reverse-active { filter:
+  drop-shadow(0 0 22px rgba(141,198,63,0.28))
+  drop-shadow(0 8px 28px rgba(0,0,0,0.55))
+  drop-shadow(0 -8px 22px rgba(255,255,255,0.6)); }
+@keyframes engineVibe {
+  0%,100%{transform:translateY(0)} 50%{transform:translateY(0.5px)}
+}
+#car.engine-run { animation: engineVibe 0.1s linear infinite; }
+</style>
+
+<script>
+/* ====================================================
+   VEHICLE SIMULATION
+   ==================================================== */
+let ignState = 'off';
+let gear     = 'P';
+let speed    = 0;
+let rpm      = 0;
+let accelInt = null, brakeInt = null;
+let engineNode = null, pumpNode = null, pumpInterval = null;
+let audioCtx2 = null;
+
+function getAC2() {
+  if (!audioCtx2) audioCtx2 = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx2;
+}
+
+function startEngine() {
+  stopEngine();
+  try {
+    const ctx = getAC2();
+    const osc  = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const dist = ctx.createWaveShaper();
+    const curve = new Float32Array(256);
+    for (let i=0;i<256;i++){const x=(i*2/256)-1; curve[i]=x<0?-Math.pow(-x,0.6):Math.pow(x,0.6);}
+    dist.curve = curve;
+    osc.type='sawtooth'; osc.frequency.value=55;
+    osc2.type='square';  osc2.frequency.value=110;
+    gain.gain.value=0.06;
+    osc.connect(dist); osc2.connect(dist); dist.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc2.start();
+    engineNode = { osc, osc2, gain, ctx };
+    document.getElementById('car').classList.add('engine-run');
+  } catch(e){}
+}
+
+function stopEngine() {
+  if (engineNode) {
+    try { engineNode.osc.stop(); engineNode.osc2.stop(); } catch(e){}
+    engineNode = null;
+  }
+  document.getElementById('car').classList.remove('engine-run');
+}
+
+function updateEngineSound() {
+  if (!engineNode) return;
+  const f = 45 + (rpm/8000)*160;
+  engineNode.osc.frequency.setTargetAtTime(f, engineNode.ctx.currentTime, 0.08);
+  engineNode.osc2.frequency.setTargetAtTime(f*2, engineNode.ctx.currentTime, 0.08);
+  engineNode.gain.gain.setTargetAtTime(0.04+(rpm/8000)*0.08, engineNode.ctx.currentTime, 0.08);
+}
+
+function startPump() {
+  if (pumpNode) return;
+  try {
+    const ctx = getAC2();
+    const bufSize = ctx.sampleRate * 0.5;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i=0;i<bufSize;i++) d[i]=(Math.random()*2-1)*0.08;
+    const src=ctx.createBufferSource();
+    src.buffer=buf; src.loop=true;
+    const flt=ctx.createBiquadFilter();
+    flt.type='bandpass'; flt.frequency.value=2000; flt.Q.value=0.8;
+    const g=ctx.createGain(); g.gain.value=0.45;
+    src.connect(flt); flt.connect(g); g.connect(ctx.destination);
+    src.start();
+    pumpNode={src,g};
+  } catch(e){}
+  // Animate pump ring
+  let prog=0;
+  const ring=document.getElementById('pump-ring');
+  const icon=document.getElementById('pump-icon');
+  if(icon) icon.style.animation='washPulse 0.4s infinite';
+  if(pumpInterval) clearInterval(pumpInterval);
+  pumpInterval=setInterval(()=>{
+    prog=(prog+10)%164;
+    if(ring) ring.style.strokeDashoffset=(163-prog).toString();
+    const ind=document.getElementById('pump-ind');
+    if(ind){ind.textContent='● PUMPING'; ind.className='wiper-speed-indicator washing';}
+  },40);
+}
+
+function stopPump() {
+  if (pumpNode) { try{pumpNode.src.stop();}catch(e){} pumpNode=null; }
+  if (pumpInterval) { clearInterval(pumpInterval); pumpInterval=null; }
+  const ring=document.getElementById('pump-ring');
+  if(ring) ring.style.strokeDashoffset='163';
+  const icon=document.getElementById('pump-icon');
+  if(icon) icon.style.animation='';
+  const ind=document.getElementById('pump-ind');
+  if(ind){ind.textContent='● IDLE'; ind.className='wiper-speed-indicator';}
+}
+
+function beepIgn(freq,dur,delay=0) {
+  setTimeout(()=>{
+    try {
+      const ctx=getAC2();
+      const o=ctx.createOscillator(); const g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type='sine'; o.frequency.value=freq;
+      g.gain.setValueAtTime(0.10,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+dur);
+      o.start(ctx.currentTime); o.stop(ctx.currentTime+dur);
+    } catch(e){}
+  }, delay);
+}
+
+function setIgnition(state) {
+  ignState=state;
+  ['btn-off','btn-acc','btn-on'].forEach(id=>document.getElementById(id).classList.remove('active'));
+  const ind=document.getElementById('ign-ind');
+  if (state==='off') {
+    document.getElementById('btn-off').classList.add('active');
+    ind.textContent='● OFF'; ind.className='wiper-speed-indicator';
+    stopEngine(); speed=0; rpm=0; updateGauges();
+    beepIgn(330,0.18);
+    document.getElementById('car').classList.remove('reverse-active');
+  } else if (state==='acc') {
+    document.getElementById('btn-acc').classList.add('active');
+    ind.textContent='● ACC'; ind.className='wiper-speed-indicator running';
+    stopEngine(); rpm=0; updateGauges();
+    beepIgn(500,0.09); beepIgn(660,0.12,110);
+  } else if (state==='on') {
+    document.getElementById('btn-on').classList.add('active');
+    ind.textContent='● ENGINE ON'; ind.className='wiper-speed-indicator running';
+    startEngine(); rpm=800; updateGauges();
+    beepIgn(440,0.08); beepIgn(660,0.14,130); beepIgn(880,0.18,280);
+  }
+}
+
+function setGear(g) {
+  gear=g;
+  ['btn-park','btn-reverse','btn-neutral','btn-drive'].forEach(id=>document.getElementById(id).classList.remove('active'));
+  const map={P:'btn-park',R:'btn-reverse',N:'btn-neutral',D:'btn-drive'};
+  document.getElementById(map[g]).classList.add('active');
+  document.getElementById('gear-ind').textContent=g;
+  const car=document.getElementById('car');
+  if (g==='R') {
+    car.classList.add('reverse-active');
+    beepIgn(880,0.08);
+    let bc=0;
+    const iv=setInterval(()=>{
+      if(gear!=='R'||bc>5){clearInterval(iv);return;}
+      beepIgn(1200,0.07); bc++;
+    },400);
+  } else {
+    car.classList.remove('reverse-active');
+  }
+  if (g==='P'||g==='N'){ speed=0; updateGauges(); }
+}
+
+function startAccel() {
+  if (ignState!=='on') return;
+  if (accelInt) return;
+  accelInt=setInterval(()=>{
+    if (gear==='D') speed=Math.min(200,speed+2.5);
+    else if (gear==='R') speed=Math.min(40,speed+1.2);
+    rpm=Math.min(7500,800+(speed/200)*6700+Math.random()*150);
+    updateGauges(); updateEngineSound();
+  },60);
+}
+function stopAccel(){clearInterval(accelInt);accelInt=null;}
+function startBrake(){
+  if (brakeInt) return;
+  brakeInt=setInterval(()=>{
+    speed=Math.max(0,speed-4);
+    rpm=Math.max(ignState==='on'?800:0,rpm-300);
+    updateGauges(); updateEngineSound();
+  },60);
+}
+function stopBrake(){clearInterval(brakeInt);brakeInt=null;}
+
+function updateGauges(){
+  drawSpeedometer(); drawRPM();
+  const ri=document.getElementById('rpm-ind');
+  if(ignState==='on'){
+    ri.textContent='● '+Math.round(rpm)+' RPM';
+    ri.className=rpm>3000?'wiper-speed-indicator washing':'wiper-speed-indicator running';
+  } else { ri.textContent='● ENGINE OFF'; ri.className='wiper-speed-indicator'; }
+}
+
+function drawSpeedometer(){
+  const canvas=document.getElementById('speedCanvas'); if(!canvas)return;
+  const c=canvas.getContext('2d'),W=canvas.width,H=canvas.height;
+  c.clearRect(0,0,W,H);
+  const cx=W/2,cy=H*0.80,r=H*0.70;
+  const sA=Math.PI*0.85,eA=Math.PI*2.15,pct=speed/200;
+  c.beginPath(); c.arc(cx,cy,r,sA,eA);
+  c.strokeStyle='rgba(255,255,255,0.08)'; c.lineWidth=8; c.stroke();
+  const gr=c.createLinearGradient(cx-r,cy,cx+r,cy);
+  gr.addColorStop(0,'#8DC63F'); gr.addColorStop(0.7,'#f0c040'); gr.addColorStop(1,'#ff4040');
+  c.beginPath(); c.arc(cx,cy,r,sA,sA+(eA-sA)*pct);
+  c.strokeStyle=gr; c.lineWidth=8; c.lineCap='round'; c.stroke();
+  const nA=sA+(eA-sA)*pct;
+  c.beginPath(); c.moveTo(cx,cy);
+  c.lineTo(cx+Math.cos(nA)*(r-4),cy+Math.sin(nA)*(r-4));
+  c.strokeStyle='#fff'; c.lineWidth=2; c.lineCap='round'; c.stroke();
+  c.beginPath(); c.arc(cx,cy,4,0,Math.PI*2); c.fillStyle='#8DC63F'; c.fill();
+  c.fillStyle='#fff'; c.font='bold 16px Rajdhani,sans-serif'; c.textAlign='center';
+  c.fillText(Math.round(speed),cx,cy-8);
+  c.fillStyle='rgba(255,255,255,0.4)'; c.font='8px Share Tech Mono,monospace';
+  c.fillText('km/h',cx,cy+4);
+}
+
+function drawRPM(){
+  const canvas=document.getElementById('rpmCanvas'); if(!canvas)return;
+  const c=canvas.getContext('2d'),W=canvas.width,H=canvas.height;
+  c.clearRect(0,0,W,H);
+  const cx=W/2,cy=H*0.88,r=H*0.72;
+  const sA=Math.PI*0.85,eA=Math.PI*2.15,pct=rpm/8000;
+  c.beginPath(); c.arc(cx,cy,r,sA,eA);
+  c.strokeStyle='rgba(255,255,255,0.08)'; c.lineWidth=6; c.stroke();
+  const col=rpm>6000?'#ff4040':rpm>4000?'#f0c040':'#8DC63F';
+  c.beginPath(); c.arc(cx,cy,r,sA,sA+(eA-sA)*pct);
+  c.strokeStyle=col; c.lineWidth=6; c.lineCap='round'; c.stroke();
+  const nA=sA+(eA-sA)*pct;
+  c.beginPath(); c.moveTo(cx,cy);
+  c.lineTo(cx+Math.cos(nA)*(r-2),cy+Math.sin(nA)*(r-2));
+  c.strokeStyle='#fff'; c.lineWidth=1.5; c.lineCap='round'; c.stroke();
+  c.beginPath(); c.arc(cx,cy,3,0,Math.PI*2); c.fillStyle='#8DC63F'; c.fill();
+  c.fillStyle='rgba(255,255,255,0.45)'; c.font='8px Share Tech Mono,monospace'; c.textAlign='center';
+  c.fillText((rpm/1000).toFixed(1)+'k',cx,cy-5);
+}
+
+// Gauges initialized after all scripts load — see bottom of main script
+</script>
+
+<script>
+/* ====================================================
+   DOOR & LOCK SYSTEM
+   ==================================================== */
+const doorState = {};
+let isLocked = true;
+
+toggleDoor = (event) => {
+  const door = event.target.getAttribute("data-door") || event.currentTarget.getAttribute("data-door");
+  if (!door) return;
+  try { const s = new Audio("sound/car-door-open-1.wav"); s.volume = 0.5; s.play(); } catch(e) {}
+  const el = document.getElementById(door);
+  if (el) el.classList.toggle(door + "-toggle");
+  doorState[door] = !doorState[door];
+  const isOpen = doorState[door];
+  const stateEl = document.getElementById("state-" + door);
+  if (stateEl) { stateEl.textContent = isOpen ? "OPEN" : "CLOSED"; stateEl.classList.toggle("open", isOpen); }
+  const ctrlEl = document.getElementById("ctrl-" + door);
+  if (ctrlEl) ctrlEl.classList.toggle("is-open", isOpen);
+  const btn = event.target.closest(".door-btn");
+  if (btn) btn.classList.toggle("is-open", isOpen);
+  updateDoorsStatus();
+};
+
+function updateDoorsStatus() {
+  const anyOpen = Object.values(doorState).some(v => v);
+  const el = document.getElementById("doors-status");
+  if (el) {
+    const dot = el.querySelector(".status-dot"), label = el.querySelector("span");
+    dot.classList.toggle("open-dot", anyOpen);
+    label.textContent = anyOpen ? "DOOR OPEN" : "ALL CLOSED";
+  }
+}
+
+function toggleLock() {
+  isLocked = !isLocked;
+  try { const s = new Audio("sound/car-lock-sound-effect.mp3"); s.volume = 0.6; s.play(); } catch(e) {}
+  const btn = document.getElementById("lock-btn");
+  const txt = document.getElementById("lock-text");
+  const lockStatus = document.getElementById("lock-status");
+  const dot = lockStatus.querySelector(".status-dot"), label = lockStatus.querySelector("span");
+  if (isLocked) {
+    btn.classList.remove("unlocked"); txt.textContent = "UNLOCK";
+    dot.classList.add("locked"); dot.classList.remove("open-dot"); label.textContent = "LOCKED";
+  } else {
+    btn.classList.add("unlocked"); txt.textContent = "LOCK";
+    dot.classList.remove("locked"); dot.classList.add("open-dot"); label.textContent = "UNLOCKED";
+  }
+}
+
+function openAll() {
+  ["g136","g130","g32696","g32682","path32797"].forEach(door => {
+    if (!doorState[door]) {
+      const el = document.getElementById(door);
+      if (el) el.classList.add(door + "-toggle");
+      doorState[door] = true;
+      const se = document.getElementById("state-" + door);
+      if (se) { se.textContent = "OPEN"; se.classList.add("open"); }
+      const ce = document.getElementById("ctrl-" + door);
+      if (ce) { ce.classList.add("is-open"); const b = ce.querySelector(".door-btn"); if (b) b.classList.add("is-open"); }
+    }
+  });
+  try { const s = new Audio("sound/car-door-open-1.wav"); s.volume = 0.4; s.play(); } catch(e) {}
+  updateDoorsStatus();
+}
+
+function closeAll() {
+  ["g136","g130","g32696","g32682","path32797"].forEach(door => {
+    if (doorState[door]) {
+      const el = document.getElementById(door);
+      if (el) el.classList.remove(door + "-toggle");
+      doorState[door] = false;
+      const se = document.getElementById("state-" + door);
+      if (se) { se.textContent = "CLOSED"; se.classList.remove("open"); }
+      const ce = document.getElementById("ctrl-" + door);
+      if (ce) { ce.classList.remove("is-open"); const b = ce.querySelector(".door-btn"); if (b) b.classList.remove("is-open"); }
+    }
+  });
+  try { const s = new Audio("sound/car-lock-sound-effect.mp3"); s.volume = 0.4; s.play(); } catch(e) {}
+  updateDoorsStatus();
+}
+
+/* ====================================================
+   WIPE & WASH SYSTEM
+   ==================================================== */
+let frontWiperMode = 'off';
+let rearWiperMode  = 'off';
+let frontWashActive = false;
+let rearWashActive  = false;
+let washAutoStopTimer = null;
+let rearIntTimer = null;
+let sprayAnimFrame = null;
+
+const car = document.getElementById('car');
+
+// ---------- FRONT WIPER ----------
+function setFrontWiper(mode) {
+  frontWiperMode = mode;
+
+  // Update button states
+  document.querySelectorAll('[data-front]').forEach(b => b.classList.remove('active'));
+  document.querySelector(`[data-front="${mode}"]`).classList.add('active');
+
+  // Remove all wiper CSS classes
+  car.classList.remove('wiper-slow','wiper-fast','wiper-auto');
+
+  // Show/hide wiper arms
+  const fl = document.getElementById('wiper-fl');
+  const fr = document.getElementById('wiper-fr');
+
+  const ind = document.getElementById('front-wiper-ind');
+
+  if (mode === 'off') {
+    fl.classList.remove('visible'); fr.classList.remove('visible');
+    ind.className = 'wiper-speed-indicator'; ind.textContent = '● STANDBY';
+    updateWiperStatus();
+    playWiperBeep(false);
+  } else {
+    fl.classList.add('visible'); fr.classList.add('visible');
+    car.classList.add('wiper-' + mode);
+    ind.className = 'wiper-speed-indicator running';
+    const labels = { slow: '◐ SLOW — 2.6s/cycle', fast: '◑ FAST — 0.85s/cycle', auto: '◒ AUTO — SPEED ADAPTIVE' };
+    ind.textContent = labels[mode];
+    updateWiperStatus();
+    playWiperBeep(true);
+  }
+}
+
+// ---------- REAR WIPER ----------
+function setRearWiper(mode) {
+  rearWiperMode = mode;
+  document.querySelectorAll('[data-rear]').forEach(b => b.classList.remove('active'));
+  document.querySelector(`[data-rear="${mode}"]`).classList.add('active');
+  car.classList.remove('wiper-rear-on','wiper-rear-int');
+
+  const rw = document.getElementById('wiper-rear');
+  const ind = document.getElementById('rear-wiper-ind');
+
+  if (rearIntTimer) { clearInterval(rearIntTimer); rearIntTimer = null; }
+
+  if (mode === 'off') {
+    rw.classList.remove('visible');
+    ind.className = 'wiper-speed-indicator'; ind.textContent = '● STANDBY';
+    playWiperBeep(false);
+  } else if (mode === 'on') {
+    rw.classList.add('visible');
+    car.classList.add('wiper-rear-on');
+    ind.className = 'wiper-speed-indicator running'; ind.textContent = '◐ ON — CONTINUOUS';
+    playWiperBeep(true);
+  } else if (mode === 'int') {
+    // Intermittent: wipe every 4 seconds
+    rw.classList.add('visible');
+    ind.className = 'wiper-speed-indicator running'; ind.textContent = '◑ INT — INTERMITTENT';
+    doIntermittentRear();
+    rearIntTimer = setInterval(doIntermittentRear, 4000);
+    playWiperBeep(true);
+  }
+  updateWiperStatus();
+}
+
+function doIntermittentRear() {
+  const rw = document.getElementById('wiper-rear');
+  car.classList.remove('wiper-rear-int');
+  void rw.offsetWidth; // reflow
+  car.classList.add('wiper-rear-int');
+}
+
+function updateWiperStatus() {
+  const el = document.getElementById('wiper-status');
+  const dot = el.querySelector('.status-dot'), label = el.querySelector('span');
+  const anyOn = (frontWiperMode !== 'off') || (rearWiperMode !== 'off');
+  if (anyOn) {
+    dot.classList.add('open-dot'); dot.classList.remove('closed-color');
+    label.textContent = 'WIPERS ON'; el.style.display = '';
+  } else {
+    dot.classList.remove('open-dot');
+    label.textContent = 'WIPERS OFF'; el.style.display = '';
+  }
+}
+
+// ---------- WASH SYSTEM ----------
+function startWash(side) {
+  if (side === 'front') {
+    frontWashActive = true;
+    const btn = document.getElementById('front-wash-btn');
+    btn.classList.add('active-wash');
+    document.getElementById('front-wash-ind').className = 'wiper-speed-indicator washing';
+    document.getElementById('front-wash-ind').textContent = '💧 SPRAYING...';
+    document.getElementById('wash-status').style.display = '';
+
+    // Auto-activate front wiper during wash
+    if (frontWiperMode === 'off') {
+      setFrontWiper('slow');
+    }
+
+    animateSpray('front');
+    playSpraySound();
+
+  } else {
+    rearWashActive = true;
+    const btn = document.getElementById('rear-wash-btn');
+    btn.classList.add('active-wash');
+    document.getElementById('rear-wash-ind').className = 'wiper-speed-indicator washing';
+    document.getElementById('rear-wash-ind').textContent = '💧 SPRAYING...';
+    document.getElementById('wash-status').style.display = '';
+
+    // Auto-activate rear wiper during wash
+    if (rearWiperMode === 'off') {
+      setRearWiper('on');
+    }
+
+    animateSpray('rear');
+    playSpraySound();
+  }
+}
+
+function stopWash(side) {
+  if (side === 'front') {
+    frontWashActive = false;
+    document.getElementById('front-wash-btn').classList.remove('active-wash');
+    document.getElementById('front-wash-ind').className = 'wiper-speed-indicator';
+    document.getElementById('front-wash-ind').textContent = '● READY';
+    stopSpray('front');
+
+    // Keep wipers on for 3 more seconds after wash
+    if (frontWiperMode !== 'off') {
+      if (washAutoStopTimer) clearTimeout(washAutoStopTimer);
+      washAutoStopTimer = setTimeout(() => {
+        if (!frontWashActive) setFrontWiper('off');
+      }, 3000);
+    }
+  } else {
+    rearWashActive = false;
+    document.getElementById('rear-wash-btn').classList.remove('active-wash');
+    document.getElementById('rear-wash-ind').className = 'wiper-speed-indicator';
+    document.getElementById('rear-wash-ind').textContent = '● READY';
+    stopSpray('rear');
+    setTimeout(() => { if (!rearWashActive) setRearWiper('off'); }, 3000);
+  }
+  // Hide wash status if both off
+  setTimeout(() => {
+    if (!frontWashActive && !rearWashActive) {
+      document.getElementById('wash-status').style.display = 'none';
+    }
+  }, 100);
+}
+
+// ---------- REALISTIC WATER DROP PHYSICS ----------
+// SVG coords: front windshield x≈14-54, y≈86-111 | rear window x≈14-54, y≈21-49
+// Nozzles: front-left=(21.6,85.9), front-right=(46.6,85.9), rear=(33.9,49.4)
+
+const DROP_CONFIGS = {
+  front: {
+    nozzles: [{ x: 21.6, y: 85.9 }, { x: 46.6, y: 85.9 }],
+    dir: { vx: [-0.5, 0.5], vy: [1.6, 3.0] },
+    gravity: 0.11,
+    groupId: 'spray-front',
+    bounds: { xMin: 14, xMax: 55, yMin: 85, yMax: 112 }
+  },
+  rear: {
+    nozzles: [{ x: 33.9, y: 49.4 }],
+    dir: { vx: [-0.6, 0.6], vy: [-2.8, -1.6] },
+    gravity: 0.09,
+    groupId: 'spray-rear',
+    bounds: { xMin: 14, xMax: 55, yMin: 20, yMax: 50 }
+  }
+};
+
+const particles = { front: [], rear: [] };
+let animRunning = { front: false, rear: false };
+let rafIds = { front: null, rear: null };
+
+function spawnDrop(nozzle, cfg) {
+  const vxR = cfg.dir.vx, vyR = cfg.dir.vy;
+  return {
+    x: nozzle.x + (Math.random() - 0.5) * 1.4,
+    y: nozzle.y,
+    vx: vxR[0] + Math.random() * (vxR[1] - vxR[0]),
+    vy: vyR[0] + Math.random() * (vyR[1] - vyR[0]),
+    life: 1.0,
+    decay: 0.020 + Math.random() * 0.016,
+    r: 0.30 + Math.random() * 0.60,
+    trail: [], trailTimer: 0,
+    splat: false, splatR: 0
+  };
+}
+
+function animateSpray(side) {
+  const cfg = DROP_CONFIGS[side];
+  const grp = document.getElementById(cfg.groupId);
+  grp.setAttribute('opacity', '1');
+  animRunning[side] = true;
+  particles[side] = [];
+  let tick = 0;
+
+  function frame() {
+    if (!animRunning[side]) return;
+    tick++;
+
+    // Spawn new drops every other frame
+    if (tick % 2 === 0) {
+      cfg.nozzles.forEach(n => {
+        const count = side === 'front' ? 3 : 2;
+        for (let i = 0; i < count; i++) {
+          if (particles[side].length < 90) particles[side].push(spawnDrop(n, cfg));
+        }
+      });
+    }
+
+    // Update particles
+    particles[side].forEach(p => {
+      if (p.splat) {
+        p.splatR += 0.08;
+        p.life -= 0.055;
+      } else {
+        p.trailTimer++;
+        if (p.trailTimer % 2 === 0) {
+          p.trail.push({ x: p.x, y: p.y });
+          if (p.trail.length > 6) p.trail.shift();
+        }
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += cfg.gravity;
+        p.vx *= 0.975;
+        p.life -= p.decay;
+        const b = cfg.bounds;
+        if (p.x < b.xMin || p.x > b.xMax || p.y > b.yMax || p.y < b.yMin) {
+          p.splat = true; p.splatR = p.r * 0.5;
+          p.life = 0.85;
+          p.x = Math.max(b.xMin+0.5, Math.min(b.xMax-0.5, p.x));
+          p.y = Math.max(b.yMin+0.5, Math.min(b.yMax-0.5, p.y));
+        }
+      }
+    });
+
+    particles[side] = particles[side].filter(p => p.life > 0.01);
+    renderDrops(side, grp);
+    rafIds[side] = requestAnimationFrame(frame);
+  }
+
+  if (rafIds[side]) cancelAnimationFrame(rafIds[side]);
+  rafIds[side] = requestAnimationFrame(frame);
+}
+
+function renderDrops(side, grp) {
+  let svg = '';
+  particles[side].forEach(p => {
+    const op = Math.max(0, Math.min(1, p.life));
+    if (p.splat) {
+      // Ripple rings expanding on glass
+      const r1 = p.splatR;
+      const r2 = p.splatR * 0.55;
+      svg += `<ellipse cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" rx="${Math.min(r1,3.5).toFixed(2)}" ry="${Math.min(r2,1.6).toFixed(2)}" fill="none" stroke="rgba(100,185,255,${(op*0.65).toFixed(2)})" stroke-width="0.22"/>`;
+      // Second inner ring
+      svg += `<ellipse cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" rx="${Math.min(r1*0.5,1.8).toFixed(2)}" ry="${Math.min(r2*0.5,0.9).toFixed(2)}" fill="rgba(160,215,255,${(op*0.40).toFixed(2)})" stroke="none"/>`;
+      // Center residual drop
+      svg += `<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${(p.r*0.32).toFixed(2)}" fill="rgba(200,235,255,${(op*0.70).toFixed(2)})"/>`;
+    } else {
+      // Trail: fading streak in direction of travel
+      if (p.trail.length >= 2) {
+        for (let i = 1; i < p.trail.length; i++) {
+          const tp = p.trail[i-1], tc = p.trail[i];
+          const tOp = (i / p.trail.length) * op * 0.45;
+          const tw = (p.r * 0.45 * i / p.trail.length).toFixed(2);
+          svg += `<line x1="${tp.x.toFixed(2)}" y1="${tp.y.toFixed(2)}" x2="${tc.x.toFixed(2)}" y2="${tc.y.toFixed(2)}" stroke="rgba(90,180,255,${tOp.toFixed(2)})" stroke-width="${tw}" stroke-linecap="round"/>`;
+        }
+      }
+      // Drop body: teardrop elongated in velocity direction
+      const speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+      const ang = Math.atan2(p.vy, p.vx) * 180 / Math.PI;
+      const rx = (p.r * (1 + speed * 0.15)).toFixed(2);
+      const ry = (p.r * 0.62).toFixed(2);
+      // Outer drop (semi-transparent body)
+      svg += `<ellipse cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" rx="${rx}" ry="${ry}" transform="rotate(${ang.toFixed(1)},${p.x.toFixed(2)},${p.y.toFixed(2)})" fill="rgba(100,190,255,${(op*0.75).toFixed(2)})"/>`;
+      // Inner highlight
+      svg += `<ellipse cx="${(p.x-p.r*0.22).toFixed(2)}" cy="${(p.y-p.r*0.22).toFixed(2)}" rx="${(p.r*0.38).toFixed(2)}" ry="${(p.r*0.25).toFixed(2)}" fill="rgba(230,248,255,${(op*0.95).toFixed(2)})"/>`;
+      // Specular micro-glint
+      svg += `<circle cx="${(p.x-p.r*0.3).toFixed(2)}" cy="${(p.y-p.r*0.3).toFixed(2)}" r="${(p.r*0.16).toFixed(2)}" fill="rgba(255,255,255,${op.toFixed(2)})"/>`;
+    }
+  });
+  grp.innerHTML = svg;
+}
+
+function stopSpray(side) {
+  animRunning[side] = false;
+  if (rafIds[side]) { cancelAnimationFrame(rafIds[side]); rafIds[side] = null; }
+  const grp = document.getElementById(DROP_CONFIGS[side].groupId);
+  let ff = 0;
+  function fadeOut() {
+    ff++;
+    particles[side].forEach(p => { p.life -= 0.07; });
+    particles[side] = particles[side].filter(p => p.life > 0.01);
+    renderDrops(side, grp);
+    if (particles[side].length > 0 && ff < 35) requestAnimationFrame(fadeOut);
+    else { grp.innerHTML = ''; grp.setAttribute('opacity','0'); particles[side] = []; }
+  }
+  requestAnimationFrame(fadeOut);
+}
+
+// ---------- AUDIO ----------
+let audioCtx = null;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playWiperBeep(isOn) {
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = isOn ? 880 : 660;
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.12);
+  } catch(e) {}
+}
+
+function playSpraySound() {
+  try {
+    const ctx = getAudioCtx();
+    // White noise burst for spray
+    const bufferSize = ctx.sampleRate * 0.3;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.15;
+
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass'; filter.frequency.value = 3500; filter.Q.value = 0.5;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.6, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+
+    src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+    src.start(ctx.currentTime); src.stop(ctx.currentTime + 0.3);
+  } catch(e) {}
+}
+
+// Prevent context loss on mobile
+document.addEventListener('touchstart', () => { try { getAudioCtx().resume(); } catch(e){} }, { once: true });
+
+/* ====================================================
+   RAIN SIMULATION
+   ==================================================== */
+let rainMode = 'off';
+let rainRAF  = null;
+let rainDrops = [];
+let rainAudioNode = null;
+
+// Rain configs per intensity
+const RAIN_CFG = {
+  off:    { count: 0,   speed: [4,8],  len: [6,14], opacity: [0.3,0.6], wind: 0.6 },
+  light:  { count: 40,  speed: [3,6],  len: [5,12], opacity: [0.2,0.5], wind: 0.5 },
+  medium: { count: 100, speed: [5,10], len: [8,18], opacity: [0.3,0.65],wind: 1.0 },
+  heavy:  { count: 220, speed: [8,16], len: [10,24],opacity: [0.4,0.80],wind: 1.8 }
+};
+
+function spawnRainDrop(canvas, cfg) {
+  return {
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height - canvas.height,
+    speed: cfg.speed[0] + Math.random() * (cfg.speed[1] - cfg.speed[0]),
+    len:   cfg.len[0]   + Math.random() * (cfg.len[1]   - cfg.len[0]),
+    opacity: cfg.opacity[0] + Math.random() * (cfg.opacity[1] - cfg.opacity[0]),
+    wind:  cfg.wind
+  };
+}
+
+function startRainSound(mode) {
+  stopRainSound();
+  if (mode === 'off') return;
+  try {
+    const ctx = getAC2();
+    const bufSize = ctx.sampleRate * 1.0;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1);
+
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+
+    // High-pass for rain hiss
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 4000;
+
+    // Low-pass to soften
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 12000;
+
+    const gain = ctx.createGain();
+    const vol = mode === 'light' ? 0.08 : mode === 'medium' ? 0.18 : 0.32;
+    gain.gain.value = vol;
+
+    src.connect(hp); hp.connect(lp); lp.connect(gain); gain.connect(ctx.destination);
+    src.start();
+    rainAudioNode = { src, gain };
+  } catch(e) {}
+}
+
+function stopRainSound() {
+  if (rainAudioNode) { try { rainAudioNode.src.stop(); } catch(e){} rainAudioNode = null; }
+}
+
+function setRain(mode) {
+  rainMode = mode;
+  // Update buttons
+  ['rain-off-btn','rain-light-btn','rain-med-btn','rain-heavy-btn'].forEach(id => {
+    document.getElementById(id).classList.remove('active','active-wash');
+  });
+  const btnMap = { off:'rain-off-btn', light:'rain-light-btn', medium:'rain-med-btn', heavy:'rain-heavy-btn' };
+  const btn = document.getElementById(btnMap[mode]);
+  btn.classList.add(mode === 'off' ? 'active' : 'active-wash');
+
+  // Update indicator
+  const ind = document.getElementById('rain-ind');
+  const labels = { off:'● NO RAIN', light:'● LIGHT', medium:'● MEDIUM', heavy:'● HEAVY' };
+  ind.textContent = labels[mode];
+  ind.className = mode === 'off' ? 'wiper-speed-indicator' : 'wiper-speed-indicator washing';
+
+  // Sound
+  startRainSound(mode);
+
+  // Stop or start animation
+  if (mode === 'off') {
+    stopRainAnim();
+    return;
+  }
+  startRainAnim(mode);
+}
+
+function stopRainAnim() {
+  if (rainRAF) { cancelAnimationFrame(rainRAF); rainRAF = null; }
+  rainDrops = [];
+  const canvas = document.getElementById('rainCanvas');
+  if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function startRainAnim(mode) {
+  stopRainAnim();
+  const canvas = document.getElementById('rainCanvas');
+  if (!canvas) return;
+
+  // Size canvas to match its CSS display size
+  const stage = canvas.parentElement;
+  canvas.width  = stage.offsetWidth  || 580;
+  canvas.height = stage.offsetHeight || 570;
+
+  const cfg = RAIN_CFG[mode];
+  // Seed initial drops spread across the canvas
+  for (let i = 0; i < cfg.count; i++) {
+    const drop = spawnRainDrop(canvas, cfg);
+    drop.y = Math.random() * canvas.height; // start spread vertically
+    rainDrops.push(drop);
+  }
+
+  function frame() {
+    const ctx2d = canvas.getContext('2d');
+    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw each drop
+    rainDrops.forEach(p => {
+      ctx2d.beginPath();
+      ctx2d.moveTo(p.x, p.y);
+      // Angled streak
+      const ex = p.x + p.wind * (p.len / p.speed);
+      const ey = p.y + p.len;
+      ctx2d.lineTo(ex, ey);
+
+      // Gradient: transparent at top, blue-white at bottom
+      const grd = ctx2d.createLinearGradient(p.x, p.y, ex, ey);
+      grd.addColorStop(0, `rgba(180,220,255,0)`);
+      grd.addColorStop(1, `rgba(180,220,255,${p.opacity})`);
+      ctx2d.strokeStyle = grd;
+      ctx2d.lineWidth = 0.8 + Math.random() * 0.5;
+      ctx2d.lineCap = 'round';
+      ctx2d.stroke();
+
+      // Advance drop
+      p.x += p.wind;
+      p.y += p.speed;
+
+      // Splat on "glass" — tiny horizontal ripple near bottom
+      if (p.y > canvas.height * 0.88) {
+        ctx2d.beginPath();
+        ctx2d.ellipse(p.x, p.y, 1.8 + Math.random(), 0.6, 0, 0, Math.PI*2);
+        ctx2d.fillStyle = `rgba(180,220,255,${p.opacity * 0.5})`;
+        ctx2d.fill();
+      }
+
+      // Respawn when off-screen
+      if (p.y > canvas.height + 20 || p.x > canvas.width + 20) {
+        Object.assign(p, spawnRainDrop(canvas, cfg));
+      }
+    });
+
+    // Maintain drop count (add new ones if needed)
+    while (rainDrops.length < cfg.count) rainDrops.push(spawnRainDrop(canvas, cfg));
+    // Remove excess
+    if (rainDrops.length > cfg.count + 10) rainDrops.splice(cfg.count);
+
+    rainRAF = requestAnimationFrame(frame);
+  }
+
+  rainRAF = requestAnimationFrame(frame);
+}
+
+/* ====================================================
+   INIT — runs after ALL functions are defined
+   ==================================================== */
+(function initAll() {
+  // Patch startWash/stopWash to also trigger pump sound
+  const _sw0 = window.startWash;
+  const _sw1 = window.stopWash;
+  window.startWash = function(side) { startPump(); _sw0(side); };
+  window.stopWash  = function(side) { stopPump();  _sw1(side); };
+
+  // Set default button states
+  const bOff  = document.getElementById('btn-off');
+  const bPark = document.getElementById('btn-park');
+  if (bOff)  bOff.classList.add('active');
+  if (bPark) bPark.classList.add('active');
+  // Rain default
+  const rainOffBtn = document.getElementById('rain-off-btn');
+  if (rainOffBtn) rainOffBtn.classList.add('active');
+
+  // Draw initial gauges
+  updateGauges();
+})();
+</script>
+</body>
+</html>
