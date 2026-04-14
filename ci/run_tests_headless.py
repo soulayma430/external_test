@@ -1,0 +1,763 @@
+#!/usr/bin/env python3
+"""
+run_tests_headless.py  —  WipeWash BCM Test Runner (mode headless / Jenkins Windows)
+=====================================================================================
+Exécute la campagne de tests sans GUI PySide6, en mode ligne de commande.
+Conçu pour être appelé par Jenkins sous Windows.
+
+Ce fichier doit être placé dans :
+    <depot>/ci/run_tests_headless.py
+
+Les modules de la plateforme (test_cases.py, rte_client.py, etc.) sont dans :
+    <depot>/platform/
+
+Usage :
+    python ci\\run_tests_headless.py [options]
+
+Options :
+    --bcm-host   IP ou hostname du RPiBCM   (défaut : auto-découverte)
+    --sim-host   IP ou hostname du RPiSIM   (défaut : auto-découverte)
+    --redis-host IP du serveur Redis        (défaut : même que bcm-host)
+    --redis-port Port Redis                 (défaut : 6379)
+    --tests      IDs séparés par virgule (ex: T30,T31,T32)
+                 Si absent → tous les tests ALL_TESTS
+    --output     Chemin rapport HTML        (défaut : report_<ts>.html)
+    --json       Chemin rapport JSON        (défaut : results_<ts>.json)
+    --junit      Chemin rapport JUnit XML   (défaut : junit_<ts>.xml)
+    --timeout    Timeout global en secondes (défaut : 600)
+    --bench-id   Identifiant banc           (défaut : WipeWash-Bench-CI)
+    --operator   Nom opérateur/job Jenkins  (défaut : jenkins)
+    --fail-fast  Arrêter dès le premier FAIL
+
+Exit codes :
+    0  → tous les tests PASS
+    1  → au moins un FAIL ou TIMEOUT
+    2  → erreur de connexion / infrastructure
+    3  → timeout global dépassé
+"""
+
+import argparse
+import io
+import sys
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+import datetime
+import json
+import os
+import sys
+import time
+import threading
+import signal
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Résolution du chemin vers le dossier platform/
+# Structure attendue :
+#   <depot>/
+#     ci/run_tests_headless.py      ← ce fichier
+#     platform/test_cases.py
+#     platform/rte_client.py
+#     platform/sim_client.py
+#     platform/network.py
+#     platform/report_generator.py
+# ─────────────────────────────────────────────────────────────────────────────
+_HERE         = os.path.dirname(os.path.abspath(__file__))
+_DEPOT_ROOT   = os.path.dirname(_HERE)
+_PLATFORM_DIR = os.path.join(_DEPOT_ROOT, "platform")
+
+if not os.path.isdir(_PLATFORM_DIR):
+    # Fallback : chercher "platform - Copie" (nom original du zip)
+    _PLATFORM_DIR = os.path.join(_DEPOT_ROOT, "platform - Copie")
+
+if not os.path.isdir(_PLATFORM_DIR):
+    print(
+        f"[ERREUR] Dossier platform introuvable.\n"
+        f"  Cherché dans : {_PLATFORM_DIR}\n"
+        f"  Vérifiez la structure du dépôt (voir README_JENKINS.md).",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+sys.path.insert(0, _PLATFORM_DIR)
+
+# ─── Imports plateforme ───────────────────────────────────────────────────────
+try:
+    from test_cases       import ALL_TESTS, BaseTest, BaseBCMTest, TestResult
+    from rte_client       import RTEClient
+    from sim_client       import SimClient
+    from network          import auto_discover_all
+    from report_generator import ReportGenerator
+except ImportError as e:
+    print(f"[ERREUR] Import plateforme échoué : {e}", file=sys.stderr)
+    print(f"  PLATFORM_DIR = {_PLATFORM_DIR}", file=sys.stderr)
+    sys.exit(2)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  STUBS TCP HEADLESS  —  remplacent les Workers PySide6 par des threads purs
+# ═════════════════════════════════════════════════════════════════════════════
+
+class _FakeSignal:
+    """Émule un Signal Qt (connect / emit) sans dépendance à PySide6."""
+    def __init__(self):
+        self._cbs = []
+
+    def connect(self, cb, *args, **kwargs):
+        self._cbs.append(cb)
+
+    def emit(self, *args):
+        for cb in self._cbs:
+            try:
+                cb(*args)
+            except Exception as exc:
+                print(f"[FakeSignal] callback error: {exc}", file=sys.stderr)
+
+
+class _TCPReader(threading.Thread):
+    """
+    Thread générique : connexion TCP, lecture ligne à ligne (JSON\\n),
+    dispatch vers un _FakeSignal.
+    Reconnexion automatique si la connexion est perdue.
+    """
+    def __init__(self, host: str, port: int, signal: _FakeSignal, name: str):
+        super().__init__(name=name, daemon=True)
+        self._host   = host
+        self._port   = port
+        self._signal = signal
+        self._stop   = threading.Event()
+
+    def stop(self):
+        self._stop.set()
+
+    def run(self):
+        import socket
+        buf = b""
+        while not self._stop.is_set():
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(3)
+                s.connect((self._host, self._port))
+                buf = b""
+                while not self._stop.is_set():
+                    try:
+                        chunk = s.recv(4096)
+                    except socket.timeout:
+                        continue
+                    if not chunk:
+                        break
+                    buf += chunk
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        try:
+                            ev = json.loads(line.decode("utf-8", errors="replace"))
+                            self._signal.emit(ev)
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            pass
+                s.close()
+            except Exception:
+                pass
+            # Attente avant reconnexion (évite la boucle rapide si hôte absent)
+            self._stop.wait(timeout=1.5)
+
+
+class HeadlessCANWorker:
+    """Remplace CANWorker (PySide6) — écoute les frames CAN depuis RPiSIM:5557."""
+    PORT = 5557
+
+    def __init__(self, host: str):
+        # host = RPiSIM (bcm_tcp_can.py sert le port 5557 sur le simulateur)
+        self.can_received   = _FakeSignal()
+        self.status_changed = _FakeSignal()
+        self._reader = _TCPReader(host, self.PORT, self.can_received, "CAN-RX")
+
+    def start(self):
+        self._reader.start()
+
+    def queue_send(self, obj: dict):
+        pass  # TX CAN non utilisé par les tests
+
+    def stop(self):
+        self._reader.stop()
+
+
+class HeadlessLINWorker:
+    """Remplace LINWorker (PySide6) — écoute les frames LIN depuis RPiSIM:5555."""
+    PORT = 5555
+
+    def __init__(self, host: str):
+        # host = RPiSIM (crslin.py sert le port 5555 sur le simulateur)
+        self.lin_received   = _FakeSignal()
+        self.status_changed = _FakeSignal()
+        self._reader = _TCPReader(host, self.PORT, self.lin_received, "LIN-RX")
+
+    def start(self):
+        self._reader.start()
+
+    def queue_send(self, obj: dict):
+        pass
+
+    def set_wiper_op(self, op: int):
+        pass
+
+    def stop(self):
+        self._reader.stop()
+
+
+class HeadlessMotorWorker:
+    """
+    Remplace MotorVehicleWorker (PySide6).
+    RX depuis RPiBCM:5000 (état moteur), TX vers RPiSIM:5002 (commandes véhicule).
+    """
+    PORT_RX = 5000   # RPiBCM bcm_tcp_broadcast
+    PORT_TX = 5002   # RPiSIM bcmcan (PORT_BCMCAN)
+
+    def __init__(self, bcm_host: str, sim_host: str):
+        self.motor_received = _FakeSignal()
+        self.status_changed = _FakeSignal()
+        self._bcm_host = bcm_host
+        self._sim_host = sim_host
+        self._tx_queue: list = []
+        self._tx_lock  = threading.Lock()
+        self._stop_ev  = threading.Event()
+        self._reader   = _TCPReader(bcm_host, self.PORT_RX, self.motor_received, "Motor-RX")
+
+    def start(self):
+        self._reader.start()
+        # Thread TX (commandes → RPiSIM)
+        threading.Thread(target=self._tx_loop, name="Motor-TX", daemon=True).start()
+
+    def _tx_loop(self):
+        import socket
+        while not self._stop_ev.is_set():
+            with self._tx_lock:
+                cmds = list(self._tx_queue)
+                self._tx_queue.clear()
+            for cmd in cmds:
+                try:
+                    with socket.create_connection(
+                            (self._sim_host, self.PORT_TX), timeout=2.0) as s:
+                        s.sendall((json.dumps(cmd) + "\n").encode())
+                except Exception:
+                    pass
+            self._stop_ev.wait(timeout=0.05)
+
+    def queue_send(self, obj: dict):
+        with self._tx_lock:
+            self._tx_queue.append(obj)
+
+    def set_wiper_op(self, op: int):
+        self.queue_send({"wiper_op": op})
+
+    def stop(self):
+        self._stop_ev.set()
+        self._reader.stop()
+
+
+class HeadlessPumpSignal:
+    """Remplace PumpDataClient (PySide6) — écoute données pompe RPiBCM:5556."""
+    PORT = 5556
+
+    def __init__(self, host: str):
+        self.data_received = _FakeSignal()
+        self._reader = _TCPReader(host, self.PORT, self.data_received, "Pump-RX")
+
+    def start(self):
+        self._reader.start()
+
+    def stop(self):
+        self._reader.stop()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  RUNNER HEADLESS
+#  Reproduit fidèlement la logique de TestRunner (test_runner.py)
+#  sans aucune dépendance Qt.
+# ═════════════════════════════════════════════════════════════════════════════
+
+class HeadlessTestRunner:
+    """
+    Exécute les tests séquentiellement dans un thread pur.
+    Signaux Qt → threading.Event + callbacks directs.
+    """
+
+    TICK_INTERVAL_S   = 0.2    # 200 ms, identique au QTimer de TestRunner
+    SETTLE_AFTER_INIT = 2.0    # secondes d'attente après connexion workers
+
+    def __init__(self,
+                 can_worker, lin_worker, motor_worker,
+                 pump_signal  = None,
+                 rte_client   = None,
+                 sim_client   = None,
+                 fail_fast    = False):
+
+        self._can_w      = can_worker
+        self._lin_w      = lin_worker
+        self._motor_w    = motor_worker
+        self._rte_client = rte_client
+        self._sim_client = sim_client
+        self._fail_fast  = fail_fast
+
+        self._results:   list = []
+        self._log_lines: list = []
+
+        self._current: BaseTest | None = None
+        self._lock     = threading.Lock()
+        self._done_ev  = threading.Event()
+
+        # Câblage des callbacks
+        can_worker.can_received.connect(self._on_can)
+        lin_worker.lin_received.connect(self._on_lin)
+        motor_worker.motor_received.connect(self._on_motor)
+        if pump_signal is not None:
+            pump_signal.data_received.connect(self._on_motor)
+
+    # ── Callbacks workers ─────────────────────────────────────────────────
+    def _on_can(self, ev):
+        with self._lock:
+            if not self._current:
+                return
+            res = self._current.on_can_frame(ev)
+        if res:
+            self._finish(res)
+
+    def _on_lin(self, ev):
+        with self._lock:
+            if not self._current:
+                return
+            res = self._current.on_lin_frame(ev)
+        if res:
+            self._finish(res)
+
+    def _on_motor(self, data):
+        with self._lock:
+            if not self._current:
+                return
+            res = self._current.on_motor_data(data)
+        if res:
+            self._finish(res)
+
+    # ── Gestion résultat ─────────────────────────────────────────────────
+    def _finish(self, result: TestResult):
+        """Appelé dès qu'un test produit un résultat (depuis n'importe quel thread)."""
+        with self._lock:
+            if self._current is None:
+                return        # déjà traité (double callback rare)
+            self._current = None
+        self._results.append(result)
+        icon = {"PASS": "[PASS]", "FAIL": "[FAIL]", "TIMEOUT": "[TIMEOUT]"}.get(result.status, "?")
+        msg  = f"  {icon} [{result.test_id}] {result.name:<50} → {result.status}"
+        if result.details:
+            msg += f"  ({result.details})"
+        self._log(msg)
+        self._done_ev.set()
+
+    # ── Log horodaté ─────────────────────────────────────────────────────
+    def _log(self, msg: str):
+        ts   = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        line = f"[{ts}] {msg}"
+        print(line.encode("utf-8", errors="replace").decode("utf-8"), flush=True)
+        self._log_lines.append(line)
+
+    # ── Délai inter-test (reproduit test_runner.py exactement) ───────────
+    @staticmethod
+    def _inter_delay_ms(tid: str, last_tid: str) -> int:
+        NEEDS_DELAY = {
+            "T30","T31","T32","T33","T34","T35","T36","T37","T38","T39",
+            "T43","T45","TC_LIN_002","TC_LIN_004","TC_LIN_005",
+            "TC_CAN_003","TC_GEN_001","TC_SPD_001","TC_AUTO_004",
+            "TC_FSR_008","TC_FSR_010","TC_COM_001","TC_B2103",
+        }
+        if tid not in NEEDS_DELAY:
+            return 0
+        if last_tid == "T22":
+            return 8000
+        if last_tid == "TC_FSR_010":
+            return 3000
+        if last_tid in ("T40", "T21", "T36", "T37", "T43", "T45"):
+            return 2500
+        return 300
+
+    # ── Reset état BCM avant chaque test ─────────────────────────────────
+    def _reset_bcm_state(self):
+        """Remet le BCM dans un état stable (ignition ON, pas de timeout actif)."""
+        rc = self._rte_client
+        mw = self._motor_w
+        if rc:
+            rc.set_cmd("wc_timeout_active",  False)
+            rc.set_cmd("lin_timeout_active", False)
+            rc.set_cmd("crs_wiper_op",       0)
+            rc.set_cmd("ignition_status",    1)
+            rc.set_cmd("wc_available",       False)
+        if mw:
+            mw.queue_send({"ignition_status": "ON",
+                           "reverse_gear": 0,
+                           "vehicle_speed": 0})
+
+    # ── Boucle principale ─────────────────────────────────────────────────
+    def run(self, test_classes: list, global_timeout_s: float = 600.0) -> list:
+        """
+        Exécute les tests séquentiellement.
+        Retourne la liste complète des TestResult.
+        """
+        t_global = time.monotonic()
+        total    = len(test_classes)
+
+        self._log(f"[START] Démarrage campagne  —  {total} test(s) à exécuter")
+        if self._rte_client:
+            self._log(f"   Redis  : {self._rte_client.host}:{self._rte_client.port}")
+        self._log(f"   Timeout global : {global_timeout_s}s")
+        self._log("-" * 70)
+
+        last_tid = ""
+
+        for idx, cls in enumerate(test_classes):
+
+            # ── Timeout global ────────────────────────────────────────────
+            if time.monotonic() - t_global > global_timeout_s:
+                self._log(f"[WARN]  Timeout global ({global_timeout_s}s) — arrêt après {idx} tests")
+                return self._results
+
+            test = cls()
+            self._log(f"\n>> [{idx+1}/{total}]  [{test.ID}]  {test.NAME}")
+
+            # ── Injecter rte_client pour BaseBCMTest ──────────────────────
+            if isinstance(test, BaseBCMTest):
+                BaseBCMTest.rte_client = self._rte_client
+
+            # ── Délai inter-test ──────────────────────────────────────────
+            delay_ms = self._inter_delay_ms(test.ID, last_tid)
+            if delay_ms > 0:
+                self._log(f"   [WAIT] Pause inter-test {delay_ms} ms…")
+                time.sleep(delay_ms / 1000.0)
+
+            # ── Reset état BCM ────────────────────────────────────────────
+            self._reset_bcm_state()
+            time.sleep(0.3)   # laisser Redis + BCM traiter les commandes
+
+            # ── Démarrer le test ──────────────────────────────────────────
+            self._done_ev.clear()
+            with self._lock:
+                self._current = test
+            test.start()
+
+            # ── Boucle supervision (tick 200ms) ───────────────────────────
+            while True:
+                finished = self._done_ev.wait(timeout=self.TICK_INTERVAL_S)
+                if finished:
+                    break
+
+                # Vérifications timeout et _check_rte
+                with self._lock:
+                    cur = self._current
+                if cur is None:
+                    break   # _finish() déjà appelé
+
+                res = cur.check_timeout()
+                if res is None and isinstance(cur, BaseBCMTest):
+                    res = cur._check_rte()
+
+                if res is not None:
+                    with self._lock:
+                        self._current = None
+                    self._results.append(res)
+                    icon = {"PASS": "[PASS]", "FAIL": "[FAIL]", "TIMEOUT": "[TIMEOUT]"}.get(res.status, "?")
+                    msg  = (f"  {icon} [{res.test_id}] {res.name:<50}"
+                            f" → {res.status}")
+                    if res.details:
+                        msg += f"  ({res.details})"
+                    self._log(msg)
+                    break
+
+            last_tid = test.ID
+
+            # ── Fail-fast ─────────────────────────────────────────────────
+            if self._fail_fast and self._results:
+                last = self._results[-1]
+                if last.status != "PASS":
+                    self._log(f"[STOP] --fail-fast : arrêt après [{test.ID}]  "
+                              f"status={last.status}")
+                    break
+
+        # ── Résumé ────────────────────────────────────────────────────────
+        elapsed = time.monotonic() - t_global
+        n_pass  = sum(1 for r in self._results if r.status == "PASS")
+        n_fail  = sum(1 for r in self._results if r.status == "FAIL")
+        n_to    = sum(1 for r in self._results if r.status == "TIMEOUT")
+        self._log("")
+        self._log("=" * 70)
+        self._log(f"Campagne terminée en {elapsed:.1f}s")
+        self._log(f"PASS={n_pass}   FAIL={n_fail}   TIMEOUT={n_to}   "
+                  f"TOTAL={len(self._results)}")
+        self._log("=" * 70)
+
+        return self._results
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  EXPORTS RAPPORTS
+# ═════════════════════════════════════════════════════════════════════════════
+
+def export_json(results: list, t_start: datetime.datetime,
+                t_end: datetime.datetime, bench_id: str, path: str):
+    """Écrit un fichier JSON structuré — compatible importateurs XRAY/Jira."""
+    data = {
+        "bench_id":   bench_id,
+        "t_start":    t_start.isoformat(),
+        "t_end":      t_end.isoformat(),
+        "duration_s": (t_end - t_start).total_seconds(),
+        "summary": {
+            "total":   len(results),
+            "pass":    sum(1 for r in results if r.status == "PASS"),
+            "fail":    sum(1 for r in results if r.status == "FAIL"),
+            "timeout": sum(1 for r in results if r.status == "TIMEOUT"),
+        },
+        "tests": [
+            {
+                "id":       r.test_id,
+                "name":     r.name,
+                "category": r.category,
+                "ref":      r.ref,
+                "status":   r.status,
+                "limit":    r.limit,
+                "measured": r.measured,
+                "details":  r.details,
+            }
+            for r in results
+        ],
+    }
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def export_junit(results: list, t_start: datetime.datetime,
+                 t_end: datetime.datetime, bench_id: str, path: str):
+    """
+    Écrit un rapport JUnit XML compatible Jenkins (plugin JUnit).
+    Chaque TestResult → <testcase> ; FAIL → <failure> ; TIMEOUT → <error>.
+    """
+    import xml.etree.ElementTree as ET
+
+    n_fail = sum(1 for r in results if r.status == "FAIL")
+    n_to   = sum(1 for r in results if r.status == "TIMEOUT")
+    dur    = (t_end - t_start).total_seconds()
+
+    suite = ET.Element("testsuite", {
+        "name":      bench_id,
+        "tests":     str(len(results)),
+        "failures":  str(n_fail),
+        "errors":    str(n_to),
+        "skipped":   "0",
+        "time":      f"{dur:.3f}",
+        "timestamp": t_start.isoformat(),
+    })
+
+    for r in results:
+        tc = ET.SubElement(suite, "testcase", {
+            "classname": r.category or "WipeWash",
+            "name":      f"[{r.test_id}] {r.name}",
+            "time":      "0",
+        })
+        if r.status == "FAIL":
+            fail = ET.SubElement(tc, "failure", {
+                "message": r.details or "FAIL",
+                "type":    "AssertionError",
+            })
+            fail.text = (
+                f"Test   : {r.test_id} — {r.name}\n"
+                f"Réf    : {r.ref}\n"
+                f"Limite : {r.limit}\n"
+                f"Mesuré : {r.measured}\n"
+                f"Détail : {r.details}"
+            )
+        elif r.status == "TIMEOUT":
+            err = ET.SubElement(tc, "error", {
+                "message": r.details or "TIMEOUT",
+                "type":    "TimeoutError",
+            })
+            err.text = f"Test {r.test_id} n'a pas répondu dans le délai imparti."
+
+    ET.indent(suite, space="  ")
+    tree = ET.ElementTree(suite)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        f.write(ET.tostring(suite, encoding="unicode"))
+
+
+def export_all(results, t_start, t_end, args, ts):
+    """Génère les trois formats de rapport."""
+    bench_id = args.bench_id
+
+    # ── HTML ──────────────────────────────────────────────────────────────
+    html_path = args.output or f"report_{ts}.html"
+    try:
+        gen = ReportGenerator(bench_id=bench_id, operator=args.operator)
+        gen.generate(results, html_path, t_start=t_start, t_end=t_end)
+        print(f"[RAPPORT] HTML  → {os.path.abspath(html_path)}", flush=True)
+    except Exception as exc:
+        print(f"[WARN]  Rapport HTML échoué : {exc}", file=sys.stderr)
+
+    # ── JSON ──────────────────────────────────────────────────────────────
+    json_path = args.json or f"results_{ts}.json"
+    try:
+        export_json(results, t_start, t_end, bench_id, json_path)
+        print(f"[RAPPORT] JSON  → {os.path.abspath(json_path)}", flush=True)
+    except Exception as exc:
+        print(f"[WARN]  Rapport JSON échoué : {exc}", file=sys.stderr)
+
+    # ── JUnit XML ─────────────────────────────────────────────────────────
+    junit_path = args.junit or f"junit_{ts}.xml"
+    try:
+        export_junit(results, t_start, t_end, bench_id, junit_path)
+        print(f"[RAPPORT] JUnit → {os.path.abspath(junit_path)}", flush=True)
+    except Exception as exc:
+        print(f"[WARN]  Rapport JUnit échoué : {exc}", file=sys.stderr)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  POINT D'ENTRÉE CLI
+# ═════════════════════════════════════════════════════════════════════════════
+
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="WipeWash BCM — Runner de tests headless (Windows/Jenkins)"
+    )
+    p.add_argument("--bcm-host",   default="",
+                   help="IP RPiBCM (défaut : auto-découverte)")
+    p.add_argument("--sim-host",   default="",
+                   help="IP RPiSIM (défaut : auto-découverte)")
+    p.add_argument("--redis-host", default="",
+                   help="IP Redis  (défaut : même que bcm-host)")
+    p.add_argument("--redis-port", type=int, default=6379,
+                   help="Port Redis (défaut : 6379)")
+    p.add_argument("--tests",      default="",
+                   help="IDs séparés par virgule. Ex: T30,T31,T32")
+    p.add_argument("--output",     default="",
+                   help="Chemin rapport HTML")
+    p.add_argument("--json",       default="",
+                   help="Chemin rapport JSON")
+    p.add_argument("--junit",      default="",
+                   help="Chemin rapport JUnit XML")
+    p.add_argument("--timeout",    type=float, default=600.0,
+                   help="Timeout global en secondes (défaut : 600)")
+    p.add_argument("--bench-id",   default="WipeWash-Bench-CI",
+                   help="Identifiant banc pour les rapports")
+    p.add_argument("--operator",   default="jenkins",
+                   help="Nom opérateur / job Jenkins")
+    p.add_argument("--fail-fast",  action="store_true",
+                   help="Arrêter dès le premier FAIL")
+    return p.parse_args()
+
+
+def main():
+    args = parse_args()
+    ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    print("=" * 70, flush=True)
+    print("  WipeWash BCM — Test Runner Headless (Windows / Jenkins CI)", flush=True)
+    print(f"  Démarrage : {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
+    print("=" * 70, flush=True)
+
+    # ── 1. Découverte réseau ──────────────────────────────────────────────
+    bcm_host = args.bcm_host.strip()
+    sim_host = args.sim_host.strip()
+
+    if not bcm_host or not sim_host:
+        print("[INFRA] Auto-découverte des RPi sur 10.20.0.0/28…", flush=True)
+        hosts = auto_discover_all(port=5000, timeout=4.0)
+        print(f"[INFRA] Hôtes détectés (port 5000) : {hosts}", flush=True)
+        if not bcm_host:
+            bcm_host = hosts[0] if hosts else ""
+        if not sim_host:
+            sim_host = hosts[1] if len(hosts) > 1 else (hosts[0] if hosts else "")
+
+    if not bcm_host:
+        print("[ERREUR] RPiBCM introuvable. Vérifiez le réseau ou utilisez --bcm-host.",
+              file=sys.stderr)
+        sys.exit(2)
+
+    redis_host = args.redis_host.strip() or bcm_host
+    print(f"[INFRA] BCM={bcm_host}  SIM={sim_host}  "
+          f"Redis={redis_host}:{args.redis_port}", flush=True)
+
+    # ── 2. Connexion Redis ────────────────────────────────────────────────
+    rte_client = RTEClient(redis_host, args.redis_port)
+    if not rte_client.is_connected():
+        print(f"[ERREUR] Redis inaccessible sur {redis_host}:{args.redis_port}",
+              file=sys.stderr)
+        sys.exit(2)
+    print(f"[INFRA] Redis OK", flush=True)
+
+    # ── 3. SimClient ──────────────────────────────────────────────────────
+    sim_client = SimClient()
+    sim_client.connect(sim_host)
+
+    # ── 4. Workers TCP ────────────────────────────────────────────────────
+    # CAN (port 5557) et LIN (port 5555) sont servis par le RPiSIM (crslin.py + bcm_tcp_can.py)
+    # Motor RX (port 5000) et Pump (port 5556) sont servis par le RPiBCM
+    can_worker   = HeadlessCANWorker(sim_host)
+    lin_worker   = HeadlessLINWorker(sim_host)
+    motor_worker = HeadlessMotorWorker(bcm_host, sim_host)
+    pump_signal  = HeadlessPumpSignal(bcm_host)
+
+    can_worker.start()
+    lin_worker.start()
+    motor_worker.start()
+    pump_signal.start()
+
+    print("[INFRA] Workers TCP démarrés — attente stabilisation 2s…", flush=True)
+    time.sleep(HeadlessTestRunner.SETTLE_AFTER_INIT)
+
+    # ── 5. Sélection des tests ────────────────────────────────────────────
+    if args.tests.strip():
+        ids      = [t.strip() for t in args.tests.split(",") if t.strip()]
+        selected = [cls for cls in ALL_TESTS if cls.ID in ids]
+        if not selected:
+            print(f"[ERREUR] Aucun test trouvé pour IDs : {ids}", file=sys.stderr)
+            sys.exit(2)
+        print(f"[INFO] {len(selected)} test(s) sélectionné(s) : {ids}", flush=True)
+    else:
+        selected = list(ALL_TESTS)
+        print(f"[INFO] {len(selected)} test(s) — campagne complète", flush=True)
+
+    # ── 6. Gestionnaire SIGINT/SIGTERM (rapport partiel si interruption) ──
+    t_start = datetime.datetime.now()
+
+    def _on_interrupt(sig, frame):
+        print("\n[CI] Interruption — génération rapport partiel…", flush=True)
+        export_all(runner._results, t_start, datetime.datetime.now(), args, ts)
+        sys.exit(130)
+
+    signal.signal(signal.SIGINT,  _on_interrupt)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _on_interrupt)
+
+    # ── 7. Exécution ──────────────────────────────────────────────────────
+    runner = HeadlessTestRunner(
+        can_worker, lin_worker, motor_worker,
+        pump_signal  = pump_signal,
+        rte_client   = rte_client,
+        sim_client   = sim_client,
+        fail_fast    = args.fail_fast,
+    )
+
+    results = runner.run(selected, global_timeout_s=args.timeout)
+    t_end   = datetime.datetime.now()
+
+    # ── 8. Export rapports ────────────────────────────────────────────────
+    export_all(results, t_start, t_end, args, ts)
+
+    # ── 9. Code de sortie ─────────────────────────────────────────────────
+    n_fail = sum(1 for r in results if r.status == "FAIL")
+    n_to   = sum(1 for r in results if r.status == "TIMEOUT")
+
+    if n_fail > 0 or n_to > 0:
+        print(f"\n[CI] [FAIL]  FAIL={n_fail}  TIMEOUT={n_to}  →  exit 1", flush=True)
+        sys.exit(1)
+    else:
+        print(f"\n[CI] [PASS]  Tous les tests PASS  →  exit 0", flush=True)
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

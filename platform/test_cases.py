@@ -1658,6 +1658,28 @@ class TC_CAN_003_AliveCounter_0x200(BaseBCMTest):
                 "CAN 0x202 NACK reçu : WC a détecté AliveCounter figé")
         return None
 
+    def on_motor_data(self, data: dict):
+        """
+        FIX TC_CAN_003 : réception du broadcast TCP wc_alive_fault depuis bcmcan.
+        Le simulateur émet {"type":"wc_alive_fault","wc_alive_fault":True,...}
+        via _broadcast_to_motor_clients(). Ce message n'a pas de clé "state"
+        → il était silencieusement droppé par le filtre MotorVehicleWorker.
+        Après fix workers.py, ce canal est le chemin le plus rapide et fiable
+        (direct TCP, sans passer par Redis pub/sub → BCM → T-REDIS → Redis SET).
+        """
+        if self._detected or not self._stimulus_sent:
+            return None
+        if data.get("type") == "wc_alive_fault" and data.get("wc_alive_fault"):
+            self._detected = True
+            delta = time.time() * 1000.0 - self._t0_ms
+            alive_val = data.get("alive_value", "?")
+            repeat    = data.get("repeat_count", "?")
+            return (self._pass if delta <= self.LIMIT_MS else self._fail)(
+                f"{delta:.0f} ms",
+                f"TCP broadcast wc_alive_fault : AliveCounter=0x{alive_val:02X} "
+                f"figé x{repeat} (bcmcan → Platform direct)")
+        return None
+
 
 # ══════════════════════════════════════════════════════════════════════════
 #  TESTS SÉCURITÉ / DIAGNOSTIC
@@ -1935,7 +1957,7 @@ class TC_FSR_010_CRC_Invalid_0x201(BaseBCMTest):
     REF            = "TSR_002 · Message Catalogue CAN 0x201 Protection"
     LIMIT_STR      = "≤ 3000 ms (BCM détecte CRC invalide)"
     LIMIT_MS       = 3000
-    TEST_TIMEOUT_S = 15  # 2500ms pre-delay + 600ms init + 3000ms detection + marge
+    TEST_TIMEOUT_S = 17  # 400ms+400ms+600ms pre-delay + 3000ms detection + marge
 
     def _on_start(self):
         super()._on_start()

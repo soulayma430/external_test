@@ -119,9 +119,16 @@ class MotorVehicleWorker(QObject):
                             if line:
                                 try:
                                     parsed = json.loads(line)
-                                    # N'émettre que les messages moteur RPiBCM
-                                    # (contiennent "state" comme string)
-                                    if isinstance(parsed.get("state"), str):
+                                    # Émettre les messages moteur RPiBCM (contiennent "state")
+                                    # ET les messages de faute test (wc_alive_fault, wc_crc_fault, info)
+                                    # FIX TC_CAN_003/TC_FSR_010 : le broadcast de faute n'a pas de "state"
+                                    # → il était silencieusement droppé, empêchant la détection.
+                                    _TEST_TYPES = ("wc_alive_fault", "wc_crc_fault", "info",
+                                                   "alive_error", "can_fault")
+                                    if (isinstance(parsed.get("state"), str) or
+                                            parsed.get("type") in _TEST_TYPES or
+                                            parsed.get("wc_alive_fault") or
+                                            parsed.get("wc_crc_fault")):
                                         self.motor_received.emit(parsed)
                                 except Exception:
                                     pass

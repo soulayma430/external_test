@@ -1,0 +1,23 @@
+# requirements-ci.txt  —  Dépendances Python pour l'environnement CI Jenkins (Windows)
+# Installation : pip install -r ci\requirements-ci.txt
+#
+# NOTE IMPORTANTE :
+#   PySide6 n'est PAS requis en mode headless.
+#   Le runner remplace les Workers Qt par des stubs TCP Python purs.
+#   Cela permet de faire tourner les tests sur n'importe quelle machine
+#   Windows sans installation Qt ni écran.
+
+# ── Communication Redis (RTE BCM) ────────────────────────────────────────────
+redis>=4.6.0
+
+# ── Rendu rapport HTML (Jinja2 utilisé par report_generator.py) ──────────────
+jinja2>=3.1.0
+
+# ── Graphiques dans le rapport HTML ─────────────────────────────────────────
+matplotlib>=3.7.0
+
+# ── Export PDF rapport (optionnel — décommenter si --pdf est utilisé) ────────
+# weasyprint>=60.0
+
+# ── (Optionnel) Envoi rapport par email depuis le runner ─────────────────────
+# secure-smtplib>=0.1.1

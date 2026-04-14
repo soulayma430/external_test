@@ -293,6 +293,9 @@ class TestRunner(QObject):
                 # réponde avec au moins 1 trame 0x201 valide avant le setup.
                 # Sans ça, t_last_wiper_status périmé → B2005 immédiat → OFF.
                 self._rte_client.set_cmd("wc_available",   False)
+                # FIX TC_CAN_003 : s'assurer que alive_tx_frozen est remis à False
+                # avant le test (résidu éventuel d'un test précédent interrompu)
+                self._rte_client.set_cmd("alive_tx_frozen", False)
                 def _can003_init():
                     if not self._rte_client:
                         return
@@ -302,6 +305,13 @@ class TestRunner(QObject):
                     self._rte_client.set_cmd("crs_wiper_op",   2)
                     def _can003_freeze():
                         if hasattr(test, "reset_t0"): test.reset_t0()
+                        # FIX TC_CAN_003 : geler l'AliveCounter_TX côté BCM EN PREMIER
+                        # (bcm_protocol._build_wiper_command arrête d'incrémenter wc_can_alive_tx)
+                        # PUIS envoyer freeze_can_alive au simulateur (activation de la détection WC).
+                        # Sans ce fix, le BCM continuait d'incrémenter normalement → WC simulé
+                        # ne voyait jamais deux trames consécutives avec le même counter → timeout.
+                        if self._rte_client:
+                            self._rte_client.set_cmd("alive_tx_frozen", True)
                         self._motor_w.queue_send({"test_cmd": "freeze_can_alive"})
                         if hasattr(test, "_stimulus_sent"):
                             test._stimulus_sent = True
@@ -396,18 +406,29 @@ class TestRunner(QObject):
 
             def _fsr010_activate():
                 if self._rte_client:
+                    # FIX : re-asserter wc_available=False à mi-chemin pour écraser
+                    # tout résidu de commande Redis du cleanup TC_CAN_003 qui pourrait
+                    # arriver en retard et écraser notre wc_available=True à venir.
+                    self._rte_client.set_cmd("wc_available",  False)
                     self._rte_client.set_cmd("wc_crc_fault",  False)
-                    self._rte_client.set_cmd("wc_available",  True)
-                    self._rte_client.set_cmd("crs_wiper_op",  2)
-                def _fsr010_corrupt():
-                    if hasattr(test, "reset_t0"): test.reset_t0()
-                    self._motor_w.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 20})
-                    # Autoriser _check_rte() à observer seulement maintenant
-                    if hasattr(test, "_stimulus_sent"):
-                        test._stimulus_sent = True
-                QTimer.singleShot(600, _fsr010_corrupt)
+                def _fsr010_set_available():
+                    if self._rte_client:
+                        self._rte_client.set_cmd("wc_available",  True)
+                        self._rte_client.set_cmd("crs_wiper_op",  2)
+                    def _fsr010_corrupt():
+                        if hasattr(test, "reset_t0"): test.reset_t0()
+                        self._motor_w.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 20})
+                        # Autoriser _check_rte() à observer seulement maintenant
+                        if hasattr(test, "_stimulus_sent"):
+                            test._stimulus_sent = True
+                    QTimer.singleShot(600, _fsr010_corrupt)
+                # FIX : délai 400ms entre le re-assert False et le set True
+                # pour laisser tous les Redis en transit du cleanup précédent arriver
+                QTimer.singleShot(400, _fsr010_set_available)
 
-            QTimer.singleShot(600, _fsr010_activate)
+            # FIX : délai porté à 400ms (était 600ms) — la 2e étape ajoute 400ms supplémentaires
+            # Total jusqu'au corrupt : 400ms + 400ms + 600ms = 1400ms (était 600ms+600ms=1200ms)
+            QTimer.singleShot(400, _fsr010_activate)
 
         elif tid == "TC_COM_001":
             self.log_msg.emit("  → TC_COM_001 : mesure physique baudrate BREAK LIN")
@@ -1046,6 +1067,9 @@ class TestRunner(QObject):
                 self._rte_client.set_cmd("wc_available",   False)
                 self._rte_client.set_cmd("crs_wiper_op",   0)
                 self._rte_client.set_cmd("lin_op_locked",  False)
+                # FIX TC_CAN_003 : remettre alive_tx_frozen=False pour que le BCM
+                # reprenne l'incrémentation normale de l'AliveCounter_TX dans 0x200
+                self._rte_client.set_cmd("alive_tx_frozen", False)
                 QTimer.singleShot(300, lambda: self._rte_client and
                     self._rte_client.set_cmd("wc_alive_fault", False))
 
@@ -1089,10 +1113,13 @@ class TestRunner(QObject):
                     return   # test suivant déjà démarré, ne pas interférer
                 self._motor_w.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 0})
                 if self._rte_client:
-                    self._rte_client.set_cmd("wc_available", False)
-                    self._rte_client.set_cmd("wc_crc_fault", False)
-                    self._rte_client.set_cmd("crs_wiper_op", 0)
-                    self._rte_client.set_cmd("lin_op_locked", False)
+                    self._rte_client.set_cmd("wc_available",    False)
+                    self._rte_client.set_cmd("wc_crc_fault",    False)
+                    self._rte_client.set_cmd("crs_wiper_op",    0)
+                    self._rte_client.set_cmd("lin_op_locked",   False)
+                    # Sécurité : remettre alive_tx_frozen=False au cas où TC_CAN_003
+                    # aurait été interrompu avant son propre cleanup
+                    self._rte_client.set_cmd("alive_tx_frozen", False)
                 self._lin_w.queue_send({"cmd": "OFF"})
             QTimer.singleShot(3500, _fsr010_cleanup)  # 3500ms : garantit arrêt complet trames CRC corrompues avant T50
 
