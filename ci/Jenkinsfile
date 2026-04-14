@@ -7,7 +7,7 @@ pipeline {
         string(name: 'BCM_HOST',       defaultValue: '10.20.0.25', description: 'IP RPiBCM')
         string(name: 'SIM_HOST',       defaultValue: '10.20.0.7',  description: 'IP RPiSIM')
         string(name: 'GLOBAL_TIMEOUT', defaultValue: '600',        description: 'Timeout global en secondes')
-        booleanParam(name: 'FAIL_FAST', defaultValue: false,       description: 'Arreter au premier FAIL')
+        booleanParam(name: 'FAIL_FAST', defaultValue: false,       description: 'Arrêter au premier FAIL')
     }
 
     options {
@@ -17,7 +17,7 @@ pipeline {
 
     environment {
         PYTHON    = 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\python.exe'
-        DEPOT_DIR = 'C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\WipeWash-BCM-Tests'
+        DEPOT_DIR = 'C:\\Users\\PC\\Desktop\\depot'
     }
 
     stages {
@@ -55,8 +55,9 @@ pipeline {
                     if (exitCode == 2) error("Erreur infrastructure — exit 2")
                     if (exitCode == 3) error("Timeout global — exit 3")
 
+                    // Copier les rapports dans le workspace Jenkins
                     bat 'if not exist reports mkdir reports'
-                    bat "copy \"${DEPOT_DIR}\\reports\\*\" \"${DEPOT_DIR}\\reports\\\" /Y || echo no copy needed"
+                    bat "copy \"${DEPOT_DIR}\\reports\\*\" reports\\"
                 }
             }
         }
