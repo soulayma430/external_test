@@ -5,7 +5,7 @@
 ::  Appelé par le Jenkinsfile au stage "Setup Python"
 :: ============================================================
 
-setlocal enabledelayedexpansion
+setlocal disabledelayedexpansion
 
 SET WORKSPACE=%~1
 IF "%WORKSPACE%"=="" SET WORKSPACE=%CD%
