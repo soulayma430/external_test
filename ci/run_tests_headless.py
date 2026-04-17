@@ -1004,6 +1004,18 @@ class HeadlessTestRunner:
             self._reset_bcm_state()
             time.sleep(1.0)   # laisser Redis + BCM traiter les commandes (1s minimum)
 
+            # ── Attendre que le BCM confirme l'état OFF avant de démarrer ─
+            # Evite que _check_rte lise déjà la cible dès la première lecture
+            # (ce qui empêche _had_different de devenir True → TIMEOUT garanti)
+            if self._rte_client and isinstance(test, BaseBCMTest):
+                deadline = time.monotonic() + 3.0
+                while time.monotonic() < deadline:
+                    state = self._rte_client.get("state")
+                    speed = self._rte_client.get_int("front_motor_speed")
+                    if state in (None, "OFF", "PARK") and speed == 0:
+                        break
+                    time.sleep(0.1)
+
             # ── Démarrer le test ──────────────────────────────────────────
             self._done_ev.clear()
             with self._lock:
