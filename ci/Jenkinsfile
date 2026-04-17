@@ -113,6 +113,7 @@ pipeline {
 
                 // Déléguer au script .bat dédié (gestion pip, requirements, logs)
                 bat """
+                    SET PATH=C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311;C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Scripts;%PATH%
                     call "${env.DEPOT_DIR}\\ci\\scripts\\setup_venv.bat" "${env.DEPOT_DIR}"
                 """
             }
