@@ -751,33 +751,28 @@ class HeadlessTestRunner:
 
         elif tid == "T34":
             self._log("  → T34 : Redis SET AUTO + rain=10")
-            # Headless : même logique que la GUI.
-            # rest_contact_sim_active=True est REQUIS — le BCM remet
-            # rain_intensity=0 tout seul après le premier cycle de lame
-            # si rest_contact_sim_active=False.
-            # Séquence :
-            #   1. LIN AUTO + rain=10 + rest_contact_sim_active=True
-            #   2. Attente que _check_rte détecte AUTO+Speed1 (tick 200ms)
-            #   3. rest_contact_sim pulse True→False pour simuler cycle lame
+            # Headless (sans bcmcan.py sur port 5002) :
+            # Le BCM lit rain_intensity depuis CAN 0x301 normalement.
+            # En CI sans bcmcan, on écrit directement rte:rain_intensity
+            # via redis.set() (rc._r est l'instance redis interne).
             if rc:
                 rc.set_cmd("rain_sensor_installed", True)
-                rc.set_cmd("rain_intensity", 10)
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
+                if rc._r:
+                    rc._r.set("rte:rain_intensity", "10")
                 lw.queue_send({"cmd": "AUTO"})
                 time.sleep(0.1)
                 if hasattr(test, "reset_t0"): test.reset_t0()
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 _gen = self._rc_gen
                 def _t34_pulse():
-                    # Pulse rest_contact_sim True→False toutes les 1.5s
-                    # pendant la durée du test (8s max) pour maintenir
-                    # rain_intensity actif dans le BCM
                     for _ in range(5):
                         time.sleep(1.5)
                         if getattr(self, "_rc_gen", 0) != _gen: return
                         if self._current is None: return
                         rc.set_cmd("rest_contact_sim", True)
+                        if rc._r: rc._r.set("rte:rain_intensity", "10")
                         time.sleep(0.1)
                         if getattr(self, "_rc_gen", 0) != _gen: return
                         rc.set_cmd("rest_contact_sim", False)
