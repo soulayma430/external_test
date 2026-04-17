@@ -180,25 +180,48 @@ class HeadlessCANWorker:
 
 
 class HeadlessLINWorker:
-    """Remplace LINWorker (PySide6) — écoute les frames LIN depuis RPiSIM:5555."""
+    """Remplace LINWorker (PySide6) — bidirectionnel RPiSIM:5555."""
     PORT = 5555
 
     def __init__(self, host: str):
-        # host = RPiSIM (crslin.py sert le port 5555 sur le simulateur)
         self.lin_received   = _FakeSignal()
         self.status_changed = _FakeSignal()
-        self._reader = _TCPReader(host, self.PORT, self.lin_received, "LIN-RX")
+        self._host     = host
+        self._reader   = _TCPReader(host, self.PORT, self.lin_received, "LIN-RX")
+        self._tx_queue: list = []
+        self._tx_lock  = threading.Lock()
+        self._stop_ev  = threading.Event()
 
     def start(self):
         self._reader.start()
+        threading.Thread(target=self._tx_loop, name="LIN-TX", daemon=True).start()
+
+    def _tx_loop(self):
+        import socket
+        while not self._stop_ev.is_set():
+            with self._tx_lock:
+                cmds = list(self._tx_queue)
+                self._tx_queue.clear()
+            for cmd in cmds:
+                try:
+                    with socket.create_connection(
+                            (self._host, self.PORT), timeout=2.0) as s:
+                        s.sendall((json.dumps(cmd) + "\n").encode())
+                except Exception:
+                    pass
+            self._stop_ev.wait(timeout=0.05)
 
     def queue_send(self, obj: dict):
-        pass
+        with self._tx_lock:
+            self._tx_queue.append(obj)
 
     def set_wiper_op(self, op: int):
-        pass
+        self.queue_send({"cmd": ["OFF","TOUCH","SPEED1","SPEED2","AUTO",
+                                 "FRONT_WASH","REAR_WASH","REAR_WIPE"][op]
+                                if 0 <= op <= 7 else "OFF"})
 
     def stop(self):
+        self._stop_ev.set()
         self._reader.stop()
 
 
@@ -361,10 +384,11 @@ class HeadlessTestRunner:
     @staticmethod
     def _inter_delay_ms(tid: str, last_tid: str) -> int:
         NEEDS_DELAY = {
-            "T30","T31","T32","T33","T34","T35","T36","T37","T38","T39",
+            "T30","T31","T32","T33","T34","T35","T36","T37","T38","T38b","T38c","T39",
             "T43","T45","TC_LIN_002","TC_LIN_004","TC_LIN_005",
             "TC_CAN_003","TC_GEN_001","TC_SPD_001","TC_AUTO_004",
             "TC_FSR_008","TC_FSR_010","TC_COM_001","TC_B2103",
+            "LIN_INVALID_CMD_001","T_RAIN_AUTO_SENSOR_ERROR","T_B2009_CAN",
         }
         if tid not in NEEDS_DELAY:
             return 0
@@ -375,6 +399,546 @@ class HeadlessTestRunner:
         if last_tid in ("T40", "T21", "T36", "T37", "T43", "T45"):
             return 2500
         return 300
+
+    # ── Stimuli avant test (port headless de test_runner._pre_test) ──────
+    def _pre_test(self, test: BaseTest):
+        """Port headless de test_runner._pre_test() — QTimer.singleShot → time.sleep + appel direct."""
+        tid = test.ID
+        rc  = self._rte_client
+        lw  = self._lin_w
+        mw  = self._motor_w
+
+        if tid == "T10":
+            self._log("  → stop_lin_tx")
+            lw.queue_send({"test_cmd": "stop_lin_tx"})
+
+        elif tid == "T11":
+            self._log("  → stop_can_tx")
+            if rc: rc.set_cmd("wc_available", True)
+            time.sleep(0.3)
+            mw.queue_send({"test_cmd": "stop_can_tx"})
+
+        elif tid == "T40":
+            self._log("  → T40 : TOUCH — 1 cycle puis retour OFF (no repeat)")
+            if rc:
+                rc.set_cmd("rest_contact_sim_active", False)
+                rc.set_cmd("rest_contact_sim",        False)
+                rc.set_cmd("crs_wiper_op", 0)
+            lw.queue_send({"cmd": "TOUCH"})
+            time.sleep(0.2)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            if rc:
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", True)
+                rc.set_cmd("crs_wiper_op", 1)
+            time.sleep(1.5)
+            if rc: rc.set_cmd("rest_contact_sim", False)
+
+        elif tid == "T43":
+            self._log("  → T43 : SPEED1 + reverse_gear=True (rear intermittent)")
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 1, "vehicle_speed": 0})
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc:
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", True)
+                rc.set_cmd("crs_wiper_op", 2)
+                rc.set_cmd("reverse_gear", True)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                def _cycle_t43_loop():
+                    for _ in range(8):
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        if rc:
+                            rc.set_cmd("rest_contact_sim", False)
+                            time.sleep(0.1)
+                            if getattr(self, "_rc_gen", 0) == _gen:
+                                rc.set_cmd("rest_contact_sim", True)
+                        time.sleep(2.4)
+                threading.Thread(target=_cycle_t43_loop, daemon=True).start()
+            time.sleep(0.5)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+
+        elif tid == "T45":
+            self._log("  → T45 : SPEED1 puis ignition=0 (blade return to rest)")
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc:
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", True)
+                rc.set_cmd("crs_wiper_op", 2)
+                time.sleep(0.4)
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                lw.queue_send({"cmd": "OFF"})
+                rc.set_cmd("ignition_status", 0)
+                mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+                time.sleep(1.5)
+                rc.set_cmd("rest_contact_sim", False)
+            else:
+                time.sleep(0.4)
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                lw.queue_send({"cmd": "OFF"})
+                mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+
+        elif tid == "TC_LIN_002":
+            self._log("  → TC_LIN_002 : geler AliveCounter LIN")
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"test_cmd": "freeze_alive_counter"})
+
+        elif tid == "TC_LIN_004":
+            self._log("  → TC_LIN_004 : envoyer stickStatus invalide (0xFF)")
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"test_cmd": "send_invalid_stick_status"})
+
+        elif tid == "TC_LIN_005":
+            self._log("  → TC_LIN_005 : simuler CRS_InternalFault=1 sur LIN 0x17")
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"test_cmd": "crs_internal_fault"})
+
+        elif tid == "TC_CAN_003":
+            self._log("  → TC_CAN_003 : geler AliveCounter CAN 0x200")
+            self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+            _gen = self._rc_gen
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc:
+                rc.set_cmd("wc_available", False)
+                rc.set_cmd("alive_tx_frozen", False)
+                time.sleep(0.5)
+                if getattr(self, "_rc_gen", 0) != _gen: return
+                rc.set_cmd("lin_op_locked",  True)
+                rc.set_cmd("wc_available",   True)
+                rc.set_cmd("wc_alive_fault", False)
+                rc.set_cmd("crs_wiper_op",   2)
+                time.sleep(0.6)
+                if getattr(self, "_rc_gen", 0) != _gen: return
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                rc.set_cmd("alive_tx_frozen", True)
+                mw.queue_send({"test_cmd": "freeze_can_alive"})
+                if hasattr(test, "_stimulus_sent"): test._stimulus_sent = True
+
+        elif tid == "TC_GEN_001":
+            self._log("  → TC_GEN_001 : ignition=0 puis ON + SPEED1")
+            if rc:
+                rc.set_cmd("wc_available", False)
+                rc.set_cmd("ignition_status", 0)
+                rc.set_cmd("crs_wiper_op", 0)
+            mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+            time.sleep(1.0)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc: rc.set_cmd("ignition_status", 1)
+
+        elif tid == "TC_SPD_001":
+            self._log("  → TC_SPD_001 : LIN SPEED1 continu 5s")
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc:
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", True)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                def _spd_cycle():
+                    for _delay in range(1700, 8500, 1700):
+                        time.sleep(1.6)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                        time.sleep(0.1)
+                        if getattr(self, "_rc_gen", 0) == _gen:
+                            rc.set_cmd("rest_contact_sim", True)
+                threading.Thread(target=_spd_cycle, daemon=True).start()
+            time.sleep(0.3)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+
+        elif tid == "TC_AUTO_004":
+            self._log("  → TC_AUTO_004 : AUTO avec rain_sensor_installed=False")
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            if rc:
+                rc.set_cmd("rain_sensor_installed", False)
+                rc.set_cmd("crs_wiper_op", 4)
+            lw.queue_send({"cmd": "AUTO"})
+
+        elif tid == "TC_FSR_008":
+            self._log("  → TC_FSR_008 : LIN SPEED1 puis watchdog trigger")
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc:
+                time.sleep(0.4)
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                rc.set_cmd("watchdog_test_trigger", True)
+            else:
+                if hasattr(test, "reset_t0"): test.reset_t0()
+
+        elif tid == "TC_FSR_010":
+            self._log("  → TC_FSR_010 : CRC corrompu sur 0x201")
+            if rc:
+                rc.set_cmd("wc_timeout_active", False)
+                rc.set_cmd("wc_crc_fault",      False)
+                rc.set_cmd("wc_available",      False)
+                rc.set_cmd("lin_op_locked", True)
+            lw.queue_send({"cmd": "SPEED1"})
+            time.sleep(0.4)
+            if rc: rc.set_cmd("wc_available", False); rc.set_cmd("wc_crc_fault", False)
+            time.sleep(0.4)
+            if rc:
+                rc.set_cmd("wc_available",  True)
+                rc.set_cmd("crs_wiper_op",  2)
+            time.sleep(0.6)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            mw.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 20})
+            if hasattr(test, "_stimulus_sent"): test._stimulus_sent = True
+
+        elif tid == "TC_COM_001":
+            self._log("  → TC_COM_001 : mesure baudrate BREAK LIN")
+            if hasattr(test, "reset_t0"): test.reset_t0()
+
+        elif tid == "TC_LIN_CS":
+            self._log("  → TC_LIN_CS : corruption checksum AVANT SPEED1")
+            if rc:
+                rc.set_cmd("lin_checksum_fault", False)
+                rc.set_cmd("crs_wiper_op",       0)
+                rc.set_cmd("lin_timeout_active", False)
+            time.sleep(0.2)
+            lw.queue_send({"test_cmd": "corrupt_lin_checksum"})
+            if hasattr(test, "_stimulus_sent"): test._stimulus_sent = True
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            time.sleep(0.1)
+            lw.queue_send({"cmd": "SPEED1"})
+
+        elif tid == "T44":
+            self._log("  → T44 : REAR_WIPE op=7 (once) → OFF à 2000ms")
+            if rc:
+                rc.set_cmd("rear_wiper_available", True)
+                rc.set_cmd("wc_available",         False)
+                rc.set_cmd("reverse_gear",         False)
+                rc.set_cmd("ignition_status",      1)
+                rc.set_cmd("crs_wiper_op",         0)
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            time.sleep(0.3)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"cmd": "REAR_WIPE"})
+            threading.Thread(
+                target=lambda: (time.sleep(2.0), lw.queue_send({"cmd": "OFF"})),
+                daemon=True).start()
+
+        elif tid == "T50":
+            self._log("  → T50 : Cas B wc_available=True + SPEED1 via CAN")
+            if rc:
+                rc.set_cmd("wc_available",  True)
+                rc.set_cmd("lin_op_locked", True)
+                rc.set_cmd("crs_wiper_op",  0)
+                rc.set_cmd("ignition_status", 1)
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", False)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                def _t50_cycles():
+                    for cycle in range(6):
+                        time.sleep(0.6 + cycle * 1.5 - (0.6 if cycle > 0 else 0))
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", True)
+                        time.sleep(1.35)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                threading.Thread(target=_t50_cycles, daemon=True).start()
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            time.sleep(0.4)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.send({"test_cmd": "start_blade_cycling", "period_ms": 1500})
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc: rc.set_cmd("crs_wiper_op", 2)
+
+        elif tid == "T51":
+            self._log("  → T51 : rest_contact bloqué EN MOUVEMENT → FSR_006")
+            if rc:
+                rc.set_cmd("wc_available",            False)
+                rc.set_cmd("ignition_status",         1)
+                rc.set_cmd("crs_wiper_op",            0)
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim",        True)
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            time.sleep(0.3)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc: rc.set_cmd("crs_wiper_op", 2)
+
+        elif tid == "TC_B2103":
+            self._log("  → TC_B2103 : reset guard B2103, puis injection blade_sim=50%")
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_b2103()
+            if rc: rc.set_cmd("wc_b2103_active", False)
+            time.sleep(0.2)
+            if self._sim_client and self._sim_client.is_connected():
+                ok = self._sim_client.send_blade_sim(50.0)
+                self._log(f"  → TC_B2103 : blade_sim=50% {'injecté' if ok else 'ECHEC INJECTION'}")
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            if hasattr(test, "_t_inject_ms"): test._t_inject_ms = time.time() * 1000.0
+
+        elif tid == "T22":
+            self._log("  → T22 : pompe FORWARD >5s → overtime FSR_005 (B2008)")
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            if rc:
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", True)
+                rc.set_cmd("crs_wiper_op", 5)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                def _t22_cycles():
+                    for _ in range(6):
+                        time.sleep(1.6)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                        time.sleep(0.1)
+                        if getattr(self, "_rc_gen", 0) == _gen:
+                            rc.set_cmd("rest_contact_sim", True)
+                threading.Thread(target=_t22_cycles, daemon=True).start()
+            lw.queue_send({"cmd": "FRONT_WASH"})
+
+        elif tid == "T21":
+            self._log("  → T21 : FRONT_WASH — 3 cycles lame avant 5s")
+            if rc:
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", True)
+                time.sleep(0.2)
+                rc.set_cmd("crs_wiper_op", 5)
+                lw.queue_send({"cmd": "FRONT_WASH"})
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                def _t21_cycles():
+                    for _ in range(11):
+                        time.sleep(0.8)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                        time.sleep(0.1)
+                        if getattr(self, "_rc_gen", 0) == _gen:
+                            rc.set_cmd("rest_contact_sim", True)
+                threading.Thread(target=_t21_cycles, daemon=True).start()
+            else:
+                lw.queue_send({"cmd": "FRONT_WASH"})
+
+        elif tid == "T30":
+            self._log("  → T30 : LIN SPEED1")
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"cmd": "SPEED1"})
+
+        elif tid == "T31":
+            self._log("  → T31 : LIN SPEED2")
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"cmd": "SPEED2"})
+
+        elif tid == "T32":
+            self._log("  → T32 : LIN SPEED1 puis OFF")
+            lw.queue_send({"cmd": "SPEED1"})
+            time.sleep(0.3)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"cmd": "OFF"})
+
+        elif tid == "T33":
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            if rc:
+                mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+                rc.set_cmd("crs_wiper_op", 0)
+                time.sleep(0.2)
+                rc.set_cmd("crs_wiper_op", 2)
+                time.sleep(0.4)
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                rc.set_cmd("ignition_status", 0)
+                mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+            else:
+                lw.queue_send({"cmd": "SPEED1"})
+                time.sleep(0.4)
+                mw.queue_send({"ignition_status": 0, "reverse_gear": 0, "vehicle_speed": 0})
+
+        elif tid == "T34":
+            self._log("  → T34 : Redis SET AUTO + rain=10")
+            if rc:
+                lw.queue_send({"cmd": "AUTO"})
+                rc.set_cmd("rain_sensor_installed", True)
+                rc.set_cmd("rain_intensity", 10)
+                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", False)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                time.sleep(0.2)
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                def _t34_cycles():
+                    for cycle in range(3):
+                        time.sleep(0.3 + cycle * 1.7 - (0.3 if cycle > 0 else 0))
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", True)
+                        time.sleep(1.55)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                threading.Thread(target=_t34_cycles, daemon=True).start()
+            else:
+                lw.queue_send({"cmd": "AUTO"})
+                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
+
+        elif tid == "T35":
+            self._log("  → T35 : Redis SET AUTO + rain=25")
+            if rc:
+                lw.queue_send({"cmd": "AUTO"})
+                rc.set_cmd("rain_sensor_installed", True)
+                rc.set_cmd("rain_intensity", 25)
+                mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", False)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                time.sleep(0.2)
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                def _t35_cycles():
+                    for cycle in range(3):
+                        time.sleep(0.3 + cycle * 1.7 - (0.3 if cycle > 0 else 0))
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", True)
+                        time.sleep(1.55)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                threading.Thread(target=_t35_cycles, daemon=True).start()
+            else:
+                lw.queue_send({"cmd": "AUTO"})
+                mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
+
+        elif tid == "T36":
+            self._log("  → T36 : FRONT_WASH + cycles rest_contact")
+            if rc: rc.set_cmd("crs_wiper_op", 0)
+            mw.queue_send({"ignition_status": 1, "vehicle_speed": 0})
+            time.sleep(0.4)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            if rc:
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", False)
+                lw.queue_send({"cmd": "FRONT_WASH"})
+                def _t36_cycles():
+                    for cycle in range(3):
+                        time.sleep(0.15)
+                        rc.set_cmd("rest_contact_sim", True)
+                        time.sleep(1.45)
+                        rc.set_cmd("rest_contact_sim", False)
+                threading.Thread(target=_t36_cycles, daemon=True).start()
+
+        elif tid == "T37":
+            self._log("  → T37 : LIN REAR_WASH")
+            lw.queue_send({"cmd": "REAR_WASH"})
+            mw.queue_send({"ignition_status": 1, "vehicle_speed": 0})
+            time.sleep(0.2)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+
+        elif tid == "T38":
+            self._log("  → T38 : LIN SPEED1 + injection surcourant")
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc:
+                time.sleep(0.2)
+                rc.set_cmd("dtc_inactivate", "B2001")
+                time.sleep(0.2)
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                rc.set_cmd("motor_current_a", 0.95)
+            else:
+                time.sleep(0.4)
+
+        elif tid == "T39":
+            self._log("  → T39 : LIN SPEED1 puis stop_lin_tx")
+            lw.queue_send({"cmd": "SPEED1"})
+            time.sleep(0.5)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"test_cmd": "stop_lin_tx"})
+
+        elif tid == "T38b":
+            self._log("  → T38b : LIN REAR_WIPE + surcourant moteur arrière (B2002)")
+            if rc: rc.set_cmd("rear_wiper_available", True)
+            lw.queue_send({"cmd": "REAR_WIPE"})
+            if rc:
+                time.sleep(0.3)
+                rc.set_cmd("dtc_inactivate", "B2002")
+                time.sleep(0.2)
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                rc.set_cmd("motor_current_a", 0.95)
+
+        elif tid == "T38c":
+            self._log("  → T38c : LIN FRONT_WASH + surcourant pompe (B2003)")
+            if rc:
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", False)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                def _t38c_cycles():
+                    for cycle in range(4):
+                        time.sleep(0.2 + cycle * 1.7 - (0.2 if cycle > 0 else 0))
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", True)
+                        time.sleep(1.55)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                threading.Thread(target=_t38c_cycles, daemon=True).start()
+            lw.queue_send({"cmd": "FRONT_WASH"})
+            if rc:
+                time.sleep(0.4)
+                rc.set_cmd("dtc_inactivate", "B2003")
+                time.sleep(0.2)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                rc.set_cmd("pump_current_a", 1.0)
+
+        elif tid == "LIN_INVALID_CMD_001":
+            self._log("  → LIN_INVALID_CMD_001 : op=10 brut")
+            if rc: rc.set_cmd("crs_wiper_op", 0)
+            time.sleep(0.2)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"test_cmd": "set_raw_wiper_op", "op": 10})
+
+        elif tid == "T_RAIN_AUTO_SENSOR_ERROR":
+            self._log("  → T_RAIN_AUTO_SENSOR_ERROR : AUTO + SensorStatus=ERROR")
+            if rc:
+                rc.set_cmd("rain_sensor_installed", True)
+                rc.set_cmd("rain_sensor_ok",        True)
+                rc.set_cmd("rain_intensity",        25)
+                mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", False)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                def _rain_cycles():
+                    for cycle in range(4):
+                        time.sleep(0.3 + cycle * 1.7 - (0.3 if cycle > 0 else 0))
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", True)
+                        time.sleep(1.55)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                threading.Thread(target=_rain_cycles, daemon=True).start()
+            time.sleep(0.2)
+            lw.queue_send({"cmd": "AUTO"})
+            time.sleep(0.8)
+            if rc: rc.set_cmd("dtc_inactivate", "B2007")
+            time.sleep(0.2)
+            self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            if hasattr(test, "notify_injection"): test.notify_injection()
+            if rc:
+                rc.set_cmd("rain_intensity",    0xFF)
+                rc.set_cmd("rain_sensor_ok",    False)
+            mw.queue_send({"rain_intensity": 255, "sensor_status": "ERROR"})
+
+        elif tid == "T_B2009_CAN":
+            self._log("  → T_B2009_CAN : CAS B + blade figée + rest_contact fixe → B2009")
+            if rc:
+                rc.set_cmd("wc_available",   True)
+                rc.set_cmd("lin_op_locked",  True)
+                rc.set_cmd("crs_wiper_op",   0)
+                rc.set_cmd("ignition_status", 1)
+                time.sleep(0.2)
+                rc.set_cmd("dtc_inactivate", "B2009")
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim",        True)
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            time.sleep(0.4)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.send({"test_cmd": "freeze_blade_position", "value": 50.0})
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc: rc.set_cmd("crs_wiper_op", 2)
 
     # ── Reset état BCM avant chaque test ─────────────────────────────────
     def _reset_bcm_state(self):
@@ -438,6 +1002,7 @@ class HeadlessTestRunner:
             with self._lock:
                 self._current = test
             test.start()
+            self._pre_test(test)            # stimulus envoyé (avec ses sleep internes)
 
             # ── Boucle supervision (tick 200ms) ───────────────────────────
             while True:
