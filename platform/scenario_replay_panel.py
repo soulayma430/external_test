@@ -1213,7 +1213,7 @@ class ScenarioReplayPanel(QWidget):
             f"background:{W_PANEL2};color:{W_TEXT};"
             "border:none;border-radius:3px;")
         ll.addWidget(self._log_edit)
-        btn_clr = _cd_btn("Effacer log", "#607D8B", h=24, w=120)
+        btn_clr = _cd_btn("Effacer log", "#607D8B", h=100, w=400)
         btn_clr.clicked.connect(self._log_edit.clear)
         ll.addWidget(btn_clr, alignment=Qt.AlignmentFlag.AlignRight)
         rl.addWidget(lf, 1)

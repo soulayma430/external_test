@@ -124,7 +124,7 @@ class TestParamsPanel(QWidget):
         hdr_lay = QHBoxLayout(hdr)
         hdr_lay.setContentsMargins(12, 8, 12, 8)
 
-        title = QLabel("⚙  Paramétrage des Tests")
+        title = QLabel("  Paramétrage des Tests")
         title.setStyleSheet(f"color: {KPIT_GREEN}; font-size: 13pt; font-weight: bold; font-family: '{FONT_UI}';")
         hdr_lay.addWidget(title)
 
@@ -241,22 +241,22 @@ class TestParamsPanel(QWidget):
         btn_bar = QHBoxLayout()
         btn_bar.setSpacing(8)
 
-        self._apply_btn = QPushButton("✔  Appliquer")
+        self._apply_btn = QPushButton("Appliquer")
         self._apply_btn.setToolTip("Écrit les nouvelles valeurs sur les classes Python en mémoire")
         self._apply_btn.clicked.connect(self._apply_params)
         self._apply_btn.setStyleSheet(self._action_btn_style(KPIT_GREEN, "#FFFFFF"))
 
-        self._reset_btn = QPushButton("↺  Réinitialiser")
+        self._reset_btn = QPushButton("Réinitialiser")
         self._reset_btn.setToolTip("Restaure toutes les valeurs d'origine")
         self._reset_btn.clicked.connect(self._reset_params)
         self._reset_btn.setStyleSheet(self._action_btn_style("#607D8B", "#FFFFFF"))
 
-        self._export_btn = QPushButton("⬇  Exporter JSON")
+        self._export_btn = QPushButton("Exporter JSON")
         self._export_btn.setToolTip("Sauvegarde les paramètres actuels dans un fichier JSON")
         self._export_btn.clicked.connect(self._export_json)
         self._export_btn.setStyleSheet(self._action_btn_style("#1565C0", "#FFFFFF"))
 
-        self._import_btn = QPushButton("⬆  Importer JSON")
+        self._import_btn = QPushButton("Importer JSON")
         self._import_btn.setToolTip("Charge des paramètres depuis un fichier JSON")
         self._import_btn.clicked.connect(self._import_json)
         self._import_btn.setStyleSheet(self._action_btn_style("#6A1B9A", "#FFFFFF"))

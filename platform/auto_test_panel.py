@@ -989,7 +989,7 @@ class AutoTestPanel(QWidget):
 
         self._btn_sel  = _cd_btn("RUN SELECTED", A_TEAL,    h=34, w=150)
         self._btn_stop = _cd_btn("STOP",          A_RED,     h=34, w=100)
-        self._btn_report = _cd_btn("DOWNLOAD REPORT", A_ORANGE, h=34, w=170)
+        self._btn_report = _cd_btn("DOWNLOAD REPORT", A_ORANGE, h=34, w=200)
         self._btn_stop.setEnabled(False)
         self._btn_report.setEnabled(False)
 

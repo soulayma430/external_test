@@ -698,12 +698,12 @@ class VehicleRainPanel(QWidget):
         self.sld_rain = self._rain_knob
         pan_r.body().addWidget(self._rain_knob)
         pan_r.body().addWidget(_hsep())
-        pan_r.body().addWidget(_lbl("SENSOR STATUS", 9, True, W_TEXT_DIM))
+        pan_r.body().addWidget(_lbl("SENSOR\nSTATUS", 9, True, W_TEXT_DIM))
 
-        rs = QHBoxLayout(); rs.setSpacing(6)
-        self._led_sens = StatusLed(11); self._led_sens.set_state(True, A_GREEN)
-        self.lbl_sens  = _lbl("OK", 11, True, A_GREEN)
-        self.btn_sens  = _cd_btn("SIMULATE ERROR", A_RED, h=22)
+        rs = QHBoxLayout(); rs.setSpacing(2)
+        self._led_sens = StatusLed(8); self._led_sens.set_state(True, A_GREEN)
+        self.lbl_sens  = _lbl("OK", 8, True, A_GREEN)
+        self.btn_sens  = _cd_btn("SIMULATE\nERROR", A_RED, h=5)
         self.btn_sens.clicked.connect(self._toggle_sens)
         rs.addWidget(self._led_sens); rs.addWidget(self.lbl_sens)
         rs.addStretch(); rs.addWidget(self.btn_sens)
@@ -783,12 +783,12 @@ class VehicleRainPanel(QWidget):
             self._led_sens.set_state(True, A_GREEN)
             self.lbl_sens.setText("OK")
             self.lbl_sens.setStyleSheet(f"color:{A_GREEN};font-weight:bold;background:transparent;")
-            self.btn_sens.setText("SIMULATE ERR")
+            self.btn_sens.setText("SIMULATE\nERR")
         else:
             self._led_sens.set_state(True, A_RED)
             self.lbl_sens.setText("ERROR")
             self.lbl_sens.setStyleSheet(f"color:{A_RED};font-weight:bold;background:transparent;")
-            self.btn_sens.setText("RESTORE OK")
+            self.btn_sens.setText("RESTORE\nOK")
         self._sr()
 
     # ── Envoi JSON ───────────────────────────────────────────

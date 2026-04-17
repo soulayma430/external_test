@@ -1,4 +1,3 @@
-
 """
 car_html_widget.py — Deux widgets voiture pour la plateforme HIL.
 
@@ -13,7 +12,8 @@ from pathlib import Path
 
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore    import QWebEngineSettings, QWebEnginePage
-from PySide6.QtCore             import QUrl, QTimer
+from PySide6.QtCore             import QUrl, QTimer, Qt
+from PySide6.QtGui              import QColor
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -134,7 +134,7 @@ _XRAY_API_JS = """
 
   body {
     padding-top: 4px !important;
-    background: #0d1117 !important;
+    background: #FFFFFF !important;
     align-items: center !important;
     justify-content: flex-start !important;
   }
@@ -170,27 +170,25 @@ _XRAY_API_JS = """
     align-items: center !important;
     justify-content: center !important;
   }
+  /* SUPPRESSION DU FOND CIRCULAIRE */
   .showroom-bg {
-    width: 500px !important;
-    height: 500px !important;
-    border-radius: 50% !important;
-    border: 3px solid #FFFFFFF !important;
-    box-shadow:
-      0 0 0 2px  #F28E79,
-      0 0 12px 4px  #F28E79,
-      0 0 32px 8px rgba(57,255,20,0.5),
-      inset 0 0 24px rgba(57,255,20,0.08) !important;
-    overflow: hidden !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: auto !important;
+    height: auto !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
   }
   .status-bar, .hud-title { display: none !important; }
-  body { background: #FFFFFFF !important; }
+  body { background: #FFFFFF !important; }
 </style>
 
 <script>
 /* ── Auto-scale : voiture centrée qui remplit toute la hauteur ── */
 (function () {
-  var CAR_H = 550;
-  var CAR_W = 550;
+  var CAR_H = 580;
+  var CAR_W = 580;
   function scaleCarToFit () {
     var stage = document.querySelector('.car-stage');
     if (!stage) return;
@@ -361,6 +359,11 @@ class _CarBaseWidget(QWebEngineView):
         self._pending: list[str] = []
         self.loadFinished.connect(self._on_loaded)
 
+        # Fond transparent AVANT chargement — empêche le flash blanc/noir de Chromium
+        self.page().setBackgroundColor(QColor(Qt.GlobalColor.transparent))
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+
         self._state = {
             "speed":      0.0,
             "rain":       0,
@@ -391,7 +394,7 @@ class _CarBaseWidget(QWebEngineView):
 
     def _show_fallback(self, err: str = "") -> None:
         self.setHtml(f"""
-        <html><body style="background:#0d1117;color: #FFFFFFF;font-family:monospace;
+        <html><body style="background:#FFFFFF;color: #FFFFFFF;font-family:monospace;
             display:flex;align-items:center;justify-content:center;height:100vh;">
         <div style="text-align:center">
             <div style="font-size:48px">&#128663;</div>
@@ -404,6 +407,10 @@ class _CarBaseWidget(QWebEngineView):
 
     def _on_loaded(self, ok: bool) -> None:
         self._ready = True
+        # Fond transparent — supprime le fond blanc/gris du moteur Chromium
+        self.page().setBackgroundColor(QColor(Qt.GlobalColor.transparent))
+        self.page().runJavaScript(
+            "document.documentElement.style.background='transparent';"            "document.body.style.background='transparent';"        )
         for js in self._pending:
             self.page().runJavaScript(js)
         self._pending.clear()

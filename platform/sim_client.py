@@ -149,6 +149,58 @@ class SimClient:
             return False
         return self._send({"test_cmd": "reset_b2101"})
 
+    # ── Nouveaux test_cmd pour T50 et T_B2009_CAN ────────────────────────────
+
+    def start_blade_cycling(self, period_ms: float = 1500.0) -> bool:
+        """
+        T50 : démarre l'oscillation BladePosition 1↔99 dans bcmcan
+        toutes les period_ms. Empêche B2009 (blade_pos>0 constant sans
+        rester figé). A appeler après que le moteur soit commandé via CAN.
+        """
+        if not self.is_connected():
+            return False
+        return self._send({"test_cmd": "start_blade_cycling",
+                           "period_ms": float(period_ms)})
+
+    def stop_blade_cycling(self) -> bool:
+        """T50 cleanup : arrête l'oscillation BladePosition et remet à 0."""
+        if not self.is_connected():
+            return False
+        return self._send({"test_cmd": "stop_blade_cycling"})
+
+    def freeze_blade_position(self, value: float = 50.0) -> bool:
+        """
+        T_B2009_CAN : gèle BladePosition à value% dans la trame 0x201.
+        Simule une lame mécaniquement bloquée. value doit être >0 pour
+        que front_motor_running=True en CAS B et déclencher B2009.
+        """
+        if not self.is_connected():
+            return False
+        return self._send({"test_cmd": "freeze_blade_position",
+                           "value": float(value)})
+
+    def unfreeze_blade_position(self) -> bool:
+        """T_B2009_CAN cleanup : libère BladePosition (retour lecture ADS)."""
+        if not self.is_connected():
+            return False
+        return self._send({"test_cmd": "unfreeze_blade_position"})
+
+    def inject_motor_current(self, value: float = 0.95) -> bool:
+        """
+        T50b : force MotorCurrent dans la trame 0x201 pour simuler
+        un surcourant moteur avant via CAN → déclenche B2001 côté BCM.
+        """
+        if not self.is_connected():
+            return False
+        return self._send({"test_cmd": "inject_motor_current",
+                           "value": float(value)})
+
+    def reset_motor_current(self) -> bool:
+        """T50b cleanup : annule l'override MotorCurrent (retour lecture ADS)."""
+        if not self.is_connected():
+            return False
+        return self._send({"test_cmd": "reset_motor_current"})
+
     def _send(self, payload: dict) -> bool:
         """Envoi TCP non-bloquant avec timeout."""
         host, port = self._host, self._port

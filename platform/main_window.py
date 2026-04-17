@@ -56,6 +56,7 @@ from rte_client       import RTEClient
 from sim_client       import SimClient
 # datasave_panel / scenario_replay_panel merged → data_replay_panel
 from PySide6.QtCore    import QThread
+from free_layout      import MotorPumpFreePage, SignalHub
 
 
 # ═══════════════════════════════════════════════════════════
@@ -203,6 +204,9 @@ class MainWindow(QMainWindow):
         # DataSave — enregistrement & export CSV
         self._data_recorder = DataRecorder()
 
+        # SignalHub — pont vers les instruments drag&drop de la page Motor/Pump
+        self._signal_hub = SignalHub(self)
+
         self._build_ui()
         self._connect_signals()
 
@@ -291,34 +295,16 @@ class MainWindow(QMainWindow):
         if hasattr(self._veh_panel, "set_pump_panel"):
             self._veh_panel.set_pump_panel(self._pump_panel)
 
-        # ── Page 1 : Motor / Pompe — splitter 3 colonnes avec voiture au centre ──
-        pg1 = QWidget(); pg1.setStyleSheet(f"background:{W_BG};")
-        l1  = QHBoxLayout(pg1); l1.setContentsMargins(0, 0, 0, 0); l1.setSpacing(0)
+        # ── Page 1 : Motor / Pompe — disposition libre ControlDesk-style ──
+        self._motor_pump_page = MotorPumpFreePage(
+            motor_panel = self._motor_panel,
+            car_xray    = self._car_html_mp,
+            pump_panel  = self._pump_panel,
+            signal_hub  = self._signal_hub,
+        )
+        self._tabs.addTab(self._motor_pump_page, "Motor / Pump")
 
-        spl1 = QSplitter(Qt.Orientation.Horizontal)
-        spl1.setStyleSheet(f"QSplitter::handle{{background:{W_BORDER};width:3px;}}")
 
-        # Colonne gauche : Motor panel
-        spl1.addWidget(self._motor_panel)
-
-        # Colonne centrale : voiture HTML animée — prend tout le vertical
-        car_mp_wrapper = QWidget(); car_mp_wrapper.setStyleSheet(f"background:{W_BG};")
-        car_mp_lay = QVBoxLayout(car_mp_wrapper)
-        car_mp_lay.setContentsMargins(0, 0, 0, 0); car_mp_lay.setSpacing(0)
-        car_mp_lay.addWidget(self._car_html_mp, 1)
-        from PySide6.QtWidgets import QSizePolicy as _SP
-        self._car_html_mp.setSizePolicy(_SP.Policy.Expanding, _SP.Policy.Expanding)
-        spl1.addWidget(car_mp_wrapper)
-
-        # Colonne droite : Pump panel
-        spl1.addWidget(self._pump_panel)
-
-        # Proportions : Motor 28% | Car 44% | Pump 28%
-        spl1.setSizes([300, 460, 300])
-        spl1.setChildrenCollapsible(False)
-
-        l1.addWidget(spl1)
-        self._tabs.addTab(pg1, "Motor / Pump")
 
         # ── Page 2 : LIN / CRS / Vehicle — voiture HTML au centre ──────────
         pg2 = QWidget(); pg2.setStyleSheet(f"background:{W_BG};")
@@ -356,7 +342,7 @@ class MainWindow(QMainWindow):
 
         # ── Page 4b : Paramétrage des tests ──────────────────
         self._test_params_panel = TestParamsPanel()
-        self._tabs.addTab(self._test_params_panel, "⚙ Params Tests")
+        self._tabs.addTab(self._test_params_panel, "Params Tests")
 
         # ── Page 5 : Fault Injection ──────────────────────────
         self._tabs.addTab(self._fi_panel, "Fault Injection")
@@ -516,9 +502,9 @@ class MainWindow(QMainWindow):
 
         # Ligne 1 : titre + LED + label condensés sur une seule ligne
         top_row = QHBoxLayout(); top_row.setSpacing(5)
-        lbl_sens_title = QLabel("SENSOR STATUS")
+        lbl_sens_title = QLabel("SENSOR\nSTATUS")
         lbl_sens_title.setFont(QFont(FONT_MONO, 7, QFont.Weight.Bold))
-        lbl_sens_title.setStyleSheet("color:#4fc3f7;background:transparent;letter-spacing:1px;")
+        lbl_sens_title.setStyleSheet("color:#4fc3f7;background:transparent;letter-spacing:1px;text-align:center")
         self._veh_panel._led_sens.setParent(sens_w)
         self._veh_panel.lbl_sens.setParent(sens_w)
         self._veh_panel.lbl_sens.setFont(QFont(FONT_MONO, 8, QFont.Weight.Bold))
@@ -634,6 +620,17 @@ class MainWindow(QMainWindow):
             act.triggered.connect(lambda _, idx=i: self._tabs.setCurrentIndex(idx))
             m_view.addAction(act)
 
+        m_tools = mb.addMenu("Tools")
+        act_bus_cfg = QAction("Bus Config — LDF / DBC...", self)
+        act_bus_cfg.setShortcut("Ctrl+B")
+        act_bus_cfg.setToolTip("Charger un fichier LDF ou DBC différent")
+        act_bus_cfg.triggered.connect(self._open_bus_config)
+        m_tools.addAction(act_bus_cfg)
+        m_tools.addSeparator()
+        act_bus_info = QAction("Afficher la config bus active", self)
+        act_bus_info.triggered.connect(self._show_bus_info)
+        m_tools.addAction(act_bus_info)
+
         m_help = mb.addMenu("Help")
         act_about = QAction("About...", self)
         act_about.triggered.connect(lambda: QMessageBox.about(
@@ -670,8 +667,13 @@ class MainWindow(QMainWindow):
             sep.setStyleSheet(f"background:{W_BORDER};max-width:1px;"); tb.addWidget(sep)
 
         tb.addSeparator()
-        btn_scan = _cd_btn("Scan", A_TEAL, h=26, w=80)
+        btn_scan = _cd_btn("Scan", A_TEAL, h=28, w=120)
         btn_scan.clicked.connect(self._open_scan); tb.addWidget(btn_scan)
+
+        btn_bus_cfg = _cd_btn("Bus Config", A_ORANGE, h=28, w=120)
+        btn_bus_cfg.setToolTip("Charger un fichier LDF ou DBC différent")
+        btn_bus_cfg.clicked.connect(self._open_bus_config)
+        tb.addWidget(btn_bus_cfg)
 
         self._lbl_dt = _lbl("", 10, False, W_TEXT_DIM, True)
         spacer = QWidget(); spacer.setSizePolicy(
@@ -705,6 +707,102 @@ class MainWindow(QMainWindow):
     def _upd_dt(self) -> None:
         self._lbl_dt.setText(datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"))
 
+    def _open_bus_config(self) -> None:
+        """Ouvre l'éditeur LDF/DBC embarqué (BusConfigWidget) en fenêtre modale."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout
+        try:
+            from bus_config_widget import BusConfigWidget
+            _use_widget = True
+        except ImportError:
+            _use_widget = False
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Bus Configuration — LDF / DBC Editor")
+        dlg.setMinimumSize(1100, 700)
+        dlg.resize(1280, 800)
+
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        if _use_widget:
+            widget = BusConfigWidget(dlg)
+            widget.file_saved.connect(self._on_bus_file_saved)
+            lay.addWidget(widget)
+        else:
+            # Fallback : ancien BusConfigPanel si bus_config_widget indisponible
+            from bus_config_panel import BusConfigPanel
+            from PySide6.QtWidgets import QHBoxLayout
+            from widgets_base import _cd_btn as _b
+            dlg.resize(600, 500)
+            panel = BusConfigPanel(dlg)
+            lay.addWidget(panel, 1)
+            btn_row = QHBoxLayout()
+            btn_row.setContentsMargins(12, 8, 12, 10)
+            btn_close = _b("Fermer", "#707070", h=28)
+            btn_close.clicked.connect(dlg.accept)
+            btn_row.addStretch(); btn_row.addWidget(btn_close)
+            lay.addLayout(btn_row)
+            panel.config_changed.connect(self._on_bus_config_changed)
+
+        dlg.exec()
+
+    def _on_bus_file_saved(self, dest: str, content: str) -> None:
+        """Appelé après écriture sur disque par BusConfigWidget._do_download.
+
+        dest    : chemin complet du fichier déjà écrit par le widget
+        content : contenu (non utilisé ici, le fichier est déjà sur disque)
+
+        On se contente de recharger la config à chaud et de rafraîchir la
+        plateforme — l'écriture et le reload principal sont déjà faits dans
+        _do_download pour éviter toute dépendance à network_config ici.
+        """
+        self._on_bus_config_changed()
+
+    def _on_bus_config_changed(self) -> None:
+        """Appelé après un rechargement LDF/DBC à chaud.
+
+        Rafraîchit les structures qui dépendent des listes de messages CAN :
+        - _CAN_CHANNELS de panels (oscilloscope)
+        - _CAN_FRAME_COLORS de panels (table CAN)
+        """
+        try:
+            from bcm_tcp_can_platform import can_channels_for_osc, can_frame_colors
+            import panels
+            panels._CAN_CHANNELS    = can_channels_for_osc()
+            panels._CAN_FRAME_COLORS = can_frame_colors()
+        except Exception:
+            pass
+
+    def _show_bus_info(self) -> None:
+        """Affiche un résumé de la configuration bus active dans une boîte de dialogue."""
+        try:
+            from network_config import cfg_lin, cfg_can, active_paths
+            paths = active_paths()
+            lin_lines = "\n".join(
+                f"  {n}  PID=0x{f['pid']:02X}  DLC={f['dlc']}"
+                f"  cycle={f['cycle_s']*1000:.0f}ms"
+                f"  signals={list(f['signals'].keys())}"
+                for n, f in cfg_lin["frames"].items()
+            )
+            can_lines = "\n".join(
+                f"  0x{mid:03X}  {msg.name}  sender={msg.sender}"
+                f"  period={cfg_can['periods_ms'].get(mid,0)}ms"
+                f"  signals={list(msg.signals.keys())}"
+                for mid, msg in sorted(cfg_can["messages"].items())
+            )
+            info = (
+                f"LDF actif : {paths['ldf']}\n"
+                f"  baud = {cfg_lin['baud']}\n"
+                f"{lin_lines}\n\n"
+                f"DBC actif : {paths['dbc']}\n"
+                f"{can_lines}"
+            )
+        except Exception as e:
+            info = f"Erreur lors de la lecture de la config bus :\n{e}"
+
+        QMessageBox.information(self, "Config bus active", info)
+
     def _open_scan(self) -> None:
         dlg = NetworkScanDialog(self)
         dlg.connected.connect(self._on_rescan)
@@ -716,6 +814,7 @@ class MainWindow(QMainWindow):
         self._motor_worker.motor_received.connect(self._on_motor_data_ws)   # ← BCM→CarHTMLWidget (LIN tab)
         self._motor_worker.motor_received.connect(self._on_motor_data_mp)   # ← BCM→CarHTMLWidget (Motor/Pump tab)
         self._motor_worker.motor_received.connect(self._datasave_panel.on_motor_data)  # ← DataSave
+        self._motor_worker.motor_received.connect(self._signal_hub.on_motor_data)      # ← SignalHub (drag&drop panels)
         self._motor_worker.status_changed.connect(self._on_motor_status)
         self._motor_worker.wiper_sent.connect(self._on_wiper_sent)
         self._motor_worker.sim_host_found.connect(self._on_sim_host_found)
@@ -726,6 +825,7 @@ class MainWindow(QMainWindow):
         self._pump_signal.data_received.connect(self._fi_panel.on_pump_data)
         self._pump_signal.data_received.connect(self._datasave_panel.on_pump_data)     # ← DataSave
         self._pump_signal.data_received.connect(self._on_pump_data_mp)                 # ← Pump rain→CarHTMLWidget (Motor/Pump tab)
+        self._pump_signal.data_received.connect(self._signal_hub.on_pump_data)         # ← SignalHub (drag&drop panels)
         self._pump_signal.connection_ok.connect(self._on_pump_ok)
         self._pump_signal.connection_lost.connect(self._on_pump_lost)
         self._can_worker.can_received.connect(self._can_panel.add_can_event)
@@ -947,7 +1047,8 @@ class MainWindow(QMainWindow):
         self._motor_worker.motor_received.connect(self._motor_panel.on_motor_data)
         self._motor_worker.motor_received.connect(self._on_motor_data_ws)   # ← BCM→CarHTMLWidget (LIN tab)
         self._motor_worker.motor_received.connect(self._on_motor_data_mp)   # ← BCM→CarHTMLWidget (Motor/Pump tab)
-        self._motor_worker.status_changed.connect(self._on_motor_status)
+        self._motor_worker.motor_received.connect(self._datasave_panel.on_motor_data)  # ← DataSave
+        self._motor_worker.motor_received.connect(self._signal_hub.on_motor_data)      # ← SignalHub
         self._motor_worker.wiper_sent.connect(self._on_wiper_sent)
         self._motor_worker.sim_host_found.connect(self._on_sim_host_found)
         self._sim_client.disconnect()   # reset SimClient — sera reconnecté via sim_host_found

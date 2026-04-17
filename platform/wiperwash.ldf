@@ -1,0 +1,46 @@
+LIN_description_file;
+
+LIN_protocol_version = "2.1";
+LIN_language_version = "2.1";
+LIN_speed = 19.2 kbps;
+
+Nodes {
+  Master: BCM, 5 ms, 0.1 ms;
+  Slaves: CRS;
+}
+
+Signals {
+  WiperOp: 4, 0x00, CRS, BCM;
+  StickStatus: 4, 0x00, CRS, BCM;
+  AliveCtr: 8, 0x00, CRS, BCM;
+  FaultCode: 8, 0x00, CRS, BCM;
+  Reserved17: 8, 0x00, CRS, BCM;
+}
+
+Frames {
+  LeftStickWiperRequester: 0x16, CRS, 2 {
+    WiperOp, 0;
+    StickStatus, 4;
+    AliveCtr, 8;
+  }
+  WiperFaultStatus: 0x17, CRS, 2 {
+    FaultCode, 0;
+    Reserved17, 8;
+  }
+}
+
+Node_attributes {
+  CRS {
+    LIN_protocol = "2.1";
+    configured_NAD = 0x01;
+    initial_NAD    = 0x01;
+    product_id     = 0x0001, 0x0001, 0x01;
+  }
+}
+
+Schedule_tables {
+  NormalSchedule {
+    LeftStickWiperRequester  delay 400 ms;
+    WiperFaultStatus  delay 800 ms;
+  }
+}

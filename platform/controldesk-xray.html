@@ -27,7 +27,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body {
-  background: var(--bg);
+  background: transparent;
   min-height: 100vh;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
   padding-top: 10px;
@@ -36,19 +36,8 @@ body {
   overflow-x: hidden;
   position: relative;
 }
-.bg-grid {
-  position: fixed; inset: 0;
-  background-image:
-    linear-gradient(rgba(141,198,63,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(141,198,63,0.03) 1px, transparent 1px);
-  background-size: 48px 48px;
-  pointer-events: none; z-index: 0;
-}
-.bg-glow {
-  position: fixed; inset: 0;
-  background: radial-gradient(ellipse 55% 40% at 50% 55%, rgba(141,198,63,0.06) 0%, transparent 70%);
-  pointer-events: none; z-index: 0;
-}
+.bg-grid { display: none; }
+.bg-glow { display: none; }
 .status-bar {
   position: relative; z-index: 10;
   display: flex; gap: 24px; margin-bottom: 10px;
@@ -342,9 +331,18 @@ body {
 </style>
 </head>
 <body>
-
-<div class="bg-grid"></div>
-<div class="bg-glow"></div>
+<style>
+html, body {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+}
+.bg-grid, .bg-glow, .status-bar {
+  display: none !important;
+}
+.car-stage {
+  background: transparent !important;
+}
+</style>
 
 <div class="main-layout">
   <div class="car-stage">
@@ -368,6 +366,14 @@ body {
           <stop offset="55%"  stop-color="#ffffff"/>
           <stop offset="78%"  stop-color="#f8f8f8"/>
           <stop offset="100%" stop-color="#f0f0f0"/>
+        </linearGradient>
+        <linearGradient id="bodyKPIT" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stop-color="#A8D878"/>
+          <stop offset="20%"  stop-color="#D4F0A8"/>
+          <stop offset="45%"  stop-color="#FFFFFF"/>
+          <stop offset="55%"  stop-color="#FFFFFF"/>
+          <stop offset="80%"  stop-color="#D4F0A8"/>
+          <stop offset="100%" stop-color="#A8D878"/>
         </linearGradient>
         <linearGradient id="sheenH" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%"   stop-color="#fff" stop-opacity="0"/>

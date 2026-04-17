@@ -1,0 +1,107 @@
+VERSION ""
+
+NS_ :
+    NS_DESC_
+    CM_
+    BA_DEF_
+    BA_
+    VAL_
+
+BS_:
+
+BU_: BCM WC SIM
+
+BO_ 512 Wiper_Command: 8 BCM
+ SG_ WiperMode : 0|4@1+ (1,0) [0|15] "" WC,SIM
+ SG_ WiperSpeedLevel : 4|4@1+ (1,0) [0|15] "" WC,SIM
+ SG_ WashRequest : 8|2@1+ (1,0) [0|3] "" WC,SIM
+ SG_ AliveCounter_TX : 16|8@1+ (1,0) [0|255] "" WC,SIM
+ SG_ CRC_CMD : 24|8@1+ (1,0) [0|255] "" WC,SIM
+
+BO_ 513 Wiper_Status: 8 WC
+ SG_ CurrentMode : 0|8@1+ (1,0) [0|255] "" BCM,SIM
+ SG_ CurrentSpeed : 8|8@1+ (1,0) [0|255] "" BCM,SIM
+ SG_ BladePosition : 16|8@1+ (1,0) [0|100] "%" BCM,SIM
+ SG_ MotorCurrent : 24|16@1+ (0.1,0) [0|6553.5] "A" BCM,SIM
+ SG_ FaultStatus : 40|8@1+ (1,0) [0|255] "" BCM,SIM
+ SG_ AliveCounter_RX : 48|8@1+ (1,0) [0|255] "" BCM,SIM
+ SG_ CRC_STS : 56|8@1+ (1,0) [0|255] "" BCM,SIM
+
+BO_ 514 Wiper_Ack: 8 WC
+ SG_ AckCode : 0|8@1+ (1,0) [0|255] "" BCM,SIM
+ SG_ ErrorCode : 8|8@1+ (1,0) [0|255] "" BCM,SIM
+ SG_ AliveCounter_AK : 16|8@1+ (1,0) [0|255] "" BCM,SIM
+
+BO_ 768 Vehicle_Status: 8 SIM
+ SG_ IgnitionStatus : 0|8@1+ (1,0) [0|2] "" BCM
+ SG_ ReverseGear : 8|8@1+ (1,0) [0|1] "" BCM
+ SG_ VehicleSpeed : 16|16@1+ (0.1,0) [0|6553.5] "km/h" BCM
+
+BO_ 769 RainSensorData: 8 SIM
+ SG_ RainIntensity : 0|8@1+ (1,0) [0|255] "" BCM
+ SG_ SensorOK : 8|8@1+ (1,0) [0|1] "" BCM
+
+CM_ BO_ 512 "BCM→WC 400ms CRC=XOR(B0,B1,B2)";
+CM_ SG_ 512 WiperMode "0=OFF…7=REAR_WIPE";
+CM_ SG_ 512 WiperSpeedLevel "0=STOP…4=MAX";
+CM_ SG_ 512 AliveCounter_TX "modulo 256";
+CM_ SG_ 512 CRC_CMD "XOR(B0,B1,B2)";
+CM_ BO_ 513 "WC→BCM CRC=XOR(B0..B6)";
+CM_ SG_ 513 BladePosition "0=repos";
+CM_ SG_ 513 MotorCurrent "0.1A/bit";
+CM_ SG_ 513 FaultStatus "0=OK";
+CM_ SG_ 513 AliveCounter_RX "modulo 256";
+CM_ SG_ 513 CRC_STS "XOR(B0..B6)";
+CM_ BO_ 514 "WC→BCM event-based";
+CM_ SG_ 514 ErrorCode "0=none";
+CM_ BO_ 768 "SIM→BCM 200ms";
+CM_ SG_ 768 VehicleSpeed "0.1km/h per bit";
+CM_ BO_ 769 "SIM→BCM 200ms";
+CM_ SG_ 769 RainIntensity "0=dry 255=heavy";
+
+BA_DEF_ BO_  "GenMsgCycleTime" INT 0 10000;
+BA_DEF_ BO_  "GenMsgSendType"  STRING;
+BA_DEF_DEF_ "GenMsgCycleTime" 0;
+BA_DEF_DEF_ "GenMsgSendType"  "Cyclic";
+
+BA_ "GenMsgCycleTime" BO_ 512  400;
+BA_ "GenMsgCycleTime" BO_ 513  400;
+BA_ "GenMsgCycleTime" BO_ 514  0;
+BA_ "GenMsgCycleTime" BO_ 768  200;
+BA_ "GenMsgCycleTime" BO_ 769  200;
+BA_ "GenMsgSendType" BO_ 512  "Cyclic";
+BA_ "GenMsgSendType" BO_ 513  "CyclicEvent";
+BA_ "GenMsgSendType" BO_ 514  "Event";
+BA_ "GenMsgSendType" BO_ 768  "Cyclic";
+BA_ "GenMsgSendType" BO_ 769  "Cyclic";
+
+VAL_ 512 WiperMode
+  0 "OFF"
+  1 "TOUCH"
+  2 "SPEED1"
+  3 "SPEED2"
+  4 "AUTO"
+  5 "FRONT_WASH"
+  6 "REAR_WASH"
+  7 "REAR_WIPE" ;
+VAL_ 512 WiperSpeedLevel
+  0 "STOP"
+  1 "LOW"
+  2 "MED"
+  3 "HIGH"
+  4 "MAX" ;
+VAL_ 512 WashRequest
+  0 "NONE"
+  1 "FRONT"
+  2 "REAR"
+  3 "BOTH" ;
+VAL_ 768 IgnitionStatus
+  0 "OFF"
+  1 "ON_ACC"
+  2 "START" ;
+VAL_ 768 ReverseGear
+  0 "DISENGAGED"
+  1 "ENGAGED" ;
+VAL_ 769 SensorOK
+  0 "FAULT"
+  1 "OK" ;

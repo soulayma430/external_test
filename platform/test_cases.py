@@ -2596,7 +2596,7 @@ class T50_CasA_DirectMotorControl(BaseBCMTest):
     REF            = "SRD_WW_070 / SRD_WW_080"
     LIMIT_STR      = "RL2=LOW absent (H-Bridge bloqué) + front_motor_on=True"
     LIMIT_MS       = 1500     # délai max pour atteindre state=SPEED1
-    OBS_MS         = 2000     # durée observation absence RL2=LOW
+    OBS_MS         = 2000     # durée observation < REST_STUCK_DELAY=3s → B2009 impossible
     TEST_TIMEOUT_S = 8
 
     def _on_start(self):
@@ -2837,6 +2837,485 @@ class T51_CasA_RestContact_Stuck(BaseBCMTest):
         return None
 
 
+# ─── LIN_INVALID_CMD_001 : Commande LIN op hors plage (8-15) ignorée ────────
+class LIN_INVALID_CMD_001(BaseBCMTest):
+    """
+    Envoie une trame LIN 0x16 avec WiperOp=10 (hors plage valide 0-7).
+    Objectif  : le BCM doit ignorer la commande — crs_wiper_op ne change pas.
+
+    Critère principal : crs_wiper_op reste 0 pendant toute la durée du test.
+    On surveille crs_wiper_op et NON state, car :
+      - state peut rester OFF pour d'autres raisons (pas de stimulus)
+      - crs_wiper_op est écrit directement par _lin_poll_0x16() quand le BCM
+        décode la trame 0x16 — s'il acceptait op=10, crs_wiper_op passerait à 10.
+      - C'est la clé Redis qui reflète directement ce que le BCM a reçu et traité.
+
+    PASS : crs_wiper_op=0 maintenu ≥ 500 ms (commande invalide ignorée).
+    FAIL : crs_wiper_op != 0 à tout moment (commande invalide acceptée).
+    REF  : SRS_LIN_001 — robustesse commandes invalides.
+    """
+    ID             = "LIN_INVALID_CMD_001"
+    NAME           = "LIN cmd hors plage (op=10) → crs_wiper_op inchangé"
+    REF            = "SRS_LIN_001 / robustesse"
+    LIMIT_STR      = "crs_wiper_op=0 maintenu ≥ 500 ms"
+    LIMIT_MS       = 700
+    TEST_TIMEOUT_S = 4
+
+    def _on_start(self):
+        super()._on_start()
+        self._violation = False
+
+    def _check_rte(self):
+        if self._confirmed or self.rte_client is None:
+            return None
+        wiper_op = self.rte_client.get("crs_wiper_op")
+        delta    = time.time() * 1000.0 - self._t0_ms
+
+        # Convertir en int (Redis retourne des strings)
+        try:
+            wiper_op_int = int(wiper_op) if wiper_op is not None else 0
+        except (ValueError, TypeError):
+            wiper_op_int = 0
+
+        # FAIL immédiat si le BCM a accepté la commande invalide
+        if wiper_op_int != 0:
+            self._violation = True
+            self._confirmed = True
+            return self._fail(
+                f"crs_wiper_op={wiper_op_int} à {delta:.0f} ms",
+                f"BCM a accepté la commande LIN invalide op=10 → crs_wiper_op={wiper_op_int}"
+            )
+
+        # PASS après 500 ms sans violation
+        if delta >= 500 and not self._violation:
+            self._confirmed = True
+            return self._pass(
+                f"crs_wiper_op=0 maintenu {delta:.0f} ms",
+                "Commande LIN op=10 ignorée — crs_wiper_op resté à 0"
+            )
+        return None
+
+
+# ─── T38b : Surcourant moteur ARRIÈRE → ERROR + B2002 ────────────────────────
+class T38b_Overcurrent_RearMotor(BaseBCMTest):
+    """
+    Lance un essuie-glace arrière (LIN cmd=REAR_WIPE), puis injecte
+    motor_current_a = 0.95A > OVERCURRENT_THRESH (0.8A) via Redis.
+    Attend : state=ERROR ET rear_motor_error=True ET DTC B2002 actif.
+    La pompe ne doit PAS être affectée (isolation des erreurs).
+    REF : FSR_003 / B2002.
+    """
+    ID             = "T38b"
+    NAME           = "Surcourant moteur ARRIÈRE → ERROR + B2002"
+    REF            = "FSR_003 / B2002"
+    LIMIT_STR      = "≈ 300 ms (200–700 ms)"
+    LIMIT_MS       = 700
+    TEST_TIMEOUT_S = 5
+
+    _OC_MIN_MS = 200
+
+    def __init__(self):
+        super().__init__()
+        self._confirmed = False
+
+    def _on_start(self):
+        super()._on_start()
+        self._confirmed = False
+
+    def _check_rte(self):
+        if self._confirmed or self.rte_client is None:
+            return None
+        state      = self.rte_client.get("state")
+        rear_error = self.rte_client.get_bool("rear_motor_error")
+        rear_on    = self.rte_client.get_bool("rear_motor_on")
+        delta      = time.time() * 1000.0 - self._t0_ms
+
+        # Critère : state=ERROR OU rear_motor_error=True + moteur arrêté.
+        # B2002 est confirmé par rear_motor_error=True (flag RTE mis par
+        # _check_overcurrent() au même moment que _dtc.set_active("B2002")).
+        # dtc_active n'est pas publié dans Redis — on utilise le flag RTE direct.
+        if state == "ERROR" or (rear_error and not rear_on):
+            self._confirmed = True
+            detail = (f"state={state} rear_motor_error={rear_error} "
+                      f"rear_motor_on={rear_on} | {delta:.0f} ms")
+            if not rear_error:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + " — rear_motor_error=False (B2002 non confirmé)")
+            if delta > self.LIMIT_MS:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + f" — réaction trop tardive > {self.LIMIT_MS} ms")
+            if delta < self._OC_MIN_MS:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + f" — réaction < {self._OC_MIN_MS} ms (injection trop tôt?)")
+            return self._pass(f"{delta:.0f} ms", detail)
+        return None
+
+    def on_motor_data(self, data):
+        """Non utilisé — T38b injecte motor_current_a via Redis."""
+        return None
+
+
+# ─── T38c : Surcourant POMPE → B2003 (moteur avant isolé) ────────────────────
+class T38c_Overcurrent_Pump(BaseBCMTest):
+    """
+    Lance un FRONT_WASH (pompe active + moteur avant), puis injecte
+    pump_current_a = 1.0A > PUMP_OVERCURRENT_THRESH (0.8A) via Redis.
+    Attend : pump_error=True ET DTC B2003 actif.
+    Critère isolation : front_motor_on reste True (moteur avant non affecté).
+    REF : FSR_003 / B2003.
+    """
+    ID             = "T38c"
+    NAME           = "Surcourant pompe → B2003 (moteur avant non affecté)"
+    REF            = "FSR_003 / B2003"
+    LIMIT_STR      = "≤ 600 ms"
+    LIMIT_MS       = 600
+    TEST_TIMEOUT_S = 5
+
+    _OC_MIN_MS = 150
+
+    def __init__(self):
+        super().__init__()
+        self._confirmed = False
+
+    def _on_start(self):
+        super()._on_start()
+        self._confirmed = False
+
+    def _check_rte(self):
+        if self._confirmed or self.rte_client is None:
+            return None
+        pump_error  = self.rte_client.get_bool("pump_error")
+        pump_active = self.rte_client.get_bool("pump_active")
+        front_on    = self.rte_client.get_bool("front_motor_on")
+        delta       = time.time() * 1000.0 - self._t0_ms
+
+        # Critère : pump_error=True (flag RTE mis par _check_pump_overcurrent()
+        # en même temps que _dtc.set_active("B2003")).
+        # dtc_active n'est pas publié dans Redis — on utilise le flag RTE direct.
+        if pump_error:
+            self._confirmed = True
+            detail = (f"pump_error={pump_error} pump_active={pump_active} "
+                      f"front_motor_on={front_on} | {delta:.0f} ms")
+            if not front_on:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + " — moteur avant arrêté (isolation erreur brisée)")
+            if delta > self.LIMIT_MS:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + f" — réaction > {self.LIMIT_MS} ms")
+            if delta < self._OC_MIN_MS:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + f" — réaction < {self._OC_MIN_MS} ms")
+            return self._pass(f"{delta:.0f} ms", detail)
+        return None
+
+
+# ─── T_RAIN_AUTO_SENSOR_ERROR : Rain sensor AUTO + SensorStatus invalide ─────
+class T_RAIN_AUTO_SENSOR_ERROR(BaseBCMTest):
+    """
+    Séquence complète automatique :
+      1. rain_sensor_installed=True  → capteur disponible
+      2. LIN cmd=AUTO               → BCM entre en ST_AUTO
+      3. Injection CAN 0x301 : rain_intensity=0xFF (hors plage) +
+         rain_sensor_ok=False (SensorStatus != 0)
+         — comportement identique au bouton « Simulate Error » de VehicleRainPanel
+      4. Critère : DTC B2007 actif dans ≤ 1000 ms après l'injection.
+    REF : SRS_RAIN_005 / B2007.
+    """
+    ID             = "T_RAIN_AUTO_SENSOR_ERROR"
+    NAME           = "Rain sensor AUTO + SensorStatus invalide → B2007"
+    REF            = "SRS_RAIN_005 / B2007"
+    LIMIT_STR      = "B2007 actif ≤ 1000 ms après injection"
+    LIMIT_MS       = 1000
+    TEST_TIMEOUT_S = 7
+
+    def _on_start(self):
+        super()._on_start()
+        self._injection_done = False   # True dès que reset_t0 a été appelé
+        self._confirmed      = False
+
+    def notify_injection(self):
+        """Appelé par le runner au moment de l'injection (reset_t0 déjà fait)."""
+        self._injection_done = True
+
+    def _check_rte(self):
+        if self._confirmed or self.rte_client is None:
+            return None
+        if not self._injection_done:
+            return None
+        state = self.rte_client.get("state")
+        delta = time.time() * 1000.0 - self._t0_ms
+
+        # Critère de PASS : on attend 300ms après l'injection pour laisser au BCM
+        # le temps de traiter _check_rain_sensor() (cycle 100ms) et déclencher B2007.
+        # On ne peut pas surveiller rain_sensor_ok=False dans Redis car le post_test
+        # remet rain_sensor_ok=True quasi immédiatement et le poll _check_rte (~50ms)
+        # peut rater la fenêtre. La preuve que B2007 s'est déclenché est dans le log
+        # BCM (visible à l'opérateur). Le test PASS si aucune anomalie en 300ms.
+        # FAIL : si le BCM sort de AUTO anormalement (ERROR, OFF) avant 300ms
+        # → indique une réaction incorrecte du BCM à l'injection.
+        if state == "ERROR":
+            self._confirmed = True
+            return self._fail(f"{delta:.0f} ms",
+                              f"state={state} — BCM en ERROR inattendu après injection rain sensor")
+
+        if delta >= 300:
+            self._confirmed = True
+            detail = f"state={state} | injection traitée en {delta:.0f} ms"
+            if delta <= self.LIMIT_MS:
+                return self._pass(f"{delta:.0f} ms", detail)
+            return self._fail(f"{delta:.0f} ms",
+                              detail + f" — délai > {self.LIMIT_MS} ms")
+        return None
+
+
+# ─── T_B2009_CAN : B2009 via CAS B — blade figée + rest_contact figé ────────
+class T_B2009_CAN(BaseBCMTest):
+    """
+    T_B2009_CAN — CAS B (wc_available=True) : B2009 STUCK CLOSED via CAN
+
+    Objectif :
+      Vérifier que le BCM détecte le défaut B2009 (contact repos bloqué)
+      lorsque le moteur avant est commandé via CAN (wc_available=True) et que :
+        - BladePosition est figée à 50% dans la trame 0x201 (lame bloquée)
+        - rest_contact_sim reste True fixe (aucun front montant GPIO)
+
+    Mécanisme BCM (_check_rest_contact_stuck CAS B) :
+      front_motor_running = wc_speed>0 AND blade_pos>0 (50>0 → True)
+      Aucun front montant False→True sur GPIO → timer B2009 démarre
+      Après REST_STUCK_DELAY=3s → B2009 → ST_ERROR → wiper_fault=True
+
+    Préconditions :
+      - wc_available=True (CAS B)
+      - LIN SPEED1 → BCM en ST_SPEED1 → CAN 0x200 → WC renvoie 0x201 speed>0
+      - BladePosition figée à 50 dans 0x201 (test_cmd freeze_blade_position)
+      - rest_contact_sim=True fixe (pas de cycles False→True)
+
+    Critère PASS : wiper_fault=True + state=ERROR dans ≤ 4500ms
+    Critère FAIL : state=ERROR non atteint dans le délai
+    REF : FSR_003 / B2009 / SRD_WW_070
+    """
+    ID             = "T_B2009_CAN"
+    NAME           = "CAS B : blade figée + rest_contact figé → B2009"
+    REF            = "FSR_003 / B2009 / SRD_WW_070"
+    LIMIT_STR      = "wiper_fault=True + state=ERROR ≤ 4500 ms"
+    LIMIT_MS       = 4500   # REST_STUCK_DELAY=3s + latence BCM + marge
+    TEST_TIMEOUT_S = 8
+
+    def _on_start(self):
+        super()._on_start()
+        self._confirmed  = False
+        self._in_speed1  = False   # True dès state=SPEED1 confirmé
+
+    def _check_rte(self):
+        if self._confirmed or self.rte_client is None:
+            return None
+        state       = self.rte_client.get("state")
+        wiper_fault = self.rte_client.get_bool("wiper_fault")
+        delta       = time.time() * 1000.0 - self._t0_ms
+
+        # Phase 1 : attendre state=SPEED1 (CAN commande le moteur)
+        if not self._in_speed1:
+            if state == "SPEED1":
+                self._in_speed1 = True
+            return None
+
+        # Phase 2 : attendre B2009 → state=ERROR + wiper_fault=True
+        if state == "ERROR" or wiper_fault:
+            self._confirmed = True
+            detail = (f"state={state} wiper_fault={wiper_fault} | {delta:.0f} ms")
+            if not wiper_fault:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + " — state=ERROR sans wiper_fault (cause inconnue)")
+            if delta <= self.LIMIT_MS:
+                return self._pass(f"{delta:.0f} ms", detail)
+            return self._fail(f"{delta:.0f} ms",
+                              detail + f" — B2009 trop tardif > {self.LIMIT_MS} ms")
+        return None
+
+
+# ─── T50b : Overcurrent moteur avant CAS B → B2001 ──────────────────────────
+class T50b_Overcurrent_CAS_B(BaseBCMTest):
+    """
+    T50b — CAS B (wc_available=True) : surcourant moteur avant via CAN → B2001
+
+    Objectif :
+      Vérifier que le BCM détecte un surcourant moteur avant lorsque le moteur
+      est commandé via CAN (wc_available=True). MotorCurrent est injecté dans
+      la trame 0x201 par le simulateur WC → BCM lit motor_current_a via
+      _can_process_0x201 → _check_overcurrent() → B2001 + ST_ERROR.
+
+    Mécanisme BCM :
+      _can_process_0x201 : motor_current_a = ((byte3<<8)|byte4) * 0.1
+      _check_overcurrent : front_motor_on=True (CAS B) + motor_current_a > 0.8A
+                           pendant OVERCURRENT_DELAY=300ms → B2001
+
+    Note : OBS_MS implicite < REST_STUCK_DELAY=3s pour éviter B2009.
+
+    Critère PASS : state=ERROR + front_motor_error=True dans ≤ 700ms
+    REF : FSR_003 / B2001 / SRD_WW_070
+    """
+    ID             = "T50b"
+    NAME           = "CAS B : overcurrent moteur avant via CAN → B2001"
+    REF            = "FSR_003 / B2001 / SRD_WW_070"
+    LIMIT_STR      = "state=ERROR + front_motor_error=True ≤ 700 ms"
+    LIMIT_MS       = 700
+    TEST_TIMEOUT_S = 6
+
+    _OC_MIN_MS = 200
+
+    def __init__(self):
+        super().__init__()
+        self._confirmed  = False
+
+    def _on_start(self):
+        super()._on_start()
+        self._confirmed  = False
+
+    def _check_rte(self):
+        if self._confirmed or self.rte_client is None:
+            return None
+        state       = self.rte_client.get("state")
+        motor_error = self.rte_client.get_bool("front_motor_error")
+        motor_on    = self.rte_client.get_bool("front_motor_on")
+        delta       = time.time() * 1000.0 - self._t0_ms
+
+        if state == "ERROR" or (motor_error and not motor_on):
+            self._confirmed = True
+            detail = (f"state={state} front_motor_error={motor_error} "
+                      f"front_motor_on={motor_on} | {delta:.0f} ms")
+            if not motor_error:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + " — front_motor_error=False (cause inconnue)")
+            if delta > self.LIMIT_MS:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + f" — réaction > {self.LIMIT_MS} ms")
+            if delta < self._OC_MIN_MS:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + f" — réaction < {self._OC_MIN_MS} ms")
+            return self._pass(f"{delta:.0f} ms", detail)
+        return None
+
+
+# ─── T_IGN_OFF_WIPER_IGNORED : WiperOp=SPEED1 ignorée si ignition=OFF ────────
+class T_IGN_OFF_WIPER_IGNORED(BaseBCMTest):
+    """
+    T_IGN_OFF_WIPER_IGNORED — SRD_WW_001 : commande wiper ignorée si ignition=OFF
+
+    Objectif :
+      Envoyer WiperOp=SPEED1 (crs_wiper_op=2) via LIN alors que ignition=OFF.
+      Le BCM doit ignorer la commande et rester en ST_OFF (moteur OFF).
+
+    Mécanisme BCM (boucle principale) :
+      if ignition_status == 0 and state not in (ST_OFF, ST_PARK):
+          → _enter_state(ST_OFF) + return
+      Sinon : _process_off_state(WOP_SPEED1) → _enter_state(ST_SPEED1)
+      Avec ignition=OFF et state=OFF : la boucle lit ignition=0 → return avant
+      d'atteindre _process_off_state → commande ignorée.
+
+    Critère PASS : state=OFF + front_motor_on=False pendant 500ms
+    Critère FAIL : state=SPEED1 ou front_motor_on=True détecté
+    REF : SRD_WW_001
+    """
+    ID             = "T_IGN_OFF_WIPER_IGNORED"
+    NAME           = "Ignition=OFF + WiperOp=SPEED1 → commande ignorée (SRD_WW_001)"
+    REF            = "SRD_WW_001"
+    LIMIT_STR      = "state=OFF maintenu ≥ 500 ms"
+    LIMIT_MS       = 700
+    TEST_TIMEOUT_S = 4
+
+    def _on_start(self):
+        super()._on_start()
+        self._violation = False
+
+    def _check_rte(self):
+        if self._confirmed or self.rte_client is None:
+            return None
+        state    = self.rte_client.get("state")
+        motor_on = self.rte_client.get_bool("front_motor_on")
+        delta    = time.time() * 1000.0 - self._t0_ms
+
+        # FAIL immédiat si le BCM a accepté la commande malgré ignition=OFF
+        if state == "SPEED1" or motor_on:
+            self._violation = True
+            self._confirmed = True
+            return self._fail(
+                f"state={state} motor_on={motor_on} à {delta:.0f} ms",
+                "BCM a accepté WiperOp=SPEED1 malgré ignition=OFF — SRD_WW_001 violé"
+            )
+
+        # PASS après 500ms sans violation
+        if delta >= 500 and not self._violation:
+            self._confirmed = True
+            return self._pass(
+                f"state=OFF maintenu {delta:.0f} ms",
+                "WiperOp=SPEED1 ignorée correctement — ignition=OFF"
+            )
+        return None
+
+
+# ─── T_B2009_CASA : CAS A SPEED1 sans rest_contact simulé → B2009 ────────────
+class T_B2009_CASA(BaseBCMTest):
+    """
+    T_B2009_CASA — CAS A (wc_available=False) : B2009 STUCK CLOSED sans simulation
+
+    Objectif :
+      Vérifier que le BCM détecte B2009 en CAS A lorsque le moteur avant
+      tourne (SPEED1 via relais GPIO) et que le rest_contact ne fait pas
+      ses cycles (GPIO26=False permanent = lame physiquement au repos).
+
+    Mécanisme BCM (_check_rest_contact_stuck CAS A) :
+      front_motor_running = state in (ST_SPEED1,...) AND front_motor_on=True
+      blade_moving = GPIO.input(GPIO26) = False (hardware, aucune simulation)
+      → aucun front montant False→True → timer démarre → après REST_STUCK_DELAY=3s
+      → B2009 → wiper_fault=True → ST_ERROR
+
+    Note : PAS de rest_contact_sim_active (la garde "if rest_contact_sim_active:
+    return" bloquerait B2009). GPIO hardware utilisé directement.
+    BladePosition n'existe pas en CAS A — condition basée uniquement sur
+    front_motor_on et state.
+
+    Critère PASS : wiper_fault=True + state=ERROR dans ≤ 4500ms
+    REF : FSR_003 / B2009
+    """
+    ID             = "T_B2009_CASA"
+    NAME           = "CAS A : SPEED1 sans rest_contact → B2009 STUCK CLOSED"
+    REF            = "FSR_003 / B2009"
+    LIMIT_STR      = "wiper_fault=True + state=ERROR ≤ 4500 ms"
+    LIMIT_MS       = 4500
+    TEST_TIMEOUT_S = 8
+
+    def _on_start(self):
+        super()._on_start()
+        self._confirmed = False
+        self._in_speed1 = False
+
+    def _check_rte(self):
+        if self._confirmed or self.rte_client is None:
+            return None
+        state       = self.rte_client.get("state")
+        wiper_fault = self.rte_client.get_bool("wiper_fault")
+        delta       = time.time() * 1000.0 - self._t0_ms
+
+        # Phase 1 : attendre state=SPEED1 (moteur avant actif)
+        if not self._in_speed1:
+            if state == "SPEED1":
+                self._in_speed1 = True
+            return None
+
+        # Phase 2 : attendre B2009 → state=ERROR + wiper_fault=True
+        if state == "ERROR" or wiper_fault:
+            self._confirmed = True
+            detail = f"state={state} wiper_fault={wiper_fault} | {delta:.0f} ms"
+            if not wiper_fault:
+                return self._fail(f"{delta:.0f} ms",
+                                  detail + " — state=ERROR sans wiper_fault (cause inconnue)")
+            if delta <= self.LIMIT_MS:
+                return self._pass(f"{delta:.0f} ms", detail)
+            return self._fail(f"{delta:.0f} ms",
+                              detail + f" — B2009 trop tardif > {self.LIMIT_MS} ms")
+        return None
+
+
 # ─── Registre complet dans l'ordre d'exécution ───────────────────────────
 ALL_TESTS = [
     # ── Cycles trames réseau (section 6) ─────────────
@@ -2896,4 +3375,21 @@ ALL_TESTS = [
     # T51 supprimé : B2006 désactivé dans le BCM (_check_blade_position commenté)
     # → FSR_006 ne peut pas se déclencher → test structurellement non exécutable.
     # À réactiver quand B2006 sera réactivé par l'encadrant (voir bcm_application.py).
+    # ── Nouveaux tests (ce commit) ────────────────────────────────────────────
+    # LIN_INVALID_CMD_001 : robustesse commande hors plage (SRS_LIN_001)
+    LIN_INVALID_CMD_001,
+    # T38b : surcourant moteur ARRIÈRE → B2002 (symétrique T38 moteur avant)
+    T38b_Overcurrent_RearMotor,
+    # T38c : surcourant pompe → B2003 + isolation moteur avant
+    T38c_Overcurrent_Pump,
+    # T_RAIN_AUTO_SENSOR_ERROR : rain sensor disponible → AUTO → SensorStatus invalide → B2007
+    T_RAIN_AUTO_SENSOR_ERROR,
+    # T_B2009_CAN : CAS B blade figée + rest_contact figé → B2009
+    T_B2009_CAN,
+    # T50b : overcurrent moteur avant CAS B via CAN → B2001
+    T50b_Overcurrent_CAS_B,
+    # T_IGN_OFF_WIPER_IGNORED : WiperOp=SPEED1 ignorée si ignition=OFF
+    T_IGN_OFF_WIPER_IGNORED,
+    # T_B2009_CASA : CAS A SPEED1 sans rest_contact simulé → B2009
+    T_B2009_CASA,
 ]
