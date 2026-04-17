@@ -88,8 +88,8 @@ if (Test-Connection -ComputerName $SimHost -Count 2 -Quiet -ErrorAction Silently
 # ── [3] Redis TCP + PONG ──────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "[3] Redis $BcmHost`:$RedisPort..."
-$redisPort = Test-TCPPort -TargetHost $BcmHost -Port $RedisPort -Label "Redis TCP"
-if ($redisPort) {
+$redisTcpOk = Test-TCPPort -TargetHost $BcmHost -Port $RedisPort -Label "Redis TCP"
+if ($redisTcpOk) {
     # Verification PONG Redis via Python
     # Arguments passes en CLI pour eviter les problemes d interpolation PS dans le heredoc
     $redisScript = @"
