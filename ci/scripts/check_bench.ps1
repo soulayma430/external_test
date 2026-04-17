@@ -90,12 +90,14 @@ Write-Host ""
 Write-Host "[3] Redis $BcmHost`:$RedisPort..."
 $redisPort = Test-TCPPort -TargetHost $BcmHost -Port $RedisPort -Label "Redis TCP"
 if ($redisPort) {
-    # Vérification PONG Redis via Python
+    # Verification PONG Redis via Python
+    # Arguments passes en CLI pour eviter les problemes d interpolation PS dans le heredoc
     $redisScript = @"
-import sys
+import sys, redis
+host = sys.argv[1]
+port = int(sys.argv[2])
 try:
-    import redis
-    r = redis.Redis('$BcmHost', $RedisPort, socket_connect_timeout=3)
+    r = redis.Redis(host, port, socket_connect_timeout=3)
     r.ping()
     print('  [OK]   Redis PONG recu')
     sys.exit(0)
@@ -103,10 +105,10 @@ except ImportError:
     print('  [WARN] Module redis non installe - test PONG ignore')
     sys.exit(0)
 except Exception as e:
-    print(f'  [FAIL] Redis PONG: {e}')
+    print('  [FAIL] Redis PONG: ' + str(e))
     sys.exit(1)
 "@
-    $result = & $Python -c $redisScript 2>&1
+    $result = & $Python -c $redisScript $BcmHost $RedisPort 2>&1
     Write-Host $result
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "  Redis TCP ouvert mais PONG echoue - bcm_rte.py tourne-t-il ?"
