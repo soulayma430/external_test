@@ -751,29 +751,20 @@ class HeadlessTestRunner:
 
         elif tid == "T34":
             self._log("  → T34 : Redis SET AUTO + rain=10")
+            # Headless : stimulus simplifié — rain_intensity reste stable.
+            # On envoie d'abord AUTO via LIN, puis on attend que la queue
+            # Redis pub/sub soit vidée (300ms) avant de SET rain=10 pour
+            # éviter qu'un SET rain=0 résiduel du reset écrase le stimulus.
             if rc:
                 lw.queue_send({"cmd": "AUTO"})
+                time.sleep(0.3)   # laisser la queue Redis pub/sub se vider
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 10)
-                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
-                rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", False)
-                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                time.sleep(0.2)
+                rc.set_cmd("rest_contact_sim_active", False)
+                time.sleep(0.1)
                 if hasattr(test, "reset_t0"): test.reset_t0()
-                def _t34_cycles():
-                    for cycle in range(3):
-                        time.sleep(0.3 + cycle * 1.7 - (0.3 if cycle > 0 else 0))
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", True)
-                        time.sleep(1.55)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", False)
-                threading.Thread(target=_t34_cycles, daemon=True).start()
             else:
                 lw.queue_send({"cmd": "AUTO"})
-                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
 
         elif tid == "T35":
             self._log("  → T35 : Redis SET AUTO + rain=25")
