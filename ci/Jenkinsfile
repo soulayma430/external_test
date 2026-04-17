@@ -111,6 +111,9 @@ pipeline {
                 echo "DEPOT_DIR  = ${env.DEPOT_DIR}"
                 echo "VENV_DIR   = ${env.VENV_DIR}"
 
+                // Supprimer le venv existant pour forcer une recréation propre
+                bat "if exist \"${env.VENV_DIR}\" rmdir /s /q \"${env.VENV_DIR}\""
+
                 // Déléguer au script .bat dédié (gestion pip, requirements, logs)
                 bat """
                     SET PATH=C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311;C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Scripts;%PATH%
