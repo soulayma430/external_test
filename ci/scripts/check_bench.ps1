@@ -1,4 +1,4 @@
-# check_bench.ps1  —  Vérification connectivité banc WipeWash (Windows)
+# check_bench.ps1  -  Vérification connectivité banc WipeWash (Windows)
 # ============================================================
 # Appelé par Jenkins au stage "Bench Connectivity"
 #
@@ -6,11 +6,11 @@
 #   [1] Ping RPiBCM
 #   [2] Ping RPiSIM
 #   [3] Redis TCP + PONG
-#   [4] Port 5000 RPiBCM (bcm_tcp_broadcast — Motor/Vehicle RX)
-#   [5] Port 5555 RPiSIM (crslin.py — LIN TX/RX)
-#   [6] Port 5556 RPiBCM (bcm_tcp_pump — Pump data)
-#   [7] Port 5557 RPiSIM (bcm_tcp_can.py — CAN frames RX)
-#   [8] Port 5002 RPiSIM (bcmcan.py — CAN TX commandes)
+#   [4] Port 5000 RPiBCM (bcm_tcp_broadcast - Motor/Vehicle RX)
+#   [5] Port 5555 RPiSIM (crslin.py - LIN TX/RX)
+#   [6] Port 5556 RPiBCM (bcm_tcp_pump - Pump data)
+#   [7] Port 5557 RPiSIM (bcm_tcp_can.py - CAN frames RX)
+#   [8] Port 5002 RPiSIM (bcmcan.py - CAN TX commandes)
 #
 # Critiques (exit 2 si absent)  : Redis, port 5000 BCM
 # Non-bloquants (WARN seulement): Ping, ports SIM
@@ -71,7 +71,7 @@ Write-Host "[1] Ping RPiBCM ($BcmHost)..."
 if (Test-Connection -ComputerName $BcmHost -Count 2 -Quiet -ErrorAction SilentlyContinue) {
     Write-Host "  [OK]   Ping RPiBCM"
 } else {
-    Write-Warning "  [WARN] Ping RPiBCM echoue (l'ICMP peut etre bloque — non bloquant)"
+    Write-Warning "  [WARN] Ping RPiBCM echoue (l'ICMP peut etre bloque - non bloquant)"
     $warnings += "Ping BCM"
 }
 
@@ -100,7 +100,7 @@ try:
     print('  [OK]   Redis PONG recu')
     sys.exit(0)
 except ImportError:
-    print('  [WARN] Module redis non installe — test PONG ignore')
+    print('  [WARN] Module redis non installe - test PONG ignore')
     sys.exit(0)
 except Exception as e:
     print(f'  [FAIL] Redis PONG: {e}')
@@ -109,15 +109,15 @@ except Exception as e:
     $result = & $Python -c $redisScript 2>&1
     Write-Host $result
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "  Redis TCP ouvert mais PONG echoue — bcm_rte.py tourne-t-il ?"
+        Write-Warning "  Redis TCP ouvert mais PONG echoue - bcm_rte.py tourne-t-il ?"
         $criticalOk = $false
     }
 } else {
-    Write-Warning "  Redis inaccessible — bcm_rte.py doit tourner sur RPiBCM"
+    Write-Warning "  Redis inaccessible - bcm_rte.py doit tourner sur RPiBCM"
     $criticalOk = $false
 }
 
-# ── [4] Port 5000 RPiBCM (bcm_tcp_broadcast — source Motor/Vehicle data) ─────
+# ── [4] Port 5000 RPiBCM (bcm_tcp_broadcast - source Motor/Vehicle data) ─────
 Write-Host ""
 Write-Host "[4] Port 5000 RPiBCM (bcm_tcp_broadcast)..."
 if (-not (Test-TCPPort -TargetHost $BcmHost -Port 5000 -Label "BCM broadcast TCP")) {
@@ -126,35 +126,35 @@ if (-not (Test-TCPPort -TargetHost $BcmHost -Port 5000 -Label "BCM broadcast TCP
     $criticalOk = $false
 }
 
-# ── [5] Port 5555 RPiSIM (crslin.py — LIN bidirectionnel) ────────────────────
+# ── [5] Port 5555 RPiSIM (crslin.py - LIN bidirectionnel) ────────────────────
 Write-Host ""
 Write-Host "[5] Port 5555 RPiSIM (crslin.py LIN)..."
 if (-not (Test-TCPPort -TargetHost $SimHost -Port 5555 -Label "SIM LIN TCP")) {
-    Write-Warning "  crslin.py ne semble pas actif sur RPiSIM (port 5555) — non bloquant"
+    Write-Warning "  crslin.py ne semble pas actif sur RPiSIM (port 5555) - non bloquant"
     $warnings += "Port 5555 SIM"
 }
 
-# ── [6] Port 5556 RPiBCM (bcm_tcp_pump — données pompe) ──────────────────────
+# ── [6] Port 5556 RPiBCM (bcm_tcp_pump - données pompe) ──────────────────────
 Write-Host ""
 Write-Host "[6] Port 5556 RPiBCM (bcm_tcp_pump)..."
 if (-not (Test-TCPPort -TargetHost $BcmHost -Port 5556 -Label "BCM pump TCP")) {
-    Write-Warning "  bcm_tcp_pump.py ne semble pas actif (port 5556) — non bloquant"
+    Write-Warning "  bcm_tcp_pump.py ne semble pas actif (port 5556) - non bloquant"
     $warnings += "Port 5556 BCM"
 }
 
-# ── [7] Port 5557 RPiSIM (bcm_tcp_can.py — CAN frames RX) ────────────────────
+# ── [7] Port 5557 RPiSIM (bcm_tcp_can.py - CAN frames RX) ────────────────────
 Write-Host ""
 Write-Host "[7] Port 5557 RPiSIM (bcm_tcp_can.py CAN RX)..."
 if (-not (Test-TCPPort -TargetHost $SimHost -Port 5557 -Label "SIM CAN RX TCP")) {
-    Write-Warning "  bcm_tcp_can.py ne semble pas actif sur RPiSIM (port 5557) — non bloquant"
+    Write-Warning "  bcm_tcp_can.py ne semble pas actif sur RPiSIM (port 5557) - non bloquant"
     $warnings += "Port 5557 SIM"
 }
 
-# ── [8] Port 5002 RPiSIM (bcmcan.py — CAN TX commandes) ──────────────────────
+# ── [8] Port 5002 RPiSIM (bcmcan.py - CAN TX commandes) ──────────────────────
 Write-Host ""
 Write-Host "[8] Port 5002 RPiSIM (bcmcan.py CAN TX)..."
 if (-not (Test-TCPPort -TargetHost $SimHost -Port 5002 -Label "SIM CAN TX TCP")) {
-    Write-Warning "  bcmcan.py ne semble pas actif sur RPiSIM (port 5002) — non bloquant"
+    Write-Warning "  bcmcan.py ne semble pas actif sur RPiSIM (port 5002) - non bloquant"
     $warnings += "Port 5002 SIM"
 }
 
@@ -162,7 +162,7 @@ if (-not (Test-TCPPort -TargetHost $SimHost -Port 5002 -Label "SIM CAN TX TCP"))
 Write-Host ""
 Write-Host "============================================================"
 if ($criticalOk) {
-    Write-Host "  RESULTAT : BANC OK — services critiques (Redis + BCM:5000) repondent"
+    Write-Host "  RESULTAT : BANC OK - services critiques (Redis + BCM:5000) repondent"
     if ($warnings.Count -gt 0) {
         Write-Host "  Avertissements non-bloquants : $($warnings -join ', ')"
         Write-Host "  → Certains tests utilisant ces ports peuvent TIMEOUT"
@@ -171,7 +171,7 @@ if ($criticalOk) {
     Write-Host ""
     exit 0
 } else {
-    Write-Host "  RESULTAT : BANC INCOMPLET — services critiques manquants"
+    Write-Host "  RESULTAT : BANC INCOMPLET - services critiques manquants"
     Write-Host ""
     Write-Host "  Checklist RPiBCM ($BcmHost) :"
     Write-Host "    1. sudo systemctl status redis     (ou redis-server)"
