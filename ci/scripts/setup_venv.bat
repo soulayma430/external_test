@@ -1,8 +1,9 @@
 @echo off
 :: ============================================================
-::  setup_venv.bat  —  Création du venv Python pour Jenkins CI
+::  setup_venv.bat  - Creation du venv Python pour Jenkins CI
 ::  Usage : setup_venv.bat <workspace_path>
-::  Appelé par le Jenkinsfile au stage "Setup Python"
+::  NOTE : pas de blocs IF (...) multilignes - utilise GOTO
+::         car %PATH% contient des () qui cassent le parser cmd.
 :: ============================================================
 
 setlocal disabledelayedexpansion
@@ -17,59 +18,69 @@ SET REQ=%WORKSPACE%\ci\requirements-ci.txt
 
 echo.
 echo ====================================================
-echo   WipeWash CI — Setup venv Python
+echo   WipeWash CI - Setup venv Python
 echo   Workspace : %WORKSPACE%
 echo ====================================================
 echo.
 
-:: ── Vérifier Python 3.11+ ───────────────────────────────────────────────────
+:: -- Verifier Python ---------------------------------------------------------
 where python >nul 2>&1
-IF ERRORLEVEL 1 (
-    echo [ERREUR] Python introuvable dans le PATH.
-    echo Installez Python 3.11+ depuis https://python.org et cochez "Add to PATH".
-    exit /b 2
-)
+IF ERRORLEVEL 1 GOTO python_missing
 
 python --version
 FOR /F "tokens=2 delims= " %%V IN ('python --version 2^>^&1') DO SET PY_VER=%%V
 echo Python detecte : %PY_VER%
+GOTO create_venv
 
-:: ── Créer ou réutiliser le venv ──────────────────────────────────────────────
-IF NOT EXIST "%VENV%\Scripts\activate.bat" (
-    echo [SETUP] Creation du venv dans %VENV%...
-    python -m venv "%VENV%"
-    IF ERRORLEVEL 1 (
-        echo [ERREUR] Impossible de creer le venv.
-        exit /b 2
-    )
-    echo [SETUP] Venv cree.
-) ELSE (
-    echo [SETUP] Venv existant detecte — reutilisation.
-)
+:python_missing
+echo [ERREUR] Python introuvable dans le PATH.
+exit /b 2
 
-:: ── Mettre à jour pip ────────────────────────────────────────────────────────
+:: -- Creer le venv -----------------------------------------------------------
+:create_venv
+IF EXIST "%VENV%\Scripts\activate.bat" GOTO venv_exists
+
+echo [SETUP] Creation du venv dans %VENV%...
+python -m venv "%VENV%"
+IF ERRORLEVEL 1 GOTO venv_error
+echo [SETUP] Venv cree.
+GOTO upgrade_pip
+
+:venv_exists
+echo [SETUP] Venv existant detecte - reutilisation.
+GOTO upgrade_pip
+
+:venv_error
+echo [ERREUR] Impossible de creer le venv.
+exit /b 2
+
+:: -- Mettre a jour pip -------------------------------------------------------
+:upgrade_pip
 echo [SETUP] Mise a jour pip...
 "%PYTHON%" -m pip install --quiet --upgrade pip
-IF ERRORLEVEL 1 (
-    echo [WARN] Mise a jour pip echouee (non bloquant).
-)
+IF ERRORLEVEL 1 echo [WARN] Mise a jour pip echouee (non bloquant).
 
-:: ── Installer les dépendances ────────────────────────────────────────────────
-IF EXIST "%REQ%" (
-    echo [SETUP] Installation des dependances depuis %REQ%...
-    "%PIP%" install --quiet -r "%REQ%"
-    IF ERRORLEVEL 1 (
-        echo [ERREUR] Installation des dependances echouee.
-        exit /b 2
-    )
-    echo [SETUP] Dependances installees.
-) ELSE (
-    echo [WARN] requirements-ci.txt introuvable : %REQ%
-    echo [SETUP] Installation minimale (redis + jinja2)...
-    "%PIP%" install --quiet redis jinja2 matplotlib
-)
+:: -- Installer les dependances -----------------------------------------------
+IF NOT EXIST "%REQ%" GOTO install_minimal
 
-:: ── Vérification finale ──────────────────────────────────────────────────────
+echo [SETUP] Installation des dependances depuis %REQ%...
+"%PIP%" install --quiet -r "%REQ%"
+IF ERRORLEVEL 1 GOTO deps_error
+echo [SETUP] Dependances installees.
+GOTO verify
+
+:install_minimal
+echo [WARN] requirements-ci.txt introuvable : %REQ%
+echo [SETUP] Installation minimale (redis + jinja2 + matplotlib)...
+"%PIP%" install --quiet redis jinja2 matplotlib
+GOTO verify
+
+:deps_error
+echo [ERREUR] Installation des dependances echouee.
+exit /b 2
+
+:: -- Verification finale -----------------------------------------------------
+:verify
 echo.
 echo [SETUP] Verification des modules critiques...
 "%PYTHON%" -c "import redis; print('  redis     OK')"
