@@ -751,18 +751,37 @@ class HeadlessTestRunner:
 
         elif tid == "T34":
             self._log("  → T34 : Redis SET AUTO + rain=10")
-            # Headless : stimulus simplifié — rain_intensity reste stable.
-            # On envoie d'abord AUTO via LIN, puis on attend que la queue
-            # Redis pub/sub soit vidée (300ms) avant de SET rain=10 pour
-            # éviter qu'un SET rain=0 résiduel du reset écrase le stimulus.
+            # Headless : même logique que la GUI.
+            # rest_contact_sim_active=True est REQUIS — le BCM remet
+            # rain_intensity=0 tout seul après le premier cycle de lame
+            # si rest_contact_sim_active=False.
+            # Séquence :
+            #   1. LIN AUTO + rain=10 + rest_contact_sim_active=True
+            #   2. Attente que _check_rte détecte AUTO+Speed1 (tick 200ms)
+            #   3. rest_contact_sim pulse True→False pour simuler cycle lame
             if rc:
-                lw.queue_send({"cmd": "AUTO"})
-                time.sleep(0.3)   # laisser la queue Redis pub/sub se vider
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 10)
-                rc.set_cmd("rest_contact_sim_active", False)
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", False)
+                lw.queue_send({"cmd": "AUTO"})
                 time.sleep(0.1)
                 if hasattr(test, "reset_t0"): test.reset_t0()
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                def _t34_pulse():
+                    # Pulse rest_contact_sim True→False toutes les 1.5s
+                    # pendant la durée du test (8s max) pour maintenir
+                    # rain_intensity actif dans le BCM
+                    for _ in range(5):
+                        time.sleep(1.5)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        if self._current is None: return
+                        rc.set_cmd("rest_contact_sim", True)
+                        time.sleep(0.1)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                threading.Thread(target=_t34_pulse, daemon=True).start()
             else:
                 lw.queue_send({"cmd": "AUTO"})
 
