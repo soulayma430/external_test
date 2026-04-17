@@ -945,16 +945,23 @@ class HeadlessTestRunner:
         """Remet le BCM dans un état stable (ignition ON, pas de timeout actif)."""
         rc = self._rte_client
         mw = self._motor_w
+        lw = self._lin_w
         if rc:
-            rc.set_cmd("wc_timeout_active",  False)
-            rc.set_cmd("lin_timeout_active", False)
-            rc.set_cmd("crs_wiper_op",       0)
-            rc.set_cmd("ignition_status",    1)
-            rc.set_cmd("wc_available",       False)
+            rc.set_cmd("wc_timeout_active",    False)
+            rc.set_cmd("lin_timeout_active",   False)
+            rc.set_cmd("crs_wiper_op",         0)
+            rc.set_cmd("ignition_status",      1)
+            rc.set_cmd("wc_available",         False)
+            rc.set_cmd("rain_intensity",       0)
+            rc.set_cmd("rain_sensor_installed", False)
+            rc.set_cmd("rest_contact_sim_active", False)
+            rc.set_cmd("rest_contact_sim",     False)
         if mw:
             mw.queue_send({"ignition_status": "ON",
                            "reverse_gear": 0,
                            "vehicle_speed": 0})
+        if lw:
+            lw.queue_send({"cmd": "OFF"})
 
     # ── Boucle principale ─────────────────────────────────────────────────
     def run(self, test_classes: list, global_timeout_s: float = 600.0) -> list:
@@ -995,7 +1002,7 @@ class HeadlessTestRunner:
 
             # ── Reset état BCM ────────────────────────────────────────────
             self._reset_bcm_state()
-            time.sleep(0.3)   # laisser Redis + BCM traiter les commandes
+            time.sleep(1.0)   # laisser Redis + BCM traiter les commandes (1s minimum)
 
             # ── Démarrer le test ──────────────────────────────────────────
             self._done_ev.clear()
