@@ -402,85 +402,117 @@ class HeadlessTestRunner:
 
     # ── Stimuli avant test (port headless de test_runner._pre_test) ──────
     def _pre_test(self, test: BaseTest):
-        """Port headless de test_runner._pre_test() — QTimer.singleShot → time.sleep + appel direct."""
-        tid = test.ID
-        rc  = self._rte_client
-        lw  = self._lin_w
-        mw  = self._motor_w
-
+        # ── Tests réseau ──────────────────────────────────────────────────
         if tid == "T10":
             self._log("  → stop_lin_tx")
             lw.queue_send({"test_cmd": "stop_lin_tx"})
-
         elif tid == "T11":
             self._log("  → stop_can_tx")
-            if rc: rc.set_cmd("wc_available", True)
-            time.sleep(0.3)
-            mw.queue_send({"test_cmd": "stop_can_tx"})
-
+            # wc_available=True obligatoire : sans CAS B actif, le BCM n'observe
+            # pas le timeout CAN 0x201 et ne lève jamais wc_timeout_active=True.
+            # On active wc_available, on attend 300ms que bcmcan envoie au moins
+            # une trame 0x201 pour initialiser t_last_wiper_status, puis on coupe.
+            if rc:
+                rc.set_cmd("wc_available", True)
+            threading.Thread(target=lambda: (time.sleep(300/1000.0), lambda: mw.queue_send( {"test_cmd": "stop_can_tx"})), daemon=True).start()
         elif tid == "T40":
             self._log("  → T40 : TOUCH — 1 cycle puis retour OFF (no repeat)")
+            # Même logique que l'ancien T20, mais T40 vérifie en plus :
+            # 1) state=OFF après le cycle  2) cycle_count==1 (pas de répétition)
             if rc:
                 rc.set_cmd("rest_contact_sim_active", False)
                 rc.set_cmd("rest_contact_sim",        False)
                 rc.set_cmd("crs_wiper_op", 0)
             lw.queue_send({"cmd": "TOUCH"})
-            time.sleep(0.2)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            if rc:
-                rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", True)
-                rc.set_cmd("crs_wiper_op", 1)
-            time.sleep(1.5)
-            if rc: rc.set_cmd("rest_contact_sim", False)
+            def _send_t40():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                if rc:
+                    rc.set_cmd("rest_contact_sim_active", True)
+                    rc.set_cmd("rest_contact_sim", True)   # lame EN MOUVEMENT
+                    rc.set_cmd("crs_wiper_op", 1)          # WOP_TOUCH
+                # Retour repos à 1500ms → fin du 1er (et unique) cycle
+                threading.Thread(target=lambda: (time.sleep(1500/1000.0), lambda: rc and rc.set_cmd("rest_contact_sim", False)), daemon=True).start()
+                # Stick maintenu en TOUCH encore 2s après le cycle pour vérifier
+                # qu'aucun 2e cycle ne démarre (T40 vérifie cycle_count==1)
+            threading.Thread(target=lambda: (time.sleep(200/1000.0), _send_t40), daemon=True).start()
 
         elif tid == "T43":
             self._log("  → T43 : SPEED1 + reverse_gear=True (rear intermittent)")
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 1, "vehicle_speed": 0})
+            # IMPORTANT : envoyer ignition ON + reverse via TCP au simulateur
+            # en plus du SET Redis vers le BCM. Sans ça, bcmcan envoie CAN 0x300
+            # avec ignition=0 toutes les 200ms → écrase Redis → boucle OFF→SPEED1.
+            mw.queue_send({
+                "ignition_status": "ON", "reverse_gear": 1, "vehicle_speed": 0
+            })
             lw.queue_send({"cmd": "SPEED1"})
             if rc:
+                # Cycling 2500ms : empêche B2009 sans interférer avec le timer
+                # arrière BCM (REVERSE_REAR_PERIOD=1700ms).
+                # On choisit 2500ms > 1700ms pour ne jamais coïncider avec
+                # les impulsions OFF du moteur arrière.
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", True)
                 rc.set_cmd("crs_wiper_op", 2)
                 rc.set_cmd("reverse_gear", True)
+
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                def _cycle_t43_loop():
-                    for _ in range(8):
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        if rc:
-                            rc.set_cmd("rest_contact_sim", False)
-                            time.sleep(0.1)
-                            if getattr(self, "_rc_gen", 0) == _gen:
-                                rc.set_cmd("rest_contact_sim", True)
-                        time.sleep(2.4)
-                threading.Thread(target=_cycle_t43_loop, daemon=True).start()
-            time.sleep(0.5)
-            if hasattr(test, "reset_t0"): test.reset_t0()
+                _gen_t43 = self._rc_gen
+
+                def _rc_cycle_t43():
+                    if self._rc_gen != _gen_t43:
+                        return
+                    if rc:
+                        rc.set_cmd("rest_contact_sim", False)
+                        threading.Thread(target=lambda: (time.sleep(100/1000.0), lambda: rc and self._rc_gen == _gen_t43 and rc.set_cmd("rest_contact_sim", True)), daemon=True).start()
+
+                # Cycle toutes les 2500ms (> REVERSE_REAR_PERIOD=1700ms)
+                for _d in range(2500, 20000, 2500):
+                    threading.Thread(target=lambda: (time.sleep(_d/1000.0), _rc_cycle_t43), daemon=True).start()
+
+            def _t43_start():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+            threading.Thread(target=lambda: (time.sleep(500/1000.0), _t43_start), daemon=True).start()
 
         elif tid == "T45":
             self._log("  → T45 : SPEED1 puis ignition=0 (blade return to rest)")
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            mw.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
             lw.queue_send({"cmd": "SPEED1"})
             if rc:
+                # Activer simulation rest_contact : lame EN MOUVEMENT (True)
+                # Sans ça, _read_rest_contact() retourne False (GPIO indispo)
+                # → BCM voit "lame déjà au repos" → ST_OFF direct → ST_PARK jamais déclenché
                 rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", True)
+                rc.set_cmd("rest_contact_sim", True)   # lame EN MOUVEMENT
                 rc.set_cmd("crs_wiper_op", 2)
-                time.sleep(0.4)
-                if hasattr(test, "reset_t0"): test.reset_t0()
-                lw.queue_send({"cmd": "OFF"})
-                rc.set_cmd("ignition_status", 0)
-                mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
-                time.sleep(1.5)
-                rc.set_cmd("rest_contact_sim", False)
+                def _do_ignoff():
+                    if hasattr(test, "reset_t0"): test.reset_t0()
+                    # Envoyer LIN OFF AVANT ignition=0 pour éviter la boucle
+                    # SPEED1→OFF→SPEED1 : sans ça le LIN worker continue à émettre
+                    # SPEED1 et le BCM redémarre indéfiniment après ST_OFF.
+                    lw.queue_send({"cmd": "OFF"})
+                    rc.set_cmd("ignition_status", 0)
+                    # Sync simulateur CAN 0x300
+                    mw.queue_send(
+                        {"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+                    # Simuler retour lame au repos après 1500ms :
+                    # ST_PARK maintient le moteur jusqu'au contact repos (False).
+                    # Sans cette transition True→False, ST_PARK attend jusqu'au
+                    # timeout (5s) au lieu de détecter le repos normalement.
+                    threading.Thread(target=lambda: (time.sleep(1500/1000.0), lambda: rc and rc.set_cmd("rest_contact_sim", False)), daemon=True).start()
+                threading.Thread(target=lambda: (time.sleep(400/1000.0), _do_ignoff), daemon=True).start()
             else:
-                time.sleep(0.4)
-                if hasattr(test, "reset_t0"): test.reset_t0()
-                lw.queue_send({"cmd": "OFF"})
-                mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+                def _do_ignoff_fallback():
+                    if hasattr(test, "reset_t0"): test.reset_t0()
+                    lw.queue_send({"cmd": "OFF"})
+                    mw.queue_send(
+                        {"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+                threading.Thread(target=lambda: (time.sleep(400/1000.0), _do_ignoff_fallback), daemon=True).start()
 
         elif tid == "TC_LIN_002":
-            self._log("  → TC_LIN_002 : geler AliveCounter LIN")
+            self._log("  → TC_LIN_002 : geler AliveCounter LIN (anti-replay)")
             if hasattr(test, "reset_t0"): test.reset_t0()
             lw.queue_send({"test_cmd": "freeze_alive_counter"})
 
@@ -495,25 +527,39 @@ class HeadlessTestRunner:
             lw.queue_send({"test_cmd": "crs_internal_fault"})
 
         elif tid == "TC_CAN_003":
-            self._log("  → TC_CAN_003 : geler AliveCounter CAN 0x200")
+            self._log("  → TC_CAN_003 : geler AliveCounter CAN 0x200 (BCM→WC)")
+            # Incrémenter _rc_gen pour invalider tout QTimer résiduel du test précédent
             self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-            _gen = self._rc_gen
             lw.queue_send({"cmd": "SPEED1"})
             if rc:
-                rc.set_cmd("wc_available", False)
+                # Cycle wc_available False→True avec délai 500ms pour que le simulateur
+                # réponde avec au moins 1 trame 0x201 valide avant le setup.
+                # Sans ça, t_last_wiper_status périmé → B2005 immédiat → OFF.
+                rc.set_cmd("wc_available",   False)
+                # FIX TC_CAN_003 : s'assurer que alive_tx_frozen est remis à False
+                # avant le test (résidu éventuel d'un test précédent interrompu)
                 rc.set_cmd("alive_tx_frozen", False)
-                time.sleep(0.5)
-                if getattr(self, "_rc_gen", 0) != _gen: return
-                rc.set_cmd("lin_op_locked",  True)
-                rc.set_cmd("wc_available",   True)
-                rc.set_cmd("wc_alive_fault", False)
-                rc.set_cmd("crs_wiper_op",   2)
-                time.sleep(0.6)
-                if getattr(self, "_rc_gen", 0) != _gen: return
-                if hasattr(test, "reset_t0"): test.reset_t0()
-                rc.set_cmd("alive_tx_frozen", True)
-                mw.queue_send({"test_cmd": "freeze_can_alive"})
-                if hasattr(test, "_stimulus_sent"): test._stimulus_sent = True
+                def _can003_init():
+                    if not rc:
+                        return
+                    rc.set_cmd("lin_op_locked",  True)
+                    rc.set_cmd("wc_available",   True)
+                    rc.set_cmd("wc_alive_fault", False)
+                    rc.set_cmd("crs_wiper_op",   2)
+                    def _can003_freeze():
+                        if hasattr(test, "reset_t0"): test.reset_t0()
+                        # FIX TC_CAN_003 : geler l'AliveCounter_TX côté BCM EN PREMIER
+                        # (bcm_protocol._build_wiper_command arrête d'incrémenter wc_can_alive_tx)
+                        # PUIS envoyer freeze_can_alive au simulateur (activation de la détection WC).
+                        # Sans ce fix, le BCM continuait d'incrémenter normalement → WC simulé
+                        # ne voyait jamais deux trames consécutives avec le même counter → timeout.
+                        if rc:
+                            rc.set_cmd("alive_tx_frozen", True)
+                        mw.queue_send({"test_cmd": "freeze_can_alive"})
+                        if hasattr(test, "_stimulus_sent"):
+                            test._stimulus_sent = True
+                    threading.Thread(target=lambda: (time.sleep(600/1000.0), _can003_freeze), daemon=True).start()
+                threading.Thread(target=lambda: (time.sleep(500/1000.0), _can003_init), daemon=True).start()
 
         elif tid == "TC_GEN_001":
             self._log("  → TC_GEN_001 : ignition=0 puis ON + SPEED1")
@@ -521,431 +567,731 @@ class HeadlessTestRunner:
                 rc.set_cmd("wc_available", False)
                 rc.set_cmd("ignition_status", 0)
                 rc.set_cmd("crs_wiper_op", 0)
-            mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
-            time.sleep(1.0)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
-            lw.queue_send({"cmd": "SPEED1"})
-            if rc: rc.set_cmd("ignition_status", 1)
+            # TCP vers bcmcan : envoyer ignition=OFF pour que CAN 0x300
+            # émette ignition=0 et n'écrase pas Redis toutes les 200ms.
+            mw.queue_send(
+                {"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+            # 1000ms : assure 5 trames CAN 0x300 avec ignition=0 avant le stimulus.
+            # Sans ça, bcmcan envoie encore ignition=2 → BCM ignore SPEED1.
+            def _tc_gen001_start():
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                mw.queue_send(
+                    {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+                lw.queue_send({"cmd": "SPEED1"})
+                if rc:
+                    rc.set_cmd("ignition_status", 1)
+            threading.Thread(target=lambda: (time.sleep(1000/1000.0), _tc_gen001_start), daemon=True).start()
 
         elif tid == "TC_SPD_001":
-            self._log("  → TC_SPD_001 : LIN SPEED1 continu 5s")
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            self._log("  → TC_SPD_001 : LIN SPEED1 continu 5 s")
+            mw.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
             lw.queue_send({"cmd": "SPEED1"})
             if rc:
+                # Activer simulation rest_contact pour éviter B2009
+                # (sans hardware GPIO, BCM détecte STUCK CLOSED après 3s)
+                # Cycle : lame EN MOUVEMENT 1600ms / AU REPOS 100ms — simule un cycle complet
                 rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", True)
+                rc.set_cmd("rest_contact_sim", True)  # lame en mouvement
+
+                # Génération : incrémentée à chaque test pour annuler les QTimers résiduels
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 _gen = self._rc_gen
-                def _spd_cycle():
-                    for _delay in range(1700, 8500, 1700):
-                        time.sleep(1.6)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
+
+                def _rc_rest():
+                    """Passer brièvement au repos (False) puis reprendre mouvement (True)."""
+                    if self._rc_gen != _gen:
+                        return  # QTimer résiduel d'un test précédent — ignorer
+                    if rc:
                         rc.set_cmd("rest_contact_sim", False)
-                        time.sleep(0.1)
-                        if getattr(self, "_rc_gen", 0) == _gen:
-                            rc.set_cmd("rest_contact_sim", True)
-                threading.Thread(target=_spd_cycle, daemon=True).start()
-            time.sleep(0.3)
-            if hasattr(test, "reset_t0"): test.reset_t0()
+                    threading.Thread(target=lambda: (time.sleep(100/1000.0), lambda: rc and self._rc_gen == _gen and rc.set_cmd("rest_contact_sim", True)), daemon=True).start()
+
+                # Cycle toutes les 1700ms pendant 8s (couvre la fenêtre d'observation 5s + marge)
+                for _i, _delay in enumerate(range(1700, 8500, 1700)):
+                    threading.Thread(target=lambda: (time.sleep(_delay/1000.0), _rc_rest), daemon=True).start()
+
+            if hasattr(test, "reset_t0"):
+                threading.Thread(target=lambda: (time.sleep(300/1000.0), lambda: test.reset_t0()), daemon=True).start()
 
         elif tid == "TC_AUTO_004":
             self._log("  → TC_AUTO_004 : AUTO avec rain_sensor_installed=False")
             if hasattr(test, "reset_t0"): test.reset_t0()
             if rc:
                 rc.set_cmd("rain_sensor_installed", False)
-                rc.set_cmd("crs_wiper_op", 4)
+                rc.set_cmd("crs_wiper_op", 4)   # WOP_AUTO
             lw.queue_send({"cmd": "AUTO"})
 
         elif tid == "TC_FSR_008":
             self._log("  → TC_FSR_008 : LIN SPEED1 puis watchdog trigger")
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            mw.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
             lw.queue_send({"cmd": "SPEED1"})
             if rc:
-                time.sleep(0.4)
-                if hasattr(test, "reset_t0"): test.reset_t0()
-                rc.set_cmd("watchdog_test_trigger", True)
+                def _fsr008_trigger():
+                    if hasattr(test, "reset_t0"): test.reset_t0()
+                    rc.set_cmd("watchdog_test_trigger", True)
+                threading.Thread(target=lambda: (time.sleep(400/1000.0), _fsr008_trigger), daemon=True).start()
             else:
                 if hasattr(test, "reset_t0"): test.reset_t0()
 
         elif tid == "TC_FSR_010":
-            self._log("  → TC_FSR_010 : CRC corrompu sur 0x201")
+            self._log("  → TC_FSR_010 : CRC corrompu sur 0x201 (émission autonome)")
             if rc:
                 rc.set_cmd("wc_timeout_active", False)
                 rc.set_cmd("wc_crc_fault",      False)
                 rc.set_cmd("wc_available",      False)
+                # Verrouiller crs_wiper_op contre LIN 0x16 : empêche le LIN worker
+                # d'écraser avec WiperOp=OFF et de faire chuter wc_available
                 rc.set_cmd("lin_op_locked", True)
             lw.queue_send({"cmd": "SPEED1"})
-            time.sleep(0.4)
-            if rc: rc.set_cmd("wc_available", False); rc.set_cmd("wc_crc_fault", False)
-            time.sleep(0.4)
-            if rc:
-                rc.set_cmd("wc_available",  True)
-                rc.set_cmd("crs_wiper_op",  2)
-            time.sleep(0.6)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            mw.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 20})
-            if hasattr(test, "_stimulus_sent"): test._stimulus_sent = True
+
+            def _fsr010_activate():
+                if rc:
+                    # FIX : re-asserter wc_available=False à mi-chemin pour écraser
+                    # tout résidu de commande Redis du cleanup TC_CAN_003 qui pourrait
+                    # arriver en retard et écraser notre wc_available=True à venir.
+                    rc.set_cmd("wc_available",  False)
+                    rc.set_cmd("wc_crc_fault",  False)
+                def _fsr010_set_available():
+                    if rc:
+                        rc.set_cmd("wc_available",  True)
+                        rc.set_cmd("crs_wiper_op",  2)
+                    def _fsr010_corrupt():
+                        if hasattr(test, "reset_t0"): test.reset_t0()
+                        mw.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 20})
+                        # Autoriser _check_rte() à observer seulement maintenant
+                        if hasattr(test, "_stimulus_sent"):
+                            test._stimulus_sent = True
+                    threading.Thread(target=lambda: (time.sleep(600/1000.0), _fsr010_corrupt), daemon=True).start()
+                # FIX : délai 400ms entre le re-assert False et le set True
+                # pour laisser tous les Redis en transit du cleanup précédent arriver
+                threading.Thread(target=lambda: (time.sleep(400/1000.0), _fsr010_set_available), daemon=True).start()
+
+            # FIX : délai porté à 400ms (était 600ms) — la 2e étape ajoute 400ms supplémentaires
+            # Total jusqu'au corrupt : 400ms + 400ms + 600ms = 1400ms (était 600ms+600ms=1200ms)
+            threading.Thread(target=lambda: (time.sleep(400/1000.0), _fsr010_activate), daemon=True).start()
 
         elif tid == "TC_COM_001":
-            self._log("  → TC_COM_001 : mesure baudrate BREAK LIN")
+            self._log("  → TC_COM_001 : mesure physique baudrate BREAK LIN")
             if hasattr(test, "reset_t0"): test.reset_t0()
+            # Pas de stimulus actif : crslin mesure automatiquement la duree
+            # du BREAK a chaque trame LIN recue, accumule 5 mesures, puis
+            # envoie lin_baud_measured via TCP. Le LIN schedule tourne deja.
 
+        # ── TC_LIN_CS : Checksum LIN 0x16 invalide (v2 — ordre corrigé) ──
         elif tid == "TC_LIN_CS":
-            self._log("  → TC_LIN_CS : corruption checksum AVANT SPEED1")
+            self._log("  → TC_LIN_CS : corruption checksum AVANT commande SPEED1")
+            # ── Préconditions ──────────────────────────────────────────────
+            # 1. BCM en OFF, ignition=ON, crs_wiper_op=0
+            # 2. lin_checksum_fault=False (effacer résidu éventuel)
+            # 3. Activer corruption crslin EN PREMIER
+            # 4. Puis envoyer cmd=SPEED1 → crslin émet WOP=2 AVEC checksum corrompu
+            #    Le BCM reçoit la trame, détecte rx_cs != calc_cs → rejette
+            #    → lin_checksum_fault=True SANS modifier crs_wiper_op
+            # ── Ordre temporel ─────────────────────────────────────────────
+            # t=0   : reset lin_checksum_fault + crs_wiper_op=0
+            # t=200 : corrupt_lin_checksum → corruption active dans crslin
+            #         _stimulus_sent=True + reset_t0() → chrono démarre
+            # t=300 : LIN cmd="SPEED1" → trame corrompue envoyée au BCM
+            # Durée observation : MAX_OBS_MS=1200ms < LIN_TIMEOUT(2000ms)
             if rc:
                 rc.set_cmd("lin_checksum_fault", False)
                 rc.set_cmd("crs_wiper_op",       0)
                 rc.set_cmd("lin_timeout_active", False)
-            time.sleep(0.2)
-            lw.queue_send({"test_cmd": "corrupt_lin_checksum"})
-            if hasattr(test, "_stimulus_sent"): test._stimulus_sent = True
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            time.sleep(0.1)
-            lw.queue_send({"cmd": "SPEED1"})
 
+            def _tc_lin_cs_activate():
+                # Étape 1 : activer corruption côté simulateur
+                lw.queue_send({"test_cmd": "corrupt_lin_checksum"})
+                # Étape 2 : armer l'observation dans l'objet test
+                if hasattr(test, "_stimulus_sent"):
+                    test._stimulus_sent = True
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # Étape 3 : envoyer SPEED1 — crslin va émettre WOP=2
+                # avec checksum XOR 0xFF → BCM doit rejeter
+                threading.Thread(target=lambda: (time.sleep(100/1000.0), lambda: lw.queue_send({"cmd": "SPEED1"})), daemon=True).start()
+
+            threading.Thread(target=lambda: (time.sleep(200/1000.0), _tc_lin_cs_activate), daemon=True).start()
+
+
+        # ── T44 : REAR_WIPE isolé (op=7) ─────────────────────────────────
         elif tid == "T44":
-            self._log("  → T44 : REAR_WIPE op=7 (once) → OFF à 2000ms")
+            self._log("  → T44 : REAR_WIPE op=7 (une seule fois) → OFF à 2000ms")
+            # Préconditions :
+            #  - rear_wiper_available=True  (inscriptible — REDIS_WRITABLE_KEYS)
+            #  - wc_available=False         (Cas A)
+            #  - reverse_gear=False         (éviter mode intermittent T43)
+            #  - ignition=ON
+            # PAS de rest_contact_sim : moteur arrière sans capteur fin de course.
+            # PAS de _maintain_op7 : WOP=7 est envoyé UNE SEULE FOIS via LIN.
+            # Le BCM maintient REAR_WIPE par sa propre logique tant que
+            # crs_wiper_op=7 est dans le RTE (mis à jour par _lin_poll_0x16).
+            # À t=2000ms (> CYCLE_MS=1700ms), cmd="OFF" est envoyé → crslin
+            # émet WOP=0 → _lin_poll_0x16 écrit crs_wiper_op=0 → BCM sort.
             if rc:
                 rc.set_cmd("rear_wiper_available", True)
                 rc.set_cmd("wc_available",         False)
                 rc.set_cmd("reverse_gear",         False)
                 rc.set_cmd("ignition_status",      1)
                 rc.set_cmd("crs_wiper_op",         0)
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
-            time.sleep(0.3)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            lw.queue_send({"cmd": "REAR_WIPE"})
-            threading.Thread(
-                target=lambda: (time.sleep(2.0), lw.queue_send({"cmd": "OFF"})),
-                daemon=True).start()
+            mw.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
 
+            def _t44_start():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # Stimulus unique : LIN cmd="REAR_WIPE" → crslin émet WOP=7
+                # Le BCM lit WiperOp=7 via _lin_poll_0x16 → entre en REAR_WIPE
+                lw.queue_send({"cmd": "REAR_WIPE"})
+
+                # À t=2000ms (après au moins 1 cycle de 1700ms) : relâcher le levier
+                # cmd="OFF" → crslin émet WOP=0 → BCM sort de REAR_WIPE
+                threading.Thread(target=lambda: (time.sleep(2000/1000.0), lambda: lw.queue_send({"cmd": "OFF"})), daemon=True).start()
+
+            # Délai 300ms : BCM confirme rear_wiper_available=True et ignition=ON
+            threading.Thread(target=lambda: (time.sleep(300/1000.0), _t44_start), daemon=True).start()
+
+        # ── T50 : Cas B — wc_available=True → H-Bridge GPIO non commandé ─
         elif tid == "T50":
-            self._log("  → T50 : Cas B wc_available=True + SPEED1 via CAN")
+            self._log("  → T50 : Cas B wc_available=True + LIN SPEED1 → CAN 0x200, pas RL2=LOW")
+            # Préconditions :
+            #  - wc_available=True   (Cas B — force le blocage GPIO)
+            #  - lin_op_locked=True  : verrouille crs_wiper_op contre LIN 0x16
+            #  - ignition=ON
+            # PAS de rest_contact_sim : la garde "if rest_contact_sim_active: return"
+            # dans _check_rest_contact_stuck() désactiverait B2009 artificiellement.
+            # PAS de blade_cycling : incohérent avec rest_contact qui resterait fixe
+            # (si lame ne bouge pas physiquement, les deux capteurs sont fixes).
+            # L'observation dure OBS_MS=2000ms < REST_STUCK_DELAY=3000ms :
+            # B2009 ne peut pas se déclencher dans cette fenêtre temporelle.
             if rc:
                 rc.set_cmd("wc_available",  True)
                 rc.set_cmd("lin_op_locked", True)
                 rc.set_cmd("crs_wiper_op",  0)
                 rc.set_cmd("ignition_status", 1)
-                rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", False)
-                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                def _t50_cycles():
-                    for cycle in range(6):
-                        time.sleep(0.6 + cycle * 1.5 - (0.6 if cycle > 0 else 0))
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", True)
-                        time.sleep(1.35)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", False)
-                threading.Thread(target=_t50_cycles, daemon=True).start()
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
-            time.sleep(0.4)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            if self._sim_client and self._sim_client.is_connected():
-                self._sim_client.send({"test_cmd": "start_blade_cycling", "period_ms": 1500})
-            lw.queue_send({"cmd": "SPEED1"})
-            if rc: rc.set_cmd("crs_wiper_op", 2)
+            mw.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
 
+            def _t50_start():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                lw.queue_send({"cmd": "SPEED1"})
+                if rc:
+                    rc.set_cmd("crs_wiper_op", 2)
+            threading.Thread(target=lambda: (time.sleep(400/1000.0), _t50_start), daemon=True).start()
+
+        # ── T51 : Cas A — rest contact bloqué → FSR_006 ──────────────────
         elif tid == "T51":
-            self._log("  → T51 : rest_contact bloqué EN MOUVEMENT → FSR_006")
+            self._log("  → T51 : Cas A rest_contact bloqué EN MOUVEMENT → FSR_006")
+            # Pré-conditions :
+            #  - wc_available=False (Cas A obligatoire — FSR_006 Cas A surveille
+            #    rest_contact GPIO, Cas B surveille wc_blade_position)
+            #  - rest_contact_sim_active=True, rest_contact_sim=True (lame BLOQUÉE
+            #    en position "en mouvement" — ne jamais passer à False)
+            #  - ignition=ON
             if rc:
                 rc.set_cmd("wc_available",            False)
                 rc.set_cmd("ignition_status",         1)
                 rc.set_cmd("crs_wiper_op",            0)
+                # Activer simulation rest_contact BLOQUÉE en position mouvement.
+                # IMPORTANT : ne PAS programmer de retour à False ici.
+                # FSR_006 doit détecter ce blocage SEUL, sans aide du test_runner.
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim",        True)
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
-            time.sleep(0.3)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            lw.queue_send({"cmd": "SPEED1"})
-            if rc: rc.set_cmd("crs_wiper_op", 2)
+            mw.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            def _t51_start():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # Stimulus : SPEED1 → moteur démarre → rest_contact reste bloqué
+                lw.queue_send({"cmd": "SPEED1"})
+                if rc:
+                    rc.set_cmd("crs_wiper_op", 2)
+            # Délai 300 ms : laisser le BCM confirmer wc_available=False
+            threading.Thread(target=lambda: (time.sleep(300/1000.0), _t51_start), daemon=True).start()
 
         elif tid == "TC_B2103":
-            self._log("  → TC_B2103 : reset guard B2103, puis injection blade_sim=50%")
+            # ── TC_B2103 : WC Position Sensor Fault ─────────────────────────
+            # Protocole :
+            #   1. reset_b2103()        → guard + blade_sim=-1 côté simulateur
+            #   2. wc_b2103_active=False → nettoie clé Redis résiduelle
+            #   3. Délai 200 ms         → propagation du reset
+            #   4. send_blade_sim(50.0) → injecte cible 50 % (lame ≈ 0 % au repos)
+            #                             écart ≈ 50 % >> seuil 10 %
+            #   5. reset_t0()           → chrono démarre à l'injection
+            # Fenêtre PASS : 1 000–1 500 ms (délai persistance + marge Redis)
+            # Nettoyage post-test : reset_b2103() + wc_b2103_active=False
+            self._log(
+                "  → TC_B2103 : reset guard B2103, puis injection blade_sim=50 % "
+                "(écart ≈ 50 % > seuil 10 %)")
+
+            # Étape 1 & 2 : remise à zéro immédiate
             if self._sim_client and self._sim_client.is_connected():
                 self._sim_client.reset_b2103()
-            if rc: rc.set_cmd("wc_b2103_active", False)
-            time.sleep(0.2)
-            if self._sim_client and self._sim_client.is_connected():
-                ok = self._sim_client.send_blade_sim(50.0)
-                self._log(f"  → TC_B2103 : blade_sim=50% {'injecté' if ok else 'ECHEC INJECTION'}")
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            if hasattr(test, "_t_inject_ms"): test._t_inject_ms = time.time() * 1000.0
+            if rc:
+                rc.set_cmd("wc_b2103_active", False)
+
+            def _b2103_inject():
+                # Étape 4 : injecter blade_sim après propagation du reset
+                if self._sim_client and self._sim_client.is_connected():
+                    ok = self._sim_client.send_blade_sim(50.0)
+                    self._log(
+                        f"  → TC_B2103 : blade_sim=50 % {'injecté' if ok else 'ECHEC INJECTION'}"
+                        " — attente détection B2103…")
+                else:
+                    self._log(
+                        "  → TC_B2103 : SimClient non connecté — injection blade_sim impossible")
+                # Étape 5 : démarrer le chrono à partir de l'injection physique
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                test._t_inject_ms = time.time() * 1000.0
+
+            def _b2103_cleanup():
+                # Nettoyage : désactiver comparaison + Redis pour le test suivant
+                if self._sim_client and self._sim_client.is_connected():
+                    self._sim_client.reset_b2103()
+                if rc:
+                    rc.set_cmd("wc_b2103_active", False)
+                self._log("  → TC_B2103 : nettoyage post-test (blade_sim=-1, Redis reset)")
+
+            # Délai 200 ms : propagation du reset côté simulateur avant injection
+            threading.Thread(target=lambda: (time.sleep(200/1000.0), _b2103_inject), daemon=True).start()
+            # Nettoyage différé : TIMEOUT + 500 ms pour ne pas polluer le test suivant
+            threading.Thread(target=lambda: (time.sleep(int((TC_B2103_PositionSensorFault.TEST_TIMEOUT_S + 0.5) * 1000)/1000.0), _b2103_cleanup), daemon=True).start()
 
         elif tid == "T22":
             self._log("  → T22 : pompe FORWARD >5s → overtime FSR_005 (B2008)")
             if hasattr(test, "reset_t0"): test.reset_t0()
             if rc:
+                # Cycling 1700ms : empêche B2009 (False→True reset timer chaque 1700ms).
+                # La pompe tourne en FORWARD. FSR_005 la coupe à 5000ms (PUMP_MAX_RUNTIME),
+                # avant que le 3e cycle se complète à 5100ms → wash ne se termine pas
+                # normalement → seul FSR_005 coupe la pompe → B2008 déclenché.
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", True)
-                rc.set_cmd("crs_wiper_op", 5)
+                rc.set_cmd("crs_wiper_op", 5)   # WOP_FRONT_WASH
+
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                def _t22_cycles():
-                    for _ in range(6):
-                        time.sleep(1.6)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
+                _gen_t22 = self._rc_gen
+
+                def _rc_cycle_t22():
+                    if self._rc_gen != _gen_t22:
+                        return
+                    if rc:
                         rc.set_cmd("rest_contact_sim", False)
-                        time.sleep(0.1)
-                        if getattr(self, "_rc_gen", 0) == _gen:
-                            rc.set_cmd("rest_contact_sim", True)
-                threading.Thread(target=_t22_cycles, daemon=True).start()
+                        threading.Thread(target=lambda: (time.sleep(100/1000.0), lambda: rc and self._rc_gen == _gen_t22 and rc.set_cmd("rest_contact_sim", True)), daemon=True).start()
+
+                for _d in range(1700, 10000, 1700):
+                    threading.Thread(target=lambda: (time.sleep(_d/1000.0), _rc_cycle_t22), daemon=True).start()
+
             lw.queue_send({"cmd": "FRONT_WASH"})
 
         elif tid == "T21":
-            self._log("  → T21 : FRONT_WASH — 3 cycles lame avant 5s")
+            self._log("  → T21 : FRONT_WASH — 3 cycles lame avant 5s → arrêt pompe normal")
             if rc:
+                # Cycling rest_contact à 900ms pour que 3 cycles se terminent avant 5s.
+                # 3 × 900ms ≈ 2.7s → wash_cycles_done=3 → pompe arrêtée AVANT FSR_005 (5s).
+                # Si les cycles prenaient 1700ms (ancien), 3e cycle à ~5.1s > 5s → FSR → T22.
+                # T21 vérifie l'arrêt normal (avant 5s). T22 vérifie l'arrêt FSR (>5s).
+                # Cycle : True (mouvement) 800ms → False (repos) 100ms → True...
+                # _track_blade_cycle compte sur front descendant True→False (count_on_rest=True).
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", True)
-                time.sleep(0.2)
-                rc.set_cmd("crs_wiper_op", 5)
-                lw.queue_send({"cmd": "FRONT_WASH"})
-                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                def _t21_cycles():
-                    for _ in range(11):
-                        time.sleep(0.8)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", False)
-                        time.sleep(0.1)
-                        if getattr(self, "_rc_gen", 0) == _gen:
-                            rc.set_cmd("rest_contact_sim", True)
-                threading.Thread(target=_t21_cycles, daemon=True).start()
+
+                def _t21_start():
+                    if rc:
+                        rc.set_cmd("crs_wiper_op", 5)
+                        lw.queue_send({"cmd": "FRONT_WASH"})
+                        # Génération : annule les QTimers résiduels du test précédent
+                        self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                        _gen_t21 = self._rc_gen
+                        # Cycle à 900ms : 3 cycles = 2.7s < PUMP_MAX_RUNTIME (5s)
+                        # → le BCM détecte 3 cycles et stoppe la pompe normalement
+                        def _rc_cycle_t21():
+                            if self._rc_gen != _gen_t21:
+                                return
+                            if rc:
+                                rc.set_cmd("rest_contact_sim", False)
+                                threading.Thread(target=lambda: (time.sleep(100/1000.0), lambda: rc and self._rc_gen == _gen_t21 and rc.set_cmd("rest_contact_sim", True)), daemon=True).start()
+                        for _d in range(900, 10000, 900):
+                            threading.Thread(target=lambda: (time.sleep(_d/1000.0), _rc_cycle_t21), daemon=True).start()
+
+                threading.Thread(target=lambda: (time.sleep(200/1000.0), _t21_start), daemon=True).start()
             else:
                 lw.queue_send({"cmd": "FRONT_WASH"})
 
+        # ── Tests WSM BCM — stimulus LIN, observation Redis ──────────────
+        # Le stimulus passe par LIN (crslin → bus physique → BCM protocol)
+        # pour tester la chaîne complète : trame 0x16 → décodage wiper_op
+        # → WSM → state. Redis est utilisé UNIQUEMENT pour observer state.
+        # Un SET Redis direct court-circuiterait le protocole LIN et ne
+        # testerait que la logique interne WSM, pas la chaîne hardware.
         elif tid == "T30":
-            self._log("  → T30 : LIN SPEED1")
+            self._log("  → T30 : LIN cmd=SPEED1 (stimulus bus physique)")
             if hasattr(test, "reset_t0"): test.reset_t0()
             lw.queue_send({"cmd": "SPEED1"})
 
         elif tid == "T31":
-            self._log("  → T31 : LIN SPEED2")
+            self._log("  → T31 : LIN cmd=SPEED2 (stimulus bus physique)")
             if hasattr(test, "reset_t0"): test.reset_t0()
             lw.queue_send({"cmd": "SPEED2"})
 
         elif tid == "T32":
-            self._log("  → T32 : LIN SPEED1 puis OFF")
+            self._log("  → T32 : LIN SPEED1 puis LIN OFF (stimulus bus physique)")
+            # reset_t0 au moment de la commande OFF (pas au SPEED1)
+            # pour ne mesurer que la transition SPEED1→OFF
             lw.queue_send({"cmd": "SPEED1"})
-            time.sleep(0.3)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            lw.queue_send({"cmd": "OFF"})
+            def _send_off_lin_with_t0():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                lw.queue_send({"cmd": "OFF"})
+            threading.Thread(target=lambda: (time.sleep(300/1000.0), _send_off_lin_with_t0), daemon=True).start()
 
         elif tid == "T33":
+            self._log("  → Redis SET SPEED1 puis ignition=0")
             if hasattr(test, "reset_t0"): test.reset_t0()
             if rc:
-                mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+                # Sync simulateur : ignition ON pour démarrer en SPEED1
+                mw.queue_send(
+                    {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
                 rc.set_cmd("crs_wiper_op", 0)
-                time.sleep(0.2)
-                rc.set_cmd("crs_wiper_op", 2)
-                time.sleep(0.4)
-                if hasattr(test, "reset_t0"): test.reset_t0()
-                rc.set_cmd("ignition_status", 0)
-                mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+                threading.Thread(target=lambda: (time.sleep(200/1000.0), lambda: rc and rc.set_cmd("crs_wiper_op", 2)), daemon=True).start()
+                def _t33_ignoff():
+                    test.reset_t0()
+                    rc.set_cmd("ignition_status", 0)
+                    # Sync simulateur : ignition OFF → CAN 0x300 avec ign=0
+                    mw.queue_send(
+                        {"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+                threading.Thread(target=lambda: (time.sleep(600/1000.0), _t33_ignoff), daemon=True).start()
             else:
                 lw.queue_send({"cmd": "SPEED1"})
-                time.sleep(0.4)
-                mw.queue_send({"ignition_status": 0, "reverse_gear": 0, "vehicle_speed": 0})
+                threading.Thread(target=lambda: (time.sleep(400/1000.0), lambda: mw.queue_send( {"ignition_status": 0, "reverse_gear": 0, "vehicle_speed": 0})), daemon=True).start()
 
         elif tid == "T34":
-            self._log("  → T34 : Redis SET AUTO + rain=10")
-            # Headless (sans bcmcan.py sur port 5002) :
-            # Le BCM lit rain_intensity depuis CAN 0x301 normalement.
-            # En CI sans bcmcan, on écrit directement rte:rain_intensity
-            # via redis.set() (rc._r est l'instance redis interne).
+            self._log("  → Redis SET AUTO + rain=10")
             if rc:
+                # FIX T34/T35 : synchroniser RPiSIM en AUTO via LIN AVANT
+                # l'injection Redis. Sans cela, LIN 0x16 continue à envoyer
+                # WiperOp=OFF toutes les 400ms et _lin_poll_0x16() écrase
+                # crs_wiper_op=AUTO → BCM repasse en OFF → TIMEOUT.
+                lw.queue_send({"cmd": "AUTO"})
                 rc.set_cmd("rain_sensor_installed", True)
+                rc.set_cmd("rain_intensity", 10)
+                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
+                # Activer simulation rest_contact pour que _process_auto →
+                # _track_blade_cycle fonctionne (REST_CONTACT_HARDWARE_PRESENT=True).
+                # Utiliser _rc_gen pour pouvoir annuler les timers au cleanup.
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
-                if rc._r:
-                    rc._r.set("rte:rain_intensity", "10")
-                lw.queue_send({"cmd": "AUTO"})
-                time.sleep(0.1)
-                if hasattr(test, "reset_t0"): test.reset_t0()
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                def _t34_pulse():
-                    for _ in range(5):
-                        time.sleep(1.5)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        if self._current is None: return
-                        rc.set_cmd("rest_contact_sim", True)
-                        if rc._r: rc._r.set("rte:rain_intensity", "10")
-                        time.sleep(0.1)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", False)
-                threading.Thread(target=_t34_pulse, daemon=True).start()
+                _gen_t34 = self._rc_gen
+                threading.Thread(target=lambda: (time.sleep(200/1000.0), lambda: test.reset_t0()), daemon=True).start()
+                for cycle in range(3):
+                    b = 300 + cycle * 1700
+                    threading.Thread(target=lambda: (time.sleep(b/1000.0), lambda b=b, g=_gen_t34: ( self._rc_gen == g and rc and rc.set_cmd("rest_contact_sim", True))), daemon=True).start()
+                    threading.Thread(target=lambda: (time.sleep(b + 1550/1000.0), lambda b=b, g=_gen_t34: ( self._rc_gen == g and rc and rc.set_cmd("rest_contact_sim", False))), daemon=True).start()
             else:
                 lw.queue_send({"cmd": "AUTO"})
-
+                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
         elif tid == "T35":
-            self._log("  → T35 : Redis SET AUTO + rain=25")
+            self._log("  → Redis SET AUTO + rain=25")
             if rc:
+                # FIX T35 : même correctif que T34.
                 lw.queue_send({"cmd": "AUTO"})
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 25)
                 mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
+                # Activer simulation rest_contact avec _rc_gen (annulable au cleanup)
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                time.sleep(0.2)
-                if hasattr(test, "reset_t0"): test.reset_t0()
-                def _t35_cycles():
-                    for cycle in range(3):
-                        time.sleep(0.3 + cycle * 1.7 - (0.3 if cycle > 0 else 0))
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", True)
-                        time.sleep(1.55)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", False)
-                threading.Thread(target=_t35_cycles, daemon=True).start()
+                _gen_t35 = self._rc_gen
+                threading.Thread(target=lambda: (time.sleep(200/1000.0), lambda: test.reset_t0()), daemon=True).start()
+                for cycle in range(3):
+                    b = 300 + cycle * 1700
+                    threading.Thread(target=lambda: (time.sleep(b/1000.0), lambda b=b, g=_gen_t35: ( self._rc_gen == g and rc and rc.set_cmd("rest_contact_sim", True))), daemon=True).start()
+                    threading.Thread(target=lambda: (time.sleep(b + 1550/1000.0), lambda b=b, g=_gen_t35: ( self._rc_gen == g and rc and rc.set_cmd("rest_contact_sim", False))), daemon=True).start()
             else:
                 lw.queue_send({"cmd": "AUTO"})
                 mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
 
+        # ─── REMPLACEMENT T36 ─────────────────────────────────────────────
         elif tid == "T36":
-            self._log("  → T36 : FRONT_WASH + cycles rest_contact")
-            if rc: rc.set_cmd("crs_wiper_op", 0)
-            mw.queue_send({"ignition_status": 1, "vehicle_speed": 0})
-            time.sleep(0.4)
-            if hasattr(test, "reset_t0"): test.reset_t0()
+            self._log("  → Redis SET crs_wiper_op=FRONT_WASH (reset cycles)")
+            # FIX T36 : synchroniser RPiSIM LIN slave en FRONT_WASH AVANT Redis.
+            # Sans cela, RPiSIM continue à renvoyer WiperOp=OFF dans chaque
+            # frame LIN 0x16 (400ms) → _lin_poll_0x16() écrit crs_wiper_op=0
+            # → WSM sort de WASH_FRONT immédiatement.
+            # FIX T36 rest_contact : reset crs_wiper_op=0 d'abord pour que le BCM
+            # remette _front_blade_cycles=0 via _enter_off() avant FRONT_WASH.
             if rc:
-                rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", False)
-                lw.queue_send({"cmd": "FRONT_WASH"})
-                def _t36_cycles():
-                    for cycle in range(3):
-                        time.sleep(0.15)
-                        rc.set_cmd("rest_contact_sim", True)
-                        time.sleep(1.45)
-                        rc.set_cmd("rest_contact_sim", False)
-                threading.Thread(target=_t36_cycles, daemon=True).start()
+                rc.set_cmd("crs_wiper_op", 0)   # force OFF → reset _front_blade_cycles
+            mw.queue_send({"ignition_status": 1, "vehicle_speed": 0})
 
+            def _send_front_wash():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # Activer simulation rest_contact pour T36
+                # Le runner va simuler 3 cycles complets :
+                #   False → True → False (cycle 1)
+                #   False → True → False (cycle 2)
+                #   False → True → False (cycle 3)
+                # Chaque cycle = WIPE_CYCLE_DURATION = 1700ms
+                if rc:
+                    rc.set_cmd("rest_contact_sim_active", True)
+                    rc.set_cmd("rest_contact_sim", False)  # repos initial
+                    lw.queue_send({"cmd": "FRONT_WASH"})  # stimulus LIN uniquement
+                    # Simuler 3 cycles via transitions temporisées
+                    # Chaque cycle : 150ms → True (départ) puis 1550ms → False (retour repos)
+                    # IMPORTANT : capturer b par valeur dans la lambda (pas par référence)
+                    for cycle in range(3):
+                        b = cycle * 1700
+                        threading.Thread(target=lambda: (time.sleep(b + 150/1000.0), lambda b=b: rc and rc.set_cmd("rest_contact_sim", True)), daemon=True).start()
+                        threading.Thread(target=lambda: (time.sleep(b + 1600/1000.0), lambda b=b: rc and rc.set_cmd("rest_contact_sim", False)), daemon=True).start()
+
+            threading.Thread(target=lambda: (time.sleep(400/1000.0), _send_front_wash), daemon=True).start()
+
+        # ─── REMPLACEMENT T37 ─────────────────────────────────────────────
         elif tid == "T37":
-            self._log("  → T37 : LIN REAR_WASH")
+            self._log("  → T37 : LIN REAR_WASH (stimulus bus physique)")
             lw.queue_send({"cmd": "REAR_WASH"})
             mw.queue_send({"ignition_status": 1, "vehicle_speed": 0})
-            time.sleep(0.2)
-            if hasattr(test, "reset_t0"): test.reset_t0()
+            # reset_t0 décalé de 200ms : absorbe la latence LIN→BCM pour que
+            # la mesure démarre quand le BCM est réellement en WASH_REAR
+            if hasattr(test, "reset_t0"):
+                threading.Thread(target=lambda: (time.sleep(200/1000.0), lambda: test.reset_t0()), daemon=True).start()
 
         elif tid == "T38":
             self._log("  → T38 : LIN SPEED1 + injection surcourant")
             lw.queue_send({"cmd": "SPEED1"})
             if rc:
-                time.sleep(0.2)
-                rc.set_cmd("dtc_inactivate", "B2001")
-                time.sleep(0.2)
-                if hasattr(test, "reset_t0"): test.reset_t0()
-                rc.set_cmd("motor_current_a", 0.95)
+                # t=200ms : B2001 INACTIVE (200ms avant injection)
+                threading.Thread(target=lambda: (time.sleep(200/1000.0), lambda: rc and rc.set_cmd("dtc_inactivate", "B2001")), daemon=True).start()
+                # t=400ms : injection + chrono
+                def _t38_inject():
+                    if hasattr(test, "reset_t0"): test.reset_t0()
+                    rc.set_cmd("motor_current_a", 0.95)
+                threading.Thread(target=lambda: (time.sleep(400/1000.0), _t38_inject), daemon=True).start()
             else:
-                time.sleep(0.4)
+                threading.Thread(target=lambda: (time.sleep(400/1000.0), lambda: self._inject_overcurrent(6)), daemon=True).start()
 
         elif tid == "T39":
-            self._log("  → T39 : LIN SPEED1 puis stop_lin_tx")
+            self._log("  → T39 : LIN SPEED1 puis stop_lin_tx (stimulus bus physique)")
+            # Attendre 500ms pour que le BCM soit bien en SPEED1 avant de couper le LIN.
+            # reset_t0 se déclenche au moment du stop_lin_tx : mesure = temps entre
+            # coupure LIN et retour en OFF du BCM = délai détection timeout FSR_001.
             lw.queue_send({"cmd": "SPEED1"})
-            time.sleep(0.5)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            lw.queue_send({"test_cmd": "stop_lin_tx"})
+            def _t39_stop():
+                if hasattr(test, "reset_t0"): test.reset_t0()
+                lw.queue_send({"test_cmd": "stop_lin_tx"})
+            threading.Thread(target=lambda: (time.sleep(500/1000.0), _t39_stop), daemon=True).start()
 
         elif tid == "T38b":
-            self._log("  → T38b : LIN REAR_WIPE + surcourant moteur arrière (B2002)")
-            if rc: rc.set_cmd("rear_wiper_available", True)
+            self._log("  → T38b : LIN REAR_WIPE + injection surcourant moteur arrière (B2002)")
+            if rc:
+                rc.set_cmd("rear_wiper_available", True)
             lw.queue_send({"cmd": "REAR_WIPE"})
             if rc:
-                time.sleep(0.3)
-                rc.set_cmd("dtc_inactivate", "B2002")
-                time.sleep(0.2)
-                if hasattr(test, "reset_t0"): test.reset_t0()
-                rc.set_cmd("motor_current_a", 0.95)
+                # Étape 1 à t=300ms : remettre B2002 INACTIVE
+                # Laisser 200ms de marge avant l'injection pour que le BCM
+                # traite set_inactive (cycle Redis ~100ms) → already_active=False
+                threading.Thread(target=lambda: (time.sleep(300/1000.0), lambda: rc and rc.set_cmd("dtc_inactivate", "B2002")), daemon=True).start()
+                # Étape 2 à t=500ms : injection surcourant + démarrage chrono
+                def _t38b_inject():
+                    if hasattr(test, "reset_t0"):
+                        test.reset_t0()
+                    rc.set_cmd("motor_current_a", 0.95)
+                threading.Thread(target=lambda: (time.sleep(500/1000.0), _t38b_inject), daemon=True).start()
 
         elif tid == "T38c":
-            self._log("  → T38c : LIN FRONT_WASH + surcourant pompe (B2003)")
+            self._log("  → T38c : LIN FRONT_WASH (pompe active) + injection surcourant pompe (B2003)")
             if rc:
+                # Activer simulation rest_contact : WASH_FRONT utilise le moteur avant,
+                # sans cycles rest_contact le BCM déclenche B2009 après 3s → ERROR
+                # avant que pump_error ne soit vu par _check_rte.
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                def _t38c_cycles():
-                    for cycle in range(4):
-                        time.sleep(0.2 + cycle * 1.7 - (0.2 if cycle > 0 else 0))
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", True)
-                        time.sleep(1.55)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", False)
-                threading.Thread(target=_t38c_cycles, daemon=True).start()
+                _gen_t38c = self._rc_gen
+                for cycle in range(4):
+                    b = 200 + cycle * 1700
+                    threading.Thread(target=lambda: (time.sleep(b/1000.0), lambda g=_gen_t38c: ( self._rc_gen == g and rc and rc.set_cmd("rest_contact_sim", True))), daemon=True).start()
+                    threading.Thread(target=lambda: (time.sleep(b + 1550/1000.0), lambda g=_gen_t38c: ( self._rc_gen == g and rc and rc.set_cmd("rest_contact_sim", False))), daemon=True).start()
             lw.queue_send({"cmd": "FRONT_WASH"})
             if rc:
-                time.sleep(0.4)
-                rc.set_cmd("dtc_inactivate", "B2003")
-                time.sleep(0.2)
-                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                if hasattr(test, "reset_t0"): test.reset_t0()
-                rc.set_cmd("pump_current_a", 1.0)
+                # t=400ms : B2003 INACTIVE (200ms avant injection)
+                threading.Thread(target=lambda: (time.sleep(400/1000.0), lambda: rc and rc.set_cmd("dtc_inactivate", "B2003")), daemon=True).start()
+                # t=600ms : injection + chrono
+                def _t38c_inject():
+                    # Invalider les cycles rest_contact avant l'injection
+                    self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                    if hasattr(test, "reset_t0"):
+                        test.reset_t0()
+                    rc.set_cmd("pump_current_a", 1.0)
+                threading.Thread(target=lambda: (time.sleep(600/1000.0), _t38c_inject), daemon=True).start()
 
         elif tid == "LIN_INVALID_CMD_001":
-            self._log("  → LIN_INVALID_CMD_001 : op=10 brut")
-            if rc: rc.set_cmd("crs_wiper_op", 0)
-            time.sleep(0.2)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            lw.queue_send({"test_cmd": "set_raw_wiper_op", "op": 10})
+            self._log("  → LIN_INVALID_CMD_001 : BCM en OFF → envoi trame LIN op=10 (hors plage)")
+            # S'assurer que le BCM est en OFF
+            if rc:
+                rc.set_cmd("crs_wiper_op", 0)
+            # Injecter op=10 brut dans la prochaine trame LIN 0x16 via test_cmd.
+            # Le simulateur insère la valeur dans les bits 3:0 de byte0 de 0x16
+            # sans passer par l'enum WOp → le BCM reçoit WiperOp=0x0A (hors [0..7]).
+            def _lin_invalid_inject():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                lw.queue_send({"test_cmd": "set_raw_wiper_op", "op": 10})
+            threading.Thread(target=lambda: (time.sleep(200/1000.0), _lin_invalid_inject), daemon=True).start()
 
         elif tid == "T_RAIN_AUTO_SENSOR_ERROR":
-            self._log("  → T_RAIN_AUTO_SENSOR_ERROR : AUTO + SensorStatus=ERROR")
+            self._log("  → T_RAIN_AUTO_SENSOR_ERROR : rain_sensor_installed + AUTO + SensorStatus=ERROR")
             if rc:
+                # Étape 1 : déclarer le capteur disponible et sain
+                # rain_intensity=25 > RAIN_SPEED2_THRESH(20) : démarre le moteur en Speed2
+                # sans ça le moteur reste STOP et B2009 peut quand même se déclencher.
                 rc.set_cmd("rain_sensor_installed", True)
-                rc.set_cmd("rain_sensor_ok",        True)
-                rc.set_cmd("rain_intensity",        25)
+                rc.set_cmd("rain_sensor_ok", True)
+                rc.set_cmd("rain_intensity", 25)
+                # Sync CAN 0x301 simulateur : évite que bcmcan écrase rain_intensity
                 mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
+                # Simulation rest_contact avec cycles True→False (comme T34/T35)
+                # pour éviter B2009 STUCK CLOSED pendant la phase AUTO.
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
+
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                def _rain_cycles():
-                    for cycle in range(4):
-                        time.sleep(0.3 + cycle * 1.7 - (0.3 if cycle > 0 else 0))
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", True)
-                        time.sleep(1.55)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", False)
-                threading.Thread(target=_rain_cycles, daemon=True).start()
-            time.sleep(0.2)
-            lw.queue_send({"cmd": "AUTO"})
-            time.sleep(0.8)
-            if rc: rc.set_cmd("dtc_inactivate", "B2007")
-            time.sleep(0.2)
-            self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            if hasattr(test, "notify_injection"): test.notify_injection()
-            if rc:
-                rc.set_cmd("rain_intensity",    0xFF)
-                rc.set_cmd("rain_sensor_ok",    False)
-            mw.queue_send({"rain_intensity": 255, "sensor_status": "ERROR"})
+                _gen_rain = self._rc_gen
+
+                for cycle in range(4):
+                    b = 300 + cycle * 1700
+                    threading.Thread(target=lambda: (time.sleep(b/1000.0), lambda g=_gen_rain: ( self._rc_gen == g and rc and rc.set_cmd("rest_contact_sim", True))), daemon=True).start()
+                    threading.Thread(target=lambda: (time.sleep(b + 1550/1000.0), lambda g=_gen_rain: ( self._rc_gen == g and rc and rc.set_cmd("rest_contact_sim", False))), daemon=True).start()
+
+            # Étape 2 : envoyer commande AUTO via LIN
+            threading.Thread(target=lambda: (time.sleep(200/1000.0), lambda: lw.queue_send({"cmd": "AUTO"})), daemon=True).start()
+
+            # Étape 3a à t=1000ms : B2007 INACTIVE (200ms avant injection)
+            threading.Thread(target=lambda: (time.sleep(1000/1000.0), lambda: rc and rc.set_cmd("dtc_inactivate", "B2007")), daemon=True).start()
+
+            # Étape 3b à t=1200ms : injection erreur capteur + chrono
+            def _inject_sensor_error():
+                # Invalider les cycles rest_contact
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                if hasattr(test, "notify_injection"):
+                    test.notify_injection()
+                if rc:
+                    rc.set_cmd("rain_intensity", 0xFF)
+                    rc.set_cmd("rain_sensor_ok", False)
+                mw.queue_send({"rain_intensity": 255, "sensor_status": "ERROR"})
+            threading.Thread(target=lambda: (time.sleep(1200/1000.0), _inject_sensor_error), daemon=True).start()
 
         elif tid == "T_B2009_CAN":
-            self._log("  → T_B2009_CAN : CAS B + blade figée + rest_contact fixe → B2009")
+            self._log("  → T_B2009_CAN : CAS B + blade figée → B2009 (GPIO rest_contact=False naturel)")
             if rc:
                 rc.set_cmd("wc_available",   True)
                 rc.set_cmd("lin_op_locked",  True)
                 rc.set_cmd("crs_wiper_op",   0)
                 rc.set_cmd("ignition_status", 1)
-                time.sleep(0.2)
-                rc.set_cmd("dtc_inactivate", "B2009")
-                rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim",        True)
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
-            time.sleep(0.4)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            if self._sim_client and self._sim_client.is_connected():
-                self._sim_client.send({"test_cmd": "freeze_blade_position", "value": 50.0})
-            lw.queue_send({"cmd": "SPEED1"})
-            if rc: rc.set_cmd("crs_wiper_op", 2)
+                # BladePosition figée à 50% → lame bloquée mécaniquement
+                # → rest_contact reste False naturellement (lame ne revient pas au repos)
+                # → GPIO hardware lu directement, aucune simulation rest_contact nécessaire
+                # B2009 INACTIVE avant le test pour affichage complet
+                threading.Thread(target=lambda: (time.sleep(200/1000.0), lambda: rc and rc.set_cmd("dtc_inactivate", "B2009")), daemon=True).start()
+            mw.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
 
-    # ── Reset état BCM avant chaque test ─────────────────────────────────
+            def _t_b2009_start():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # BladePosition figée à 50% (>0 → front_motor_running=True en CAS B)
+                if self._sim_client and self._sim_client.is_connected():
+                    self._sim_client.freeze_blade_position(50.0)
+                # LIN SPEED1 → BCM entre ST_SPEED1 → CAN 0x200 → 0x201 CurrentSpeed>0
+                lw.queue_send({"cmd": "SPEED1"})
+                if rc:
+                    rc.set_cmd("crs_wiper_op", 2)
+            # 400ms : laisser wc_available=True + dtc_inactivate se propager
+            threading.Thread(target=lambda: (time.sleep(400/1000.0), _t_b2009_start), daemon=True).start()
+
+        elif tid == "T50b":
+            self._log("  → T50b : CAS B SPEED1 + inject_motor_current → B2001")
+            if rc:
+                rc.set_cmd("wc_available",   True)
+                rc.set_cmd("lin_op_locked",  True)
+                rc.set_cmd("crs_wiper_op",   0)
+                rc.set_cmd("ignition_status", 1)
+                # B2001 INACTIVE avant injection pour affichage complet
+                threading.Thread(target=lambda: (time.sleep(200/1000.0), lambda: rc and rc.set_cmd("dtc_inactivate", "B2001")), daemon=True).start()
+            mw.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+
+            def _t50b_start():
+                # LIN SPEED1 → BCM ST_SPEED1 → CAN 0x200 → WC répond 0x201 speed=1
+                lw.queue_send({"cmd": "SPEED1"})
+                if rc:
+                    rc.set_cmd("crs_wiper_op", 2)
+
+            def _t50b_inject():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # Injecter MotorCurrent=0.95A dans trame 0x201
+                # BCM lira motor_current_a > OVERCURRENT_THRESH(0.8A) → B2001
+                if self._sim_client and self._sim_client.is_connected():
+                    self._sim_client.inject_motor_current(0.95)
+
+            # 400ms : wc_available propagé + SPEED1 établi
+            threading.Thread(target=lambda: (time.sleep(400/1000.0), _t50b_start), daemon=True).start()
+            # 700ms : SPEED1 stabilisé → injection overcurrent
+            threading.Thread(target=lambda: (time.sleep(700/1000.0), _t50b_inject), daemon=True).start()
+
+        elif tid == "T_IGN_OFF_WIPER_IGNORED":
+            self._log("  → T_IGN_OFF_WIPER_IGNORED : ignition=OFF + LIN SPEED1 → ignorée")
+            if rc:
+                # Mettre ignition=OFF avant le stimulus
+                rc.set_cmd("ignition_status", 0)
+                rc.set_cmd("crs_wiper_op",    0)
+                rc.set_cmd("wc_available",    False)
+            # Sync simulateur : ignition OFF
+            mw.queue_send(
+                {"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+
+            def _ign_off_inject():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # Envoyer WiperOp=SPEED1 via LIN — doit être ignoré par le BCM
+                lw.queue_send({"cmd": "SPEED1"})
+                if rc:
+                    rc.set_cmd("crs_wiper_op", 2)
+            # 300ms : laisser ignition=0 se propager dans le BCM
+            threading.Thread(target=lambda: (time.sleep(300/1000.0), _ign_off_inject), daemon=True).start()
+
+        elif tid == "T_B2009_CASA":
+            self._log("  → T_B2009_CASA : CAS A SPEED1 sans rest_contact → B2009")
+            if rc:
+                rc.set_cmd("wc_available",   False)
+                rc.set_cmd("crs_wiper_op",   0)
+                rc.set_cmd("ignition_status", 1)
+                # PAS de rest_contact_sim_active : la garde BCM bloquerait B2009
+                # GPIO hardware lu directement → False permanent → B2009 après 3s
+                rc.set_cmd("rest_contact_sim_active", False)
+                rc.set_cmd("rest_contact_sim", False)
+                # B2009 INACTIVE avant test pour affichage complet
+                threading.Thread(target=lambda: (time.sleep(200/1000.0), lambda: rc and rc.set_cmd("dtc_inactivate", "B2009")), daemon=True).start()
+            mw.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+
+            def _t_b2009_casa_start():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                lw.queue_send({"cmd": "SPEED1"})
+                if rc:
+                    rc.set_cmd("crs_wiper_op", 2)
+            # 400ms : laisser dtc_inactivate se propager avant le stimulus
+            threading.Thread(target=lambda: (time.sleep(400/1000.0), _t_b2009_casa_start), daemon=True).start()
+
     def _reset_bcm_state(self):
         """Remet le BCM dans un état stable (ignition ON, pas de timeout actif)."""
         rc = self._rte_client
