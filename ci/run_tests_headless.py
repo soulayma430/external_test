@@ -402,6 +402,11 @@ class HeadlessTestRunner:
 
     # ── Stimuli avant test (port headless de test_runner._pre_test) ──────
     def _pre_test(self, test: BaseTest):
+        """Port headless — QTimer.singleShot → threading.Thread + time.sleep."""
+        tid = test.ID
+        rc  = self._rte_client
+        lw  = self._lin_w
+        mw  = self._motor_w
         # ── Tests réseau ──────────────────────────────────────────────────
         if tid == "T10":
             self._log("  → stop_lin_tx")
