@@ -752,17 +752,18 @@ class HeadlessTestRunner:
         elif tid == "T34":
             self._log("  → T34 : Redis SET AUTO + rain=10")
             if rc:
-                # FIX : positionner rain_intensity dans Redis AVANT d'envoyer
-                # la commande LIN AUTO.
+                # ROOT CAUSE : bcmcan.py sur le RPiSIM émet des trames CAN 0x301
+                # (RainSensorData) toutes les 200ms avec intensity=0 (valeur par
+                # défaut de _rain_state). Le BCM reçoit ces trames via T-CAN →
+                # _can_process_0x301() → rte.set_multi(rain_intensity=0), ce qui
+                # écrase le rain_intensity=10 positionné via Redis.
+                # mw.queue_send({"rain_intensity":10}) ne peut pas corriger cela
+                # car le port 5002 (bcmcan.py TCP) est inactif sur le banc CI.
                 #
-                # Race condition corrigée : T-WSM (50ms) appelle _process_auto()
-                # dès que crs_wiper_op=AUTO est reçu via T-REDIS-CMD.  Si
-                # rain_intensity n'est pas encore dans le RTE Python local du BCM
-                # à ce moment-là, _process_auto lit pluie=0 et arrête le moteur.
-                #
-                # 300ms = 6 × T-WSM(50ms) : assure que T-REDIS-CMD a traité le
-                # message rain_intensity=10 ET que T-WSM a eu le temps de le
-                # voir avant que crs_wiper_op=4 déclenche _enter_auto().
+                # FIX CI-ONLY : boucle de rafraîchissement Redis toutes les 150ms
+                # (< 200ms = période trame 0x301) afin de réécrire rain_intensity=10
+                # après chaque écrasement par la trame CAN. Le thread s'arrête
+                # automatiquement quand _rc_gen est invalidé (fin du test).
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 10)
                 rc.set_cmd("rest_contact_sim_active", True)
@@ -773,6 +774,15 @@ class HeadlessTestRunner:
                 mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 _gen = self._rc_gen
+
+                def _t34_rain_refresh():
+                    """Rafraîchit rain_intensity=10 toutes les 150ms pour contrer
+                    les trames CAN 0x301 (intensity=0) de bcmcan.py."""
+                    while getattr(self, "_rc_gen", 0) == _gen:
+                        rc.set_cmd("rain_intensity", 10)
+                        time.sleep(0.15)
+                threading.Thread(target=_t34_rain_refresh, daemon=True).start()
+
                 time.sleep(0.2)
                 if hasattr(test, "reset_t0"): test.reset_t0()
                 def _t34_cycles():
@@ -791,10 +801,9 @@ class HeadlessTestRunner:
         elif tid == "T35":
             self._log("  → T35 : Redis SET AUTO + rain=25")
             if rc:
-                # FIX : même race condition que T34.
-                # 300ms = 6 × T-WSM(50ms) : garantit que rain_intensity=25 est
-                # dans le RTE Python local du BCM avant que crs_wiper_op=4
-                # déclenche _enter_auto() → _process_auto().
+                # ROOT CAUSE identique à T34 : bcmcan.py émet 0x301 avec
+                # intensity=0 toutes les 200ms et écrase rain_intensity dans
+                # le RTE BCM. Même fix : rafraîchissement Redis 150ms < 200ms.
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 25)
                 rc.set_cmd("rest_contact_sim_active", True)
@@ -805,6 +814,14 @@ class HeadlessTestRunner:
                 mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 _gen = self._rc_gen
+
+                def _t35_rain_refresh():
+                    """Rafraîchit rain_intensity=25 toutes les 150ms."""
+                    while getattr(self, "_rc_gen", 0) == _gen:
+                        rc.set_cmd("rain_intensity", 25)
+                        time.sleep(0.15)
+                threading.Thread(target=_t35_rain_refresh, daemon=True).start()
+
                 time.sleep(0.2)
                 if hasattr(test, "reset_t0"): test.reset_t0()
                 def _t35_cycles():
