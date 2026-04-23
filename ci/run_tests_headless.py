@@ -228,10 +228,15 @@ class HeadlessLINWorker:
 class HeadlessMotorWorker:
     """
     Remplace MotorVehicleWorker (PySide6).
-    RX depuis RPiBCM:5000 (état moteur), TX vers RPiSIM:5002 (commandes véhicule).
+    RX depuis RPiBCM:5000 (état moteur), TX vers RPiSIM:5000 (commandes véhicule).
+
+    NOTE : la plateforme Qt utilise PORT_BCMCAN=5002 (constants.py), mais bcmcan
+    est démarré via main.py avec canport=5000 par défaut sur le RPiSIM.
+    En CI, bcmcan n'est pas démarré séparément sur 5002 → on cible directement
+    le port 5000 qui est le serveur TCP actif de bcmcan sur le RPiSIM.
     """
     PORT_RX = 5000   # RPiBCM bcm_tcp_broadcast
-    PORT_TX = 5002   # RPiSIM bcmcan (PORT_BCMCAN)
+    PORT_TX = 5000   # RPiSIM bcmcan via main.py (canport=5000 par défaut)
 
     def __init__(self, bcm_host: str, sim_host: str):
         self.motor_received = _FakeSignal()
@@ -461,11 +466,13 @@ class HeadlessTestRunner:
                 _gen = self._rc_gen
 
                 def _t43_reverse_refresh():
-                    """Rafraîchit reverse_gear=True toutes les 150ms pour contrer
-                    CAN 0x300 (reverse=0) de bcmcan.py (pas de fenêtre Redis priority)."""
+                    """Rafraîchit reverse_gear=True toutes les 800ms.
+                    bcm_protocol.py _can_process_0x300 a une fenêtre Redis priority
+                    de 1s pour reverse_gear (_t_reverse_redis) — symétrique à
+                    ignition_status. Ce refresh maintient la fenêtre active."""
                     while getattr(self, "_rc_gen", 0) == _gen:
                         rc.set_cmd("reverse_gear", True)
-                        time.sleep(0.15)
+                        time.sleep(0.80)
                 threading.Thread(target=_t43_reverse_refresh, daemon=True).start()
 
                 def _cycle_t43_loop():
