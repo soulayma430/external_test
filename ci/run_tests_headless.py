@@ -425,37 +425,38 @@ class HeadlessTestRunner:
 
         elif tid == "T40":
             self._log("  → T40 : TOUCH — 1 cycle puis retour OFF (no repeat)")
-            # ROOT CAUSE (Jenkins TIMEOUT) :
-            # L'ancienne séquence envoyait lw.queue_send(TOUCH) puis immédiatement
-            # rc.set_cmd(crs_wiper_op=1) via Redis. Sous Jenkins, la latence TCP
-            # vers crslin.py (RPiSIM:5555) est plus longue qu'en plateforme Qt.
-            # Le BCM recevait d'abord Redis crs_wiper_op=1 → transition OFF→TOUCH
-            # → exécution du cycle TOUCH complet → retour OFF, et SEULEMENT ENSUITE
-            # la trame LIN 0x16 avec WiperOp=TOUCH arrivait, ce qui remettait
-            # crs_wiper_op=TOUCH sur un BCM déjà en OFF → _check_rte ne voyait
-            # jamais state=OFF + cycle_count>=1 dans la bonne fenêtre → TIMEOUT 8s.
+            # ROOT CAUSE du timeout T40 :
+            # La version précédente effectuait time.sleep(1.5) + rest_contact_sim=False
+            # DANS _pre_test, ce qui signifie que le cycle TOUCH complet se déroulait
+            # AVANT le retour de _pre_test et donc avant que la boucle de supervision
+            # (_check_rte, tick 200ms) ne démarre. Quand la boucle commençait, le BCM
+            # était déjà en state=OFF et _saw_active=False → _check_rte ne voit jamais
+            # state=TOUCH → TIMEOUT après 8s.
             #
-            # FIX : supprimer crs_wiper_op=1 via Redis. La commande TOUCH doit
-            # passer UNIQUEMENT par LIN 0x16 (crslin.py). On attend 400ms après
-            # queue_send pour laisser le temps à crslin.py de recevoir la commande
-            # et au BCM de traiter la prochaine trame LIN 0x16 (période ~50ms) avant
-            # de positionner rest_contact_sim, qui simule la lame en mouvement.
+            # FIX : déclencher le stimulus immédiatement puis retourner de _pre_test
+            # pour que la boucle de supervision puisse observer state=TOUCH.
+            # Le rest_contact_sim=False (fin de cycle) est géré dans un thread daemon,
+            # comme le font T43, T34, T35, etc.
             if rc:
                 rc.set_cmd("rest_contact_sim_active", False)
                 rc.set_cmd("rest_contact_sim",        False)
                 rc.set_cmd("crs_wiper_op", 0)
             lw.queue_send({"cmd": "TOUCH"})
-            # Attendre que LIN 0x16 TOUCH soit traité par le BCM (≥ 2 périodes LIN)
-            # avant de simuler le mouvement de lame via rest_contact.
-            time.sleep(0.4)
+            time.sleep(0.2)
             if hasattr(test, "reset_t0"): test.reset_t0()
             if rc:
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", True)
-                # NE PAS setter crs_wiper_op=1 ici : laisser LIN seul gérer la
-                # commande TOUCH pour éviter la course LIN vs Redis sous Jenkins.
-            time.sleep(1.5)
-            if rc: rc.set_cmd("rest_contact_sim", False)
+                rc.set_cmd("crs_wiper_op", 1)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+
+                def _t40_release():
+                    """Simule le retour au repos après ~1 cycle TOUCH (≤1700ms)."""
+                    time.sleep(1.5)
+                    if getattr(self, "_rc_gen", 0) == _gen:
+                        rc.set_cmd("rest_contact_sim", False)
+                threading.Thread(target=_t40_release, daemon=True).start()
 
         elif tid == "T43":
             self._log("  → T43 : SPEED1 + reverse_gear=True (rear intermittent)")
