@@ -1134,6 +1134,13 @@ class HeadlessTestRunner:
                     self._log(msg)
                     break
 
+            # ── Invalider _rc_gen → arrêter tous les threads daemon du test ──
+            # Les boucles de refresh (rain_intensity, reverse_gear, ignition,
+            # rest_contact) testent getattr(self, "_rc_gen") == _gen.
+            # En incrémentant ici, on les arrête immédiatement après le résultat,
+            # avant même le délai inter-test suivant.
+            self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+
             last_tid = test.ID
 
             # ── Fail-fast ─────────────────────────────────────────────────
