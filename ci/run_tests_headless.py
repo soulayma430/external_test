@@ -436,25 +436,48 @@ class HeadlessTestRunner:
 
         elif tid == "T43":
             self._log("  → T43 : SPEED1 + reverse_gear=True (rear intermittent)")
+            # ROOT CAUSES :
+            # RC1 — CAN 0x300 écrase reverse_gear : bcmcan.py émet 0x300 avec reverse=0
+            #   toutes les 200ms. Contrairement à ignition_status, reverse_gear n'a pas
+            #   de fenêtre Redis priority dans _can_process_0x300 → il est écrasé à 0
+            #   à chaque trame → [SRD_WW_060] Moteur arriere OFF après le 1er cycle.
+            #   _check_rte T43 : "if not rev: return None" → ignore tous les cycles suivants.
+            #   FIX : boucle de rafraîchissement reverse_gear=True toutes les 150ms.
+            #
+            # RC2 — Pas de délai avant la boucle rest_contact : la boucle _cycle_t43_loop
+            #   envoyait rest_contact=False immédiatement, avant que le BCM soit en SPEED1.
+            #   FIX : délai 300ms avant de démarrer la boucle (laisser SPEED1 s'établir).
+            #
+            # RC3 — lw.queue_send(SPEED1) inutile et risqué : utiliser uniquement Redis.
             mw.queue_send({"ignition_status": "ON", "reverse_gear": 1, "vehicle_speed": 0})
-            lw.queue_send({"cmd": "SPEED1"})
             if rc:
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", True)
-                rc.set_cmd("crs_wiper_op", 2)
+                time.sleep(0.15)                   # propagation Redis → BCM
+                rc.set_cmd("crs_wiper_op", 2)      # SPEED1 via Redis uniquement
                 rc.set_cmd("reverse_gear", True)
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 _gen = self._rc_gen
+
+                def _t43_reverse_refresh():
+                    """Rafraîchit reverse_gear=True toutes les 150ms pour contrer
+                    CAN 0x300 (reverse=0) de bcmcan.py (pas de fenêtre Redis priority)."""
+                    while getattr(self, "_rc_gen", 0) == _gen:
+                        rc.set_cmd("reverse_gear", True)
+                        time.sleep(0.15)
+                threading.Thread(target=_t43_reverse_refresh, daemon=True).start()
+
                 def _cycle_t43_loop():
+                    time.sleep(0.30)               # attendre que BCM soit en SPEED1
                     for _ in range(8):
                         if getattr(self, "_rc_gen", 0) != _gen: return
-                        if rc:
-                            rc.set_cmd("rest_contact_sim", False)
-                            time.sleep(0.1)
-                            if getattr(self, "_rc_gen", 0) == _gen:
-                                rc.set_cmd("rest_contact_sim", True)
+                        rc.set_cmd("rest_contact_sim", False)
+                        time.sleep(0.10)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", True)
                         time.sleep(2.4)
                 threading.Thread(target=_cycle_t43_loop, daemon=True).start()
+
             time.sleep(0.5)
             if hasattr(test, "reset_t0"): test.reset_t0()
 
