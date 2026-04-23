@@ -425,22 +425,37 @@ class HeadlessTestRunner:
 
         elif tid == "T40":
             self._log("  → T40 : TOUCH — 1 cycle puis retour OFF (no repeat)")
-            # FIX : rest_contact_sim_active=True AVANT le stimulus TOUCH
-            # (précédemment : sim_active=False au moment du lw.queue_send → BCM lisait
-            #  GPIO hardware=False → rest_contact_raw restait False pendant tout le cycle
-            #  → _check_rte() ne comptait jamais de cycle → TIMEOUT)
-            # Fix : activer la simulation en premier, puis déclencher via Redis uniquement
-            # (pas de double stimulus LIN+Redis qui causait une désynchronisation)
+            # ROOT CAUSE (Jenkins TIMEOUT) :
+            # L'ancienne séquence envoyait lw.queue_send(TOUCH) puis immédiatement
+            # rc.set_cmd(crs_wiper_op=1) via Redis. Sous Jenkins, la latence TCP
+            # vers crslin.py (RPiSIM:5555) est plus longue qu'en plateforme Qt.
+            # Le BCM recevait d'abord Redis crs_wiper_op=1 → transition OFF→TOUCH
+            # → exécution du cycle TOUCH complet → retour OFF, et SEULEMENT ENSUITE
+            # la trame LIN 0x16 avec WiperOp=TOUCH arrivait, ce qui remettait
+            # crs_wiper_op=TOUCH sur un BCM déjà en OFF → _check_rte ne voyait
+            # jamais state=OFF + cycle_count>=1 dans la bonne fenêtre → TIMEOUT 8s.
+            #
+            # FIX : supprimer crs_wiper_op=1 via Redis. La commande TOUCH doit
+            # passer UNIQUEMENT par LIN 0x16 (crslin.py). On attend 400ms après
+            # queue_send pour laisser le temps à crslin.py de recevoir la commande
+            # et au BCM de traiter la prochaine trame LIN 0x16 (période ~50ms) avant
+            # de positionner rest_contact_sim, qui simule la lame en mouvement.
             if rc:
-                rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim",        True)   # lame EN MOUVEMENT simulée
-                rc.set_cmd("crs_wiper_op",            0)
-            time.sleep(0.15)   # laisser le BCM traiter sim_active avant le stimulus
+                rc.set_cmd("rest_contact_sim_active", False)
+                rc.set_cmd("rest_contact_sim",        False)
+                rc.set_cmd("crs_wiper_op", 0)
+            lw.queue_send({"cmd": "TOUCH"})
+            # Attendre que LIN 0x16 TOUCH soit traité par le BCM (≥ 2 périodes LIN)
+            # avant de simuler le mouvement de lame via rest_contact.
+            time.sleep(0.4)
             if hasattr(test, "reset_t0"): test.reset_t0()
             if rc:
-                rc.set_cmd("crs_wiper_op", 1)   # TOUCH — stimulus unique via Redis
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", True)
+                # NE PAS setter crs_wiper_op=1 ici : laisser LIN seul gérer la
+                # commande TOUCH pour éviter la course LIN vs Redis sous Jenkins.
             time.sleep(1.5)
-            if rc: rc.set_cmd("rest_contact_sim", False)   # fin de cycle : lame AU REPOS
+            if rc: rc.set_cmd("rest_contact_sim", False)
 
         elif tid == "T43":
             self._log("  → T43 : SPEED1 + reverse_gear=True (rear intermittent)")
