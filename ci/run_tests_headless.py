@@ -425,19 +425,22 @@ class HeadlessTestRunner:
 
         elif tid == "T40":
             self._log("  → T40 : TOUCH — 1 cycle puis retour OFF (no repeat)")
-            if rc:
-                rc.set_cmd("rest_contact_sim_active", False)
-                rc.set_cmd("rest_contact_sim",        False)
-                rc.set_cmd("crs_wiper_op", 0)
-            lw.queue_send({"cmd": "TOUCH"})
-            time.sleep(0.2)
-            if hasattr(test, "reset_t0"): test.reset_t0()
+            # FIX : rest_contact_sim_active=True AVANT le stimulus TOUCH
+            # (précédemment : sim_active=False au moment du lw.queue_send → BCM lisait
+            #  GPIO hardware=False → rest_contact_raw restait False pendant tout le cycle
+            #  → _check_rte() ne comptait jamais de cycle → TIMEOUT)
+            # Fix : activer la simulation en premier, puis déclencher via Redis uniquement
+            # (pas de double stimulus LIN+Redis qui causait une désynchronisation)
             if rc:
                 rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", True)
-                rc.set_cmd("crs_wiper_op", 1)
+                rc.set_cmd("rest_contact_sim",        True)   # lame EN MOUVEMENT simulée
+                rc.set_cmd("crs_wiper_op",            0)
+            time.sleep(0.15)   # laisser le BCM traiter sim_active avant le stimulus
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            if rc:
+                rc.set_cmd("crs_wiper_op", 1)   # TOUCH — stimulus unique via Redis
             time.sleep(1.5)
-            if rc: rc.set_cmd("rest_contact_sim", False)
+            if rc: rc.set_cmd("rest_contact_sim", False)   # fin de cycle : lame AU REPOS
 
         elif tid == "T43":
             self._log("  → T43 : SPEED1 + reverse_gear=True (rear intermittent)")
