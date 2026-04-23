@@ -1166,8 +1166,16 @@ class HeadlessTestRunner:
             # mw.queue_send(reverse=0) met à jour _vehicle_state dans bcmcan
             # → les trames 0x300 suivantes auront reverse=0 → BCM arrête le
             # moteur arrière via _handle_reverse_intermittent (Cas 1).
+            #
+            # FIX T30/T31 (et tout test moteur actif) :
+            # Sur banc physique (REST_CONTACT_HARDWARE_PRESENT=True), la lame
+            # continue de tourner après PASS jusqu'au _reset_bcm_state suivant,
+            # ce qui accumule des cycles GPIO physiques dans _front_blade_cycles.
+            # → lw.queue_send(OFF) notifie crslin.py qui arrête d'émettre
+            # WiperOp=SPEED1/2 → BCM transite vers OFF → lame s'arrête.
             mw = self._motor_w
             rc = self._rte_client
+            lw = self._lin_w
             if mw:
                 mw.queue_send({"ignition_status": "ON",
                                "reverse_gear": 0,
@@ -1175,6 +1183,8 @@ class HeadlessTestRunner:
             if rc:
                 rc.set_cmd("crs_wiper_op", 0)
                 rc.set_cmd("reverse_gear", False)
+            if lw:
+                lw.queue_send({"cmd": "OFF"})
 
             last_tid = test.ID
 
