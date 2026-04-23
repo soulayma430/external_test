@@ -388,7 +388,7 @@ class HeadlessTestRunner:
             "T43","T45","TC_LIN_002","TC_LIN_004","TC_LIN_005",
             "TC_CAN_003","TC_GEN_001","TC_SPD_001","TC_AUTO_004",
             "TC_FSR_008","TC_FSR_010","TC_COM_001","TC_B2103",
-            "LIN_INVALID_CMD_001","T_RAIN_AUTO_SENSOR_ERROR","T_CAS_B_SPEED1_REVERSE","T_B2009_CAN",
+            "LIN_INVALID_CMD_001","T_RAIN_AUTO_SENSOR_ERROR","T_B2009_CAN",
         }
         if tid not in NEEDS_DELAY:
             return 0
@@ -411,14 +411,6 @@ class HeadlessTestRunner:
         if tid == "T10":
             self._log("  → stop_lin_tx")
             lw.queue_send({"test_cmd": "stop_lin_tx"})
-
-        elif tid in ("T03", "T04", "T05"):
-            # 0x200 est émis cycliquement dès que wc_available=True (CAS B).
-            self._log(f"  → {tid} : wc_available=True (CAS B)")
-            if rc:
-                rc.set_cmd("wc_available", True)
-                rc.set_cmd("ignition_status", 1)
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
 
         elif tid == "T11":
             self._log("  → stop_can_tx")
@@ -578,11 +570,6 @@ class HeadlessTestRunner:
 
         elif tid == "TC_FSR_010":
             self._log("  → TC_FSR_010 : CRC corrompu sur 0x201")
-            # _rc_gen++ invalide tout cleanup résiduel d'un run précédent
-            self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-            # reset_b2101 : évite que B2101 se déclenche pendant le setup
-            if self._sim_client and self._sim_client.is_connected():
-                self._sim_client.reset_b2101()
             if rc:
                 rc.set_cmd("wc_timeout_active", False)
                 rc.set_cmd("wc_crc_fault",      False)
@@ -597,10 +584,7 @@ class HeadlessTestRunner:
                 rc.set_cmd("crs_wiper_op",  2)
             time.sleep(0.6)
             if hasattr(test, "reset_t0"): test.reset_t0()
-            # reset_corrupt_crc avant count=8 : élimine tout résidu d'un run précédent
-            if self._sim_client and self._sim_client.is_connected():
-                self._sim_client.reset_corrupt_crc()
-            mw.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 8})
+            mw.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 20})
             if hasattr(test, "_stimulus_sent"): test._stimulus_sent = True
 
         elif tid == "TC_COM_001":
@@ -608,12 +592,7 @@ class HeadlessTestRunner:
             if hasattr(test, "reset_t0"): test.reset_t0()
 
         elif tid == "TC_LIN_CS":
-            self._log("  → TC_LIN_CS : corrupt checksum ON + SPEED1 → 5 trames KO → B2004")
-            # Séquence v1 (nouvelle platform) :
-            # t=0   : reset lin_checksum_fault + lin_timeout_active
-            # t=200 : corrupt_lin_checksum actif + reset_t0() + cmd=SPEED1
-            #         → crslin émet WOP=2 AVEC checksum corrompu en continu
-            #         → BCM rejette chaque trame → timeout B2004 après 2s
+            self._log("  → TC_LIN_CS : corruption checksum AVANT SPEED1")
             if rc:
                 rc.set_cmd("lin_checksum_fault", False)
                 rc.set_cmd("crs_wiper_op",       0)
@@ -623,8 +602,6 @@ class HeadlessTestRunner:
             if hasattr(test, "_stimulus_sent"): test._stimulus_sent = True
             if hasattr(test, "reset_t0"): test.reset_t0()
             time.sleep(0.1)
-            # cmd=SPEED1 : crslin émet WOP=2 corrompu en continu
-            # La corruption reste active → toutes les trames KO → timeout après 2s
             lw.queue_send({"cmd": "SPEED1"})
 
         elif tid == "T44":
@@ -775,12 +752,17 @@ class HeadlessTestRunner:
         elif tid == "T34":
             self._log("  → T34 : Redis SET AUTO + rain=10")
             if rc:
-                lw.queue_send({"cmd": "AUTO"})
+                # FIX : positionner rain_intensity dans Redis AVANT d'envoyer
+                # la commande LIN AUTO.  Sans ce délai, le BCM évalue AUTO avec
+                # pluie=0 (résidu du reset) et arrête le moteur immédiatement.
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 10)
-                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
+                time.sleep(0.15)   # attendre propagation Redis → BCM
+                lw.queue_send({"cmd": "AUTO"})
+                rc.set_cmd("crs_wiper_op", 4)
+                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 _gen = self._rc_gen
                 time.sleep(0.2)
@@ -801,12 +783,16 @@ class HeadlessTestRunner:
         elif tid == "T35":
             self._log("  → T35 : Redis SET AUTO + rain=25")
             if rc:
-                lw.queue_send({"cmd": "AUTO"})
+                # FIX : positionner rain_intensity dans Redis AVANT d'envoyer
+                # la commande LIN AUTO (même race condition que T34).
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 25)
-                mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
+                time.sleep(0.15)   # attendre propagation Redis → BCM
+                lw.queue_send({"cmd": "AUTO"})
+                rc.set_cmd("crs_wiper_op", 4)
+                mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 _gen = self._rc_gen
                 time.sleep(0.2)
@@ -944,28 +930,6 @@ class HeadlessTestRunner:
                 rc.set_cmd("rain_sensor_ok",    False)
             mw.queue_send({"rain_intensity": 255, "sensor_status": "ERROR"})
 
-        elif tid == "T_CAS_B_SPEED1_REVERSE":
-            self._log("  → T_CAS_B_SPEED1_REVERSE : CAS B + SPEED1 LIN→CAN 0x200 + Reverse CAN 0x300")
-            if rc:
-                rc.set_cmd("wc_available",         True)
-                rc.set_cmd("lin_op_locked",        False)  # LIN doit pouvoir écrire crs_wiper_op
-                rc.set_cmd("rear_wiper_available", True)
-                rc.set_cmd("crs_wiper_op",         0)
-                rc.set_cmd("ignition_status",      1)
-                rc.set_cmd("reverse_gear",         False)
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
-            time.sleep(0.4)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            # blade_cycling : évite B2009 en CAS B (blade=0 permanent → STUCK)
-            if self._sim_client and self._sim_client.is_connected():
-                self._sim_client.start_blade_cycling(period_ms=1500)
-            # SPEED1 via LIN uniquement — stimulus doit venir du bus LIN
-            lw.queue_send({"cmd": "SPEED1"})
-            # Reverse via CAN 0x300 après 500ms — stimulus doit venir du bus CAN
-            def _casb_activate_reverse():
-                mw.queue_send({"ignition_status": "ON", "reverse_gear": 1, "vehicle_speed": 0})
-            threading.Timer(0.5, _casb_activate_reverse).start()
-
         elif tid == "T_B2009_CAN":
             self._log("  → T_B2009_CAN : CAS B + blade figée + rest_contact fixe → B2009")
             if rc:
@@ -980,44 +944,12 @@ class HeadlessTestRunner:
             mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
             time.sleep(0.4)
             if hasattr(test, "reset_t0"): test.reset_t0()
-            # Re-asserter ignition=1 juste avant le stimulus : défense contre
-            # la race condition CAN 0x300 (bcmcan peut encore émettre ign=0
-            # depuis un test précédent et écraser ignition_status dans le BCM).
-            if rc:
-                rc.set_cmd("ignition_status", 1)
             if self._sim_client and self._sim_client.is_connected():
                 self._sim_client.send({"test_cmd": "freeze_blade_position", "value": 50.0})
             lw.queue_send({"cmd": "SPEED1"})
             if rc: rc.set_cmd("crs_wiper_op", 2)
 
     # ── Reset état BCM avant chaque test ─────────────────────────────────
-    def _post_test(self, test: BaseTest):
-        """Cleanup post-test pour les cas nécessitant une restauration spécifique."""
-        tid = test.ID
-
-        if tid in ("T03", "T04", "T05"):
-            self._log(f"  → {tid} post : wc_available=False (retour CAS A)")
-            if self._rte_client:
-                self._rte_client.set_cmd("wc_available", False)
-
-        elif tid == "T_CAS_B_SPEED1_REVERSE":
-            self._log("  → T_CAS_B_SPEED1_REVERSE post : stop blade_cycling + reverse=0 + OFF")
-            if self._sim_client and self._sim_client.is_connected():
-                self._sim_client.stop_blade_cycling()
-                self._sim_client.reset_b2101()
-            self._lin_w.queue_send({"cmd": "OFF"})
-            if self._rte_client:
-                self._rte_client.set_cmd("reverse_gear",         False)
-                self._rte_client.set_cmd("crs_wiper_op",         0)
-                self._rte_client.set_cmd("lin_op_locked",        False)
-                self._rte_client.set_cmd("wc_available",         False)
-                self._rte_client.set_cmd("rear_wiper_available", True)
-                time.sleep(0.4)
-                self._rte_client.set_cmd("wc_timeout_active",  False)
-                self._rte_client.set_cmd("lin_timeout_active", False)
-            self._motor_w.queue_send(
-                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
-
     def _reset_bcm_state(self):
         """Remet le BCM dans un état stable (ignition ON, pas de timeout actif)."""
         rc = self._rte_client
@@ -1108,8 +1040,6 @@ class HeadlessTestRunner:
                         msg += f"  ({res.details})"
                     self._log(msg)
                     break
-
-            self._post_test(test)   # cleanup spécifique post-test
 
             last_tid = test.ID
 
