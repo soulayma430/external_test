@@ -753,13 +753,21 @@ class HeadlessTestRunner:
             self._log("  → T34 : Redis SET AUTO + rain=10")
             if rc:
                 # FIX : positionner rain_intensity dans Redis AVANT d'envoyer
-                # la commande LIN AUTO.  Sans ce délai, le BCM évalue AUTO avec
-                # pluie=0 (résidu du reset) et arrête le moteur immédiatement.
+                # la commande LIN AUTO.
+                #
+                # Race condition corrigée : T-WSM (50ms) appelle _process_auto()
+                # dès que crs_wiper_op=AUTO est reçu via T-REDIS-CMD.  Si
+                # rain_intensity n'est pas encore dans le RTE Python local du BCM
+                # à ce moment-là, _process_auto lit pluie=0 et arrête le moteur.
+                #
+                # 300ms = 6 × T-WSM(50ms) : assure que T-REDIS-CMD a traité le
+                # message rain_intensity=10 ET que T-WSM a eu le temps de le
+                # voir avant que crs_wiper_op=4 déclenche _enter_auto().
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 10)
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
-                time.sleep(0.15)   # attendre propagation Redis → BCM
+                time.sleep(0.30)   # attendre propagation Redis → BCM (≥ 6×T-WSM)
                 lw.queue_send({"cmd": "AUTO"})
                 rc.set_cmd("crs_wiper_op", 4)
                 mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
@@ -783,13 +791,15 @@ class HeadlessTestRunner:
         elif tid == "T35":
             self._log("  → T35 : Redis SET AUTO + rain=25")
             if rc:
-                # FIX : positionner rain_intensity dans Redis AVANT d'envoyer
-                # la commande LIN AUTO (même race condition que T34).
+                # FIX : même race condition que T34.
+                # 300ms = 6 × T-WSM(50ms) : garantit que rain_intensity=25 est
+                # dans le RTE Python local du BCM avant que crs_wiper_op=4
+                # déclenche _enter_auto() → _process_auto().
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 25)
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
-                time.sleep(0.15)   # attendre propagation Redis → BCM
+                time.sleep(0.30)   # attendre propagation Redis → BCM (≥ 6×T-WSM)
                 lw.queue_send({"cmd": "AUTO"})
                 rc.set_cmd("crs_wiper_op", 4)
                 mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
@@ -955,11 +965,15 @@ class HeadlessTestRunner:
         rc = self._rte_client
         mw = self._motor_w
         if rc:
-            rc.set_cmd("wc_timeout_active",  False)
-            rc.set_cmd("lin_timeout_active", False)
-            rc.set_cmd("crs_wiper_op",       0)
-            rc.set_cmd("ignition_status",    1)
-            rc.set_cmd("wc_available",       False)
+            rc.set_cmd("wc_timeout_active",       False)
+            rc.set_cmd("lin_timeout_active",       False)
+            rc.set_cmd("crs_wiper_op",             0)
+            rc.set_cmd("ignition_status",          1)
+            rc.set_cmd("wc_available",             False)
+            rc.set_cmd("rain_intensity",           0)      # FIX : éviter pollution T34/T35
+            rc.set_cmd("rain_sensor_installed",    False)  # FIX : état neutre entre tests
+            rc.set_cmd("rest_contact_sim_active",  False)
+            rc.set_cmd("lin_op_locked",            False)
         if mw:
             mw.queue_send({"ignition_status": "ON",
                            "reverse_gear": 0,
