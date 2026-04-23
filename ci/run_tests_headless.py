@@ -451,6 +451,7 @@ class HeadlessTestRunner:
             # RC3 — lw.queue_send(SPEED1) inutile et risqué : utiliser uniquement Redis.
             mw.queue_send({"ignition_status": "ON", "reverse_gear": 1, "vehicle_speed": 0})
             if rc:
+                rc.set_cmd("lin_op_locked", True)  # bloque LIN 0x16 → évite OFF résiduel
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", True)
                 time.sleep(0.15)                   # propagation Redis → BCM
