@@ -460,38 +460,48 @@ class HeadlessTestRunner:
 
         elif tid == "T45":
             self._log("  → T45 : SPEED1 puis ignition=0 (blade return to rest)")
-            # FIX T45 : ordre recalé pour garantir que BCM est en ST_SPEED1
-            # AVANT l'envoi de ignition_status=0.
+            # ROOT CAUSES identifiées (builds 87/91) :
             #
-            # Séquence correcte :
-            #  1. Positionner rest_contact_sim=True (lame simulée EN MOUVEMENT)
-            #     AVANT crs_wiper_op=2, pour que _read_rest_contact() retourne True
-            #     dès l'entrée en SPEED1 → FSR_004 verra blade_moving=True.
-            #  2. crs_wiper_op=2 via Redis → BCM passe en SPEED1 (T-WSM 50ms).
-            #  3. sleep(0.3) : laisser au moins 2 ticks T-WSM confirmer SPEED1.
-            #  4. reset_t0() : le chrono commence ici.
-            #  5. ignition_status=0 → BCM voit SPEED1 + blade_moving=True
-            #     → ST_PARK (FSR_004) puis attend front descendant rest_contact.
-            #  6. sleep(1.5) puis rest_contact_sim=False → T-PUMP met rest_contact_raw=False
-            #     → _check_rte T45 : state=OFF + rest_contact_raw=False → PASS.
+            # RC1 — LIN 0x16 résiduel : lw.queue_send(SPEED1) arrivait pendant ST_PARK
+            #   et réécrivait crs_wiper_op=SPEED1. Après PARK→OFF, si ignition redevenait ≠0,
+            #   le BCM re-démarrait en SPEED1 → B2009 STUCK CLOSED → ERROR.
+            #   FIX : ne plus envoyer de commande LIN ; utiliser UNIQUEMENT crs_wiper_op via Redis.
+            #   lin_op_locked=True protège crs_wiper_op contre les frames LIN pendant le test.
+            #
+            # RC2 — CAN 0x300 écrase ignition_status après 1s : bcmcan.py émet 0x300 avec
+            #   ignition=2 (START) toutes les 200ms. La fenêtre Redis priority = 1s.
+            #   Le PARK dure ~1500ms → après 1s la fenêtre expire → CAN remet ignition=2
+            #   → BCM voit ignition≠0 après PARK→OFF → crs_wiper_op=SPEED1 non bloqué → re-loop.
+            #   FIX : boucle de rafraîchissement ignition=0 toutes les 800ms (< 1s) pendant
+            #   toute la durée du test, pour maintenir la fenêtre Redis active.
             mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
             if rc:
+                rc.set_cmd("lin_op_locked", True)       # bloque LIN 0x16 → pas de résidu SPEED1
                 rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", True)   # lame EN MOUVEMENT avant SPEED1
-                time.sleep(0.15)                        # propagation Redis → BCM
-                lw.queue_send({"cmd": "SPEED1"})
-                rc.set_cmd("crs_wiper_op", 2)
-                time.sleep(0.30)                        # ≥ 2 ticks T-WSM(50ms) en SPEED1
+                rc.set_cmd("rest_contact_sim", True)    # lame EN MOUVEMENT avant SPEED1
+                time.sleep(0.15)                         # propagation Redis → BCM
+                rc.set_cmd("crs_wiper_op", 2)            # SPEED1 uniquement via Redis
+                time.sleep(0.30)                         # ≥ 2 ticks T-WSM(50ms) en SPEED1
                 if hasattr(test, "reset_t0"): test.reset_t0()
-                rc.set_cmd("ignition_status", 0)
-                mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+
+                def _t45_ign_refresh():
+                    """Rafraîchit ignition=0 toutes les 800ms pour contrer CAN 0x300
+                    (fenêtre Redis priority = 1s, bcmcan émet ignition=2 toutes les 200ms)."""
+                    while getattr(self, "_rc_gen", 0) == _gen:
+                        rc.set_cmd("ignition_status", 0)
+                        time.sleep(0.80)
+                threading.Thread(target=_t45_ign_refresh, daemon=True).start()
+
+                rc.set_cmd("ignition_status", 0)         # déclencheur initial FSR_004
                 time.sleep(1.5)
-                rc.set_cmd("rest_contact_sim", False)   # front ↓ → T-PUMP: rest_contact_raw=False
+                rc.set_cmd("rest_contact_sim", False)     # front ↓ → rest_contact_raw=False
             else:
-                lw.queue_send({"cmd": "SPEED1"})
+                rc.set_cmd("crs_wiper_op", 2)
                 time.sleep(0.4)
                 if hasattr(test, "reset_t0"): test.reset_t0()
-                lw.queue_send({"cmd": "OFF"})
+                rc.set_cmd("ignition_status", 0)
                 mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
 
         elif tid == "TC_LIN_002":
