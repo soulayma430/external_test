@@ -460,20 +460,35 @@ class HeadlessTestRunner:
 
         elif tid == "T45":
             self._log("  → T45 : SPEED1 puis ignition=0 (blade return to rest)")
+            # FIX T45 : ordre recalé pour garantir que BCM est en ST_SPEED1
+            # AVANT l'envoi de ignition_status=0.
+            #
+            # Séquence correcte :
+            #  1. Positionner rest_contact_sim=True (lame simulée EN MOUVEMENT)
+            #     AVANT crs_wiper_op=2, pour que _read_rest_contact() retourne True
+            #     dès l'entrée en SPEED1 → FSR_004 verra blade_moving=True.
+            #  2. crs_wiper_op=2 via Redis → BCM passe en SPEED1 (T-WSM 50ms).
+            #  3. sleep(0.3) : laisser au moins 2 ticks T-WSM confirmer SPEED1.
+            #  4. reset_t0() : le chrono commence ici.
+            #  5. ignition_status=0 → BCM voit SPEED1 + blade_moving=True
+            #     → ST_PARK (FSR_004) puis attend front descendant rest_contact.
+            #  6. sleep(1.5) puis rest_contact_sim=False → T-PUMP met rest_contact_raw=False
+            #     → _check_rte T45 : state=OFF + rest_contact_raw=False → PASS.
             mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
-            lw.queue_send({"cmd": "SPEED1"})
             if rc:
                 rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", True)
+                rc.set_cmd("rest_contact_sim", True)   # lame EN MOUVEMENT avant SPEED1
+                time.sleep(0.15)                        # propagation Redis → BCM
+                lw.queue_send({"cmd": "SPEED1"})
                 rc.set_cmd("crs_wiper_op", 2)
-                time.sleep(0.4)
+                time.sleep(0.30)                        # ≥ 2 ticks T-WSM(50ms) en SPEED1
                 if hasattr(test, "reset_t0"): test.reset_t0()
-                lw.queue_send({"cmd": "OFF"})
                 rc.set_cmd("ignition_status", 0)
                 mw.queue_send({"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
                 time.sleep(1.5)
-                rc.set_cmd("rest_contact_sim", False)
+                rc.set_cmd("rest_contact_sim", False)   # front ↓ → T-PUMP: rest_contact_raw=False
             else:
+                lw.queue_send({"cmd": "SPEED1"})
                 time.sleep(0.4)
                 if hasattr(test, "reset_t0"): test.reset_t0()
                 lw.queue_send({"cmd": "OFF"})
@@ -987,10 +1002,16 @@ class HeadlessTestRunner:
             rc.set_cmd("crs_wiper_op",             0)
             rc.set_cmd("ignition_status",          1)
             rc.set_cmd("wc_available",             False)
-            rc.set_cmd("rain_intensity",           0)      # FIX : éviter pollution T34/T35
-            rc.set_cmd("rain_sensor_installed",    False)  # FIX : état neutre entre tests
+            rc.set_cmd("rain_intensity",           0)
+            rc.set_cmd("rain_sensor_installed",    False)
             rc.set_cmd("rest_contact_sim_active",  False)
+            rc.set_cmd("rest_contact_sim",         False)
             rc.set_cmd("lin_op_locked",            False)
+            # FIX T45 : si le BCM est en ST_ERROR résiduel (ex : entre deux runs
+            # Jenkins), bcm_error_reset le ramène en ST_OFF au prochain tick T-WSM.
+            # Sans ça, ignition_status=0 dans _pre_test T45 voit front_active=False
+            # (ST_ERROR ∉ _STATES_USING_FRONT) et passe en ST_OFF direct sans PARK.
+            rc.set_cmd("bcm_error_reset",          True)
         if mw:
             mw.queue_send({"ignition_status": "ON",
                            "reverse_gear": 0,
