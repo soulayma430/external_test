@@ -1048,10 +1048,12 @@ class HeadlessTestRunner:
             rc.set_cmd("rest_contact_sim_active",  False)
             rc.set_cmd("rest_contact_sim",         False)
             rc.set_cmd("lin_op_locked",            False)
+            # FIX T43 : stopper _handle_reverse_intermittent qui tourne en autonome
+            # dans le BCM tant que reverse_gear=True. Sans ce reset, le moteur
+            # arrière continue d'osciller après la fin du test.
+            rc.set_cmd("reverse_gear",             False)
             # FIX T45 : si le BCM est en ST_ERROR résiduel (ex : entre deux runs
             # Jenkins), bcm_error_reset le ramène en ST_OFF au prochain tick T-WSM.
-            # Sans ça, ignition_status=0 dans _pre_test T45 voit front_active=False
-            # (ST_ERROR ∉ _STATES_USING_FRONT) et passe en ST_OFF direct sans PARK.
             rc.set_cmd("bcm_error_reset",          True)
         if mw:
             mw.queue_send({"ignition_status": "ON",
