@@ -1137,11 +1137,25 @@ class HeadlessTestRunner:
                     break
 
             # ── Invalider _rc_gen → arrêter tous les threads daemon du test ──
-            # Les boucles de refresh (rain_intensity, reverse_gear, ignition,
-            # rest_contact) testent getattr(self, "_rc_gen") == _gen.
-            # En incrémentant ici, on les arrête immédiatement après le résultat,
-            # avant même le délai inter-test suivant.
             self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+
+            # ── Nettoyage actif post-test ─────────────────────────────────
+            # Remet les actionneurs dans un état neutre IMMÉDIATEMENT après
+            # le résultat, sans attendre le _reset_bcm_state du test suivant.
+            # Nécessaire pour T43 : bcmcan continue d'émettre CAN 0x300 avec
+            # reverse=1 après le test → BCM reste en mode intermittent arrière.
+            # mw.queue_send(reverse=0) met à jour _vehicle_state dans bcmcan
+            # → les trames 0x300 suivantes auront reverse=0 → BCM arrête le
+            # moteur arrière via _handle_reverse_intermittent (Cas 1).
+            mw = self._motor_w
+            rc = self._rte_client
+            if mw:
+                mw.queue_send({"ignition_status": "ON",
+                               "reverse_gear": 0,
+                               "vehicle_speed": 0})
+            if rc:
+                rc.set_cmd("crs_wiper_op", 0)
+                rc.set_cmd("reverse_gear", False)
 
             last_tid = test.ID
 
