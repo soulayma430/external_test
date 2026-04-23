@@ -932,28 +932,35 @@ class HeadlessTestRunner:
 
         elif tid == "T37":
             self._log("  → T37 : LIN REAR_WASH")
-            # ROOT CAUSE du timeout T37 en mode headless :
-            # Dans la plateforme Qt, _tick() (QTimer 200ms) tourne EN PARALLÈLE
-            # pendant _pre_test. Quand REAR_WASH est envoyé, _check_rte est appelé
-            # pendant le délai 200ms et voit rear_motor_on=False → _wait_idle=False
-            # → puis rear_motor_on=True → chrono démarre → PASS.
+            # ROOT CAUSE T37 TIMEOUT/FAIL en mode headless :
             #
-            # En headless, _pre_test bloque la boucle de supervision :
-            # time.sleep(0.2) → BCM reçoit REAR_WASH et pose rear_motor_on=True
-            # → quand la boucle démarre, _check_rte voit True dès le 1er tick
-            # → _wait_idle reste True jusqu'à la fin des 2 cycles → TIMEOUT.
+            # test_cases.py T37._on_start() pose _wait_idle=True :
+            # le test attend de voir rear_motor_on=False au moins 1 fois AVANT
+            # de démarrer la mesure. C'est un garde contre des résidus du test
+            # précédent. Dans la plateforme Qt, _tick() tourne en parallèle
+            # pendant _pre_test → _wait_idle voit False avant que REAR_WASH
+            # soit traité → fonctionne.
             #
-            # FIX : retourner de _pre_test IMMÉDIATEMENT (sans sleep) pour que
-            # la boucle de supervision démarre avant que rear_motor_on=True.
-            # reset_t0 est appelé via thread daemon avec délai 200ms,
-            # reproduisant exactement QTimer.singleShot(200, reset_t0) du Qt.
+            # En headless : _pre_test bloque la boucle. Si queue_send(REAR_WASH)
+            # est envoyé AVANT que la boucle démarre, BCM peut poser
+            # rear_motor_on=True avant le 1er tick → _wait_idle voit True
+            # → reste True jusqu'à la fin des cycles → TIMEOUT ou FAIL.
+            #
+            # FIX : retourner de _pre_test IMMÉDIATEMENT (boucle supervision
+            # peut démarrer), puis envoyer REAR_WASH depuis un thread daemon
+            # avec un délai > TICK_INTERVAL_S (200ms). Le 1er tick verra
+            # rear_motor_on=False → _wait_idle=False → puis True dès le cycle.
+            # reset_t0 est appelé au moment de l'envoi (comme Qt singleShot).
             mw.queue_send({"ignition_status": 1, "vehicle_speed": 0})
-            lw.queue_send({"cmd": "REAR_WASH"})
-            if hasattr(test, "reset_t0"):
-                def _t37_reset():
-                    time.sleep(0.2)
+            _gen = getattr(self, "_rc_gen", 0)
+            def _t37_delayed():
+                time.sleep(0.35)   # > TICK_INTERVAL_S=0.2 → garantit ≥1 tick False
+                if getattr(self, "_rc_gen", 0) != _gen:
+                    return
+                if hasattr(test, "reset_t0"):
                     test.reset_t0()
-                threading.Thread(target=_t37_reset, daemon=True).start()
+                lw.queue_send({"cmd": "REAR_WASH"})
+            threading.Thread(target=_t37_delayed, daemon=True).start()
 
         elif tid == "T38":
             self._log("  → T38 : LIN SPEED1 + injection surcourant")
