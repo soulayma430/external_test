@@ -932,10 +932,28 @@ class HeadlessTestRunner:
 
         elif tid == "T37":
             self._log("  → T37 : LIN REAR_WASH")
-            lw.queue_send({"cmd": "REAR_WASH"})
+            # ROOT CAUSE du timeout T37 en mode headless :
+            # Dans la plateforme Qt, _tick() (QTimer 200ms) tourne EN PARALLÈLE
+            # pendant _pre_test. Quand REAR_WASH est envoyé, _check_rte est appelé
+            # pendant le délai 200ms et voit rear_motor_on=False → _wait_idle=False
+            # → puis rear_motor_on=True → chrono démarre → PASS.
+            #
+            # En headless, _pre_test bloque la boucle de supervision :
+            # time.sleep(0.2) → BCM reçoit REAR_WASH et pose rear_motor_on=True
+            # → quand la boucle démarre, _check_rte voit True dès le 1er tick
+            # → _wait_idle reste True jusqu'à la fin des 2 cycles → TIMEOUT.
+            #
+            # FIX : retourner de _pre_test IMMÉDIATEMENT (sans sleep) pour que
+            # la boucle de supervision démarre avant que rear_motor_on=True.
+            # reset_t0 est appelé via thread daemon avec délai 200ms,
+            # reproduisant exactement QTimer.singleShot(200, reset_t0) du Qt.
             mw.queue_send({"ignition_status": 1, "vehicle_speed": 0})
-            time.sleep(0.2)
-            if hasattr(test, "reset_t0"): test.reset_t0()
+            lw.queue_send({"cmd": "REAR_WASH"})
+            if hasattr(test, "reset_t0"):
+                def _t37_reset():
+                    time.sleep(0.2)
+                    test.reset_t0()
+                threading.Thread(target=_t37_reset, daemon=True).start()
 
         elif tid == "T38":
             self._log("  → T38 : LIN SPEED1 + injection surcourant")
