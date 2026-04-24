@@ -77,6 +77,24 @@ if not os.path.isdir(_PLATFORM_DIR):
     )
     sys.exit(2)
 
+# Si test_cases.py n'est pas directement dans platform/, descendre dans les sous-dossiers
+# (cas où les sources sont dans platform/project_final/controldesk - .../test_cases.py)
+if not os.path.isfile(os.path.join(_PLATFORM_DIR, "test_cases.py")):
+    _found = None
+    for _root, _dirs, _files in os.walk(_PLATFORM_DIR):
+        if "test_cases.py" in _files:
+            _found = _root
+            break
+    if _found:
+        _PLATFORM_DIR = _found
+    else:
+        print(
+            f"[ERREUR] test_cases.py introuvable sous {_PLATFORM_DIR}.\n"
+            f"  Vérifiez la structure du dépôt (voir README_JENKINS.md).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
 sys.path.insert(0, _PLATFORM_DIR)
 
 # ─── Imports plateforme ───────────────────────────────────────────────────────
