@@ -1154,6 +1154,57 @@ class HeadlessTestRunner:
                 rc.set_cmd("crs_wiper_op", 0)
                 rc.set_cmd("reverse_gear", False)
 
+            # ── Nettoyage ciblé par test ────────────────────────────
+            # FIX T38/T38b/T38c/TC_GEN_001 : après un surcourant, le BCM entre
+            # en ST_ERROR puis l'auto-healing (1s sans courant) le ramène en
+            # SPEED1 si le LIN diffuse encore SPEED1 / REAR_WIPE / FRONT_WASH.
+            # → il faut : 1) couper le LIN (cmd=OFF) AVANT l'auto-healing,
+            #              2) remettre motor_current_a / pump_current_a à 0
+            #              3) laisser 1.2s pour que l'auto-healing finisse proprement.
+            _tid = test.ID
+            if _tid in ("T38", "T38b", "T38c"):
+                self._log(f"  → {_tid} post : LIN OFF + courant=0 (évite boucle SPEED1 après auto-heal ERROR)")
+                lw = self._lin_w
+                if lw:
+                    lw.queue_send({"cmd": "OFF"})
+                if rc:
+                    rc.set_cmd("motor_current_a", 0.0)
+                    if _tid == "T38c":
+                        rc.set_cmd("pump_current_a", 0.0)
+                        rc.set_cmd("rest_contact_sim", False)
+                        rc.set_cmd("rest_contact_sim_active", False)
+                    if _tid == "T38b":
+                        rc.set_cmd("rear_motor_error", False)
+                    rc.set_cmd("wc_timeout_active", False)
+                    rc.set_cmd("crs_wiper_op", 0)
+                time.sleep(1.2)   # laisser auto-heal terminer → BCM repasse en OFF
+
+            elif _tid == "TC_GEN_001":
+                self._log("  → TC_GEN_001 post : LIN OFF + 300ms (évite cycles résiduels)")
+                lw = self._lin_w
+                if lw:
+                    lw.queue_send({"cmd": "OFF"})
+                if rc:
+                    rc.set_cmd("crs_wiper_op", 0)
+                    rc.set_cmd("ignition_status", 1)
+                time.sleep(0.3)
+
+            elif _tid == "TC_SPD_001":
+                # FIX TC_SPD_001 : le thread _spd_cycle tourne encore quand le test
+                # se termine. _rc_gen a déjà été incrémenté (ligne au-dessus) pour
+                # stopper le thread, mais rest_contact_sim_active=True reste dans Redis.
+                # Le LIN continue à diffuser SPEED1 → BCM repart en SPEED1 après OFF.
+                # Correction : désactiver la sim rest_contact + couper le LIN.
+                self._log("  → TC_SPD_001 post : rest_contact_sim OFF + LIN OFF")
+                lw = self._lin_w
+                if rc:
+                    rc.set_cmd("rest_contact_sim", False)
+                    rc.set_cmd("rest_contact_sim_active", False)
+                    rc.set_cmd("crs_wiper_op", 0)
+                if lw:
+                    lw.queue_send({"cmd": "OFF"})
+                time.sleep(0.2)
+
             last_tid = test.ID
 
             # ── Fail-fast ─────────────────────────────────────────────────
