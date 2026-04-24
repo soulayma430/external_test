@@ -425,18 +425,6 @@ class HeadlessTestRunner:
 
         elif tid == "T40":
             self._log("  → T40 : TOUCH — 1 cycle puis retour OFF (no repeat)")
-            # ROOT CAUSE du timeout T40 :
-            # La version précédente effectuait time.sleep(1.5) + rest_contact_sim=False
-            # DANS _pre_test, ce qui signifie que le cycle TOUCH complet se déroulait
-            # AVANT le retour de _pre_test et donc avant que la boucle de supervision
-            # (_check_rte, tick 200ms) ne démarre. Quand la boucle commençait, le BCM
-            # était déjà en state=OFF et _saw_active=False → _check_rte ne voit jamais
-            # state=TOUCH → TIMEOUT après 8s.
-            #
-            # FIX : déclencher le stimulus immédiatement puis retourner de _pre_test
-            # pour que la boucle de supervision puisse observer state=TOUCH.
-            # Le rest_contact_sim=False (fin de cycle) est géré dans un thread daemon,
-            # comme le font T43, T34, T35, etc.
             if rc:
                 rc.set_cmd("rest_contact_sim_active", False)
                 rc.set_cmd("rest_contact_sim",        False)
@@ -448,15 +436,8 @@ class HeadlessTestRunner:
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", True)
                 rc.set_cmd("crs_wiper_op", 1)
-                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-
-                def _t40_release():
-                    """Simule le retour au repos après ~1 cycle TOUCH (≤1700ms)."""
-                    time.sleep(1.5)
-                    if getattr(self, "_rc_gen", 0) == _gen:
-                        rc.set_cmd("rest_contact_sim", False)
-                threading.Thread(target=_t40_release, daemon=True).start()
+            time.sleep(1.5)
+            if rc: rc.set_cmd("rest_contact_sim", False)
 
         elif tid == "T43":
             self._log("  → T43 : SPEED1 + reverse_gear=True (rear intermittent)")
@@ -932,35 +913,10 @@ class HeadlessTestRunner:
 
         elif tid == "T37":
             self._log("  → T37 : LIN REAR_WASH")
-            # ROOT CAUSE T37 TIMEOUT/FAIL en mode headless :
-            #
-            # test_cases.py T37._on_start() pose _wait_idle=True :
-            # le test attend de voir rear_motor_on=False au moins 1 fois AVANT
-            # de démarrer la mesure. C'est un garde contre des résidus du test
-            # précédent. Dans la plateforme Qt, _tick() tourne en parallèle
-            # pendant _pre_test → _wait_idle voit False avant que REAR_WASH
-            # soit traité → fonctionne.
-            #
-            # En headless : _pre_test bloque la boucle. Si queue_send(REAR_WASH)
-            # est envoyé AVANT que la boucle démarre, BCM peut poser
-            # rear_motor_on=True avant le 1er tick → _wait_idle voit True
-            # → reste True jusqu'à la fin des cycles → TIMEOUT ou FAIL.
-            #
-            # FIX : retourner de _pre_test IMMÉDIATEMENT (boucle supervision
-            # peut démarrer), puis envoyer REAR_WASH depuis un thread daemon
-            # avec un délai > TICK_INTERVAL_S (200ms). Le 1er tick verra
-            # rear_motor_on=False → _wait_idle=False → puis True dès le cycle.
-            # reset_t0 est appelé au moment de l'envoi (comme Qt singleShot).
+            lw.queue_send({"cmd": "REAR_WASH"})
             mw.queue_send({"ignition_status": 1, "vehicle_speed": 0})
-            _gen = getattr(self, "_rc_gen", 0)
-            def _t37_delayed():
-                time.sleep(0.35)   # > TICK_INTERVAL_S=0.2 → garantit ≥1 tick False
-                if getattr(self, "_rc_gen", 0) != _gen:
-                    return
-                if hasattr(test, "reset_t0"):
-                    test.reset_t0()
-                lw.queue_send({"cmd": "REAR_WASH"})
-            threading.Thread(target=_t37_delayed, daemon=True).start()
+            time.sleep(0.2)
+            if hasattr(test, "reset_t0"): test.reset_t0()
 
         elif tid == "T38":
             self._log("  → T38 : LIN SPEED1 + injection surcourant")
@@ -1096,9 +1052,6 @@ class HeadlessTestRunner:
             # dans le BCM tant que reverse_gear=True. Sans ce reset, le moteur
             # arrière continue d'osciller après la fin du test.
             rc.set_cmd("reverse_gear",             False)
-            # FIX T45 : si le BCM est en ST_ERROR résiduel (ex : entre deux runs
-            # Jenkins), bcm_error_reset le ramène en ST_OFF au prochain tick T-WSM.
-            rc.set_cmd("bcm_error_reset",          True)
         if mw:
             mw.queue_send({"ignition_status": "ON",
                            "reverse_gear": 0,
@@ -1191,16 +1144,8 @@ class HeadlessTestRunner:
             # mw.queue_send(reverse=0) met à jour _vehicle_state dans bcmcan
             # → les trames 0x300 suivantes auront reverse=0 → BCM arrête le
             # moteur arrière via _handle_reverse_intermittent (Cas 1).
-            #
-            # FIX T30/T31 (et tout test moteur actif) :
-            # Sur banc physique (REST_CONTACT_HARDWARE_PRESENT=True), la lame
-            # continue de tourner après PASS jusqu'au _reset_bcm_state suivant,
-            # ce qui accumule des cycles GPIO physiques dans _front_blade_cycles.
-            # → lw.queue_send(OFF) notifie crslin.py qui arrête d'émettre
-            # WiperOp=SPEED1/2 → BCM transite vers OFF → lame s'arrête.
             mw = self._motor_w
             rc = self._rte_client
-            lw = self._lin_w
             if mw:
                 mw.queue_send({"ignition_status": "ON",
                                "reverse_gear": 0,
@@ -1208,8 +1153,6 @@ class HeadlessTestRunner:
             if rc:
                 rc.set_cmd("crs_wiper_op", 0)
                 rc.set_cmd("reverse_gear", False)
-            if lw:
-                lw.queue_send({"cmd": "OFF"})
 
             last_tid = test.ID
 
