@@ -1085,7 +1085,7 @@ class HeadlessTestRunner:
                 time.sleep(0.2)
                 rc.set_cmd("dtc_inactivate", "B2009")
                 rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim",        True)
+                rc.set_cmd("rest_contact_sim",        False)
             mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
             time.sleep(0.4)
             if hasattr(test, "reset_t0"): test.reset_t0()
