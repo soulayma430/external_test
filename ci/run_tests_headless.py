@@ -677,30 +677,20 @@ class HeadlessTestRunner:
                 daemon=True).start()
 
         elif tid == "T50":
-            self._log("  → T50 : Cas B wc_available=True + SPEED1 via CAN")
+            self._log("  → T50 : Cas B wc_available=True + LIN SPEED1 → CAN 0x200, pas RL2=LOW")
+            # IMPORTANT : PAS de rest_contact_sim pour T50.
+            # test_runner.py le précise explicitement : rest_contact_sim_active=True
+            # avec rest_contact_sim=False (lame au repos) AVANT SPEED1 bloquerait
+            # _check_rest_contact_stuck() et empêcherait state=SPEED1 d'être atteint.
+            # Préconditions : wc_available=True (Cas B), lin_op_locked=True, ignition=ON.
             if rc:
-                rc.set_cmd("wc_available",  True)
-                rc.set_cmd("lin_op_locked", True)
-                rc.set_cmd("crs_wiper_op",  0)
+                rc.set_cmd("wc_available",   True)
+                rc.set_cmd("lin_op_locked",  True)
+                rc.set_cmd("crs_wiper_op",   0)
                 rc.set_cmd("ignition_status", 1)
-                rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", False)
-                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                def _t50_cycles():
-                    for cycle in range(6):
-                        time.sleep(0.6 + cycle * 1.5 - (0.6 if cycle > 0 else 0))
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", True)
-                        time.sleep(1.35)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", False)
-                threading.Thread(target=_t50_cycles, daemon=True).start()
             mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
             time.sleep(0.4)
             if hasattr(test, "reset_t0"): test.reset_t0()
-            if self._sim_client and self._sim_client.is_connected():
-                self._sim_client.send({"test_cmd": "start_blade_cycling", "period_ms": 1500})
             lw.queue_send({"cmd": "SPEED1"})
             if rc: rc.set_cmd("crs_wiper_op", 2)
 
