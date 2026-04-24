@@ -1090,7 +1090,7 @@ class HeadlessTestRunner:
             time.sleep(0.4)
             if hasattr(test, "reset_t0"): test.reset_t0()
             if self._sim_client and self._sim_client.is_connected():
-                self._sim_client.send({"test_cmd": "freeze_blade_position", "value": 50.0})
+                self._sim_client.freeze_blade_position(50.0)
             lw.queue_send({"cmd": "SPEED1"})
             if rc: rc.set_cmd("crs_wiper_op", 2)
 
