@@ -27,6 +27,7 @@ Cles inscriptibles (stimuli de test) :
 
 import json
 import threading
+import uuid as _uuid
 
 _REDIS_AVAILABLE = False
 try:
@@ -127,11 +128,15 @@ class RTEClient:
         return v.lower() in ("true", "1", "yes")
 
     # ── SET (stimuli de test) ─────────────────────────────────────────────────
-    def set_cmd(self, key: str, value) -> bool:
+    # Identifiant unique de cette instance Platform
+    _CLIENT_ID = f"Redis-{_uuid.uuid4().hex[:6].upper()}"
+
+    def set_cmd(self, key: str, value, client: str = None) -> bool:
         """
         Envoie une commande SET au RpiBCM via Redis pub/sub.
         Le BCM applique la valeur a son RTE local (T-REDIS-CMD).
         Seules les cles autorisees sont acceptees cote BCM.
+        client : identifiant optionnel (défaut: _CLIENT_ID unique)
 
         Exemples :
             client.set_cmd("crs_wiper_op", 2)        # SPEED1
@@ -141,12 +146,51 @@ class RTEClient:
         if not self._connected or self._r is None:
             return False
         try:
-            payload = json.dumps({"key": key, "value": value})
+            payload = json.dumps({
+                "key":    key,
+                "value":  value,
+                "client": client or self._CLIENT_ID,
+            })
             self._r.publish("rte_cmd", payload)
             return True
         except Exception as e:
             print(f"[RTEClient] set_cmd({key}) erreur: {e}")
             return False
+
+    def acquire_write_lock(self) -> bool:
+        """Demande le verrou écriture RTE au BCM."""
+        return self.set_cmd("__lock_acquire__", 1, client=self._CLIENT_ID)
+
+    def release_write_lock(self) -> bool:
+        """Libère le verrou écriture RTE."""
+        return self.set_cmd("__lock_release__", 1, client=self._CLIENT_ID)
+
+    def renew_write_lock(self) -> bool:
+        """Renouvelle le TTL du verrou (heartbeat)."""
+        return self.set_cmd("__lock_renew__", 1, client=self._CLIENT_ID)
+
+    def subscribe_lock_status(self, callback) -> None:
+        """Écoute les notifications du verrou sur rte_lock_status."""
+        if not self._connected or self._r is None:
+            return
+        def _listen():
+            try:
+                import redis as _rm
+                r  = _rm.Redis(host=self._host, port=self._port, db=0,
+                               socket_connect_timeout=2, socket_timeout=30)
+                ps = r.pubsub(ignore_subscribe_messages=True)
+                ps.subscribe("rte_lock_status")
+                for msg in ps.listen():
+                    if msg["type"] == "message":
+                        try:
+                            callback(json.loads(msg["data"]))
+                        except Exception:
+                            pass
+            except Exception as e:
+                print(f"[RTEClient] subscribe_lock_status perdu: {e}")
+        import threading
+        threading.Thread(target=_listen, daemon=True,
+                         name="RTEClient-LOCK-SUB").start()
 
     def set_wiper_op(self, op_name: str) -> bool:
         """

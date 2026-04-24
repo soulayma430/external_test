@@ -50,6 +50,12 @@ try:
 except ImportError:
     _MDF_AVAILABLE = False
 
+try:
+    from asammdf import MDF as _AsamMDF
+    _ASAMMDF_AVAILABLE = True
+except ImportError:
+    _ASAMMDF_AVAILABLE = False
+
 
 # ══════════════════════════════════════════════════════════════
 #  PALETTE
@@ -509,6 +515,275 @@ class CsvScenarioLoader:
         if src == "can":
             return f"{r.get('can_id','')} {r.get('direction','')} {r.get('payload','')}"
         if src == "pump":
+            return f"pump={r.get('pump_state','')} cur={r.get('pump_current','')} A"
+        return str(r)
+
+
+# ═══════════════════════════════════════════════════════════
+#  MDF4 SCENARIO LOADER
+# ═══════════════════════════════════════════════════════════
+class Mdf4ScenarioLoader:
+    """
+    Charge un fichier MDF4 (.mf4) produit par MDFExporter et le convertit
+    en ScenarioRow[] compatible avec le moteur de replay CSV.
+    Strategie : iterer groupe par groupe (MOTOR / LIN / CAN / PUMP),
+    chaque groupe produisant des rows avec la bonne source.
+    Necessite : pip install asammdf
+    """
+
+    # Nom du groupe MDF → cle source ScenarioRow
+    _GROUP_TO_SRC = {
+        "MOTOR": "motor",
+        "LIN":   "lin",
+        "CAN":   "can",
+        "PUMP":  "pump",
+    }
+
+    # Canaux qui signalent l'appartenance d'un groupe anonyme
+    # IMPORTANT : les noms doivent correspondre exactement à ceux produits
+    # par mdf_exporter.py (ex. lin_front_motor_on, lin_rest_contact_raw,
+    # can_payload_B0 avec majuscule, motor_fault).
+    _SRC_HINTS = {
+        "motor": {"motor_state_txt", "motor_state_int", "front_motor_on",
+                  "rear_motor_on", "motor_current", "crs_wiper_op", "motor_fault"},
+        "lin":   {"lin_pid", "lin_type", "lin_wiper_op",
+                  "lin_front_motor_on", "lin_rest_contact_raw", "lin_front_on",
+                  "lin_alive", "lin_bcm_state"},
+        "can":   {"can_id", "can_direction", "can_dlc",
+                  "can_payload_B0", "can_payload_b0"},
+        "pump":  {"pump_flow", "pump_pressure", "pump_current",
+                  "pump_active", "pump_state"},
+    }
+
+    @staticmethod
+    def load(path: str, sources: set | None = None) -> tuple[list, str]:
+        if not _ASAMMDF_AVAILABLE:
+            return [], "asammdf non installe — pip install asammdf"
+        if not os.path.isfile(path):
+            return [], f"Fichier introuvable : {path}"
+        try:
+            mdf = _AsamMDF(path)
+        except Exception as exc:
+            return [], f"Erreur ouverture MDF4 : {exc}"
+
+        rows: list = []
+        t0: float | None = None
+
+        # ── Iterer groupe par groupe ──────────────────────────────────
+        for grp_idx in range(len(mdf.groups)):
+            # Nom du groupe (channel_group.acq_name ou premier canal)
+            grp_name = ""
+            try:
+                grp_name = (mdf.groups[grp_idx].channel_group.acq_name or "").upper()
+            except Exception:
+                pass
+
+            # Detecter la source via le nom du groupe
+            src = Mdf4ScenarioLoader._GROUP_TO_SRC.get(grp_name)
+
+            # Exporter ce groupe en DataFrame en ciblant uniquement ses canaux
+            df = None
+            # Methode robuste : récupérer les canaux du groupe et exporter
+            try:
+                # Récupérer les noms des canaux de ce groupe spécifique
+                grp_channels = [
+                    ch.name for ch in mdf.groups[grp_idx].channels
+                    if ch.name and ch.name != "time"
+                ]
+                if grp_channels:
+                    try:
+                        # group=grp_idx force la lecture du groupe exact,
+                        # évite le mélange cross-groupes et les NaN parasites
+                        df = mdf.to_dataframe(group=grp_idx)
+                    except TypeError:
+                        # Ancienne version asammdf sans paramètre group=
+                        df = mdf.to_dataframe(
+                            channels=grp_channels,
+                            raster=None,
+                        )
+            except Exception:
+                df = None
+
+            # Fallback : get_group si disponible
+            if df is None or len(df) == 0:
+                try:
+                    df = mdf.get_group(grp_idx)
+                except (AttributeError, Exception):
+                    df = None
+
+            if df is None or len(df) == 0:
+                continue
+
+            # Normaliser les noms de colonnes (enlever prefixes "GROUP.")
+            df.columns = [c.split(".")[-1] if "." in c else c for c in df.columns]
+            # Normaliser aussi les suffixes ":N" ajoutés par asammdf pour dédupliquer
+            df.columns = [c.split(":")[0] if ":" in c else c for c in df.columns]
+            cols = list(df.columns)
+
+            # Si source non trouvee par nom de groupe, deviner via colonnes
+            if src is None:
+                src = Mdf4ScenarioLoader._detect_source(cols)
+            if src is None:
+                continue
+            if sources and src not in sources:
+                continue
+
+            timestamps = df.index.to_numpy(dtype=float)
+            if t0 is None and len(timestamps):
+                t0 = float(timestamps[0])
+
+            for i, ts in enumerate(timestamps):
+                row_dict: dict = {"source": src, "timestamp": str(ts)}
+                for col in cols:
+                    try:
+                        v = df.iloc[i][col]
+                        # Décoder les bytes (chaînes MDF4 string)
+                        if isinstance(v, (bytes, bytearray)):
+                            row_dict[col] = v.decode("utf-8", errors="replace").strip("\x00")
+                        elif v is not None:
+                            row_dict[col] = str(v)
+                        else:
+                            row_dict[col] = ""
+                    except Exception:
+                        pass
+                Mdf4ScenarioLoader._remap(src, row_dict)
+                t_abs = float(ts)
+                t_rel = t_abs - (t0 or t_abs)
+                rows.append(ScenarioRow(
+                    t_abs=t_abs, t_rel=t_rel,
+                    source=src, raw=row_dict,
+                    summary=Mdf4ScenarioLoader._summarise(src, row_dict),
+                ))
+
+        if not rows:
+            # Fallback : to_dataframe() global si aucun groupe exploitable
+            return Mdf4ScenarioLoader._load_flat(mdf, path, sources)
+
+        rows.sort(key=lambda x: x.t_rel)
+        return rows, ""
+
+    @staticmethod
+    def _load_flat(mdf, path: str, sources: set | None) -> tuple[list, str]:
+        """Fallback : exporter tout en un seul DataFrame et deviner la source."""
+        try:
+            df = mdf.to_dataframe()
+        except Exception as exc:
+            return [], f"Erreur lecture MDF4 : {exc}"
+        if df is None or len(df) == 0:
+            return [], "MDF4 vide."
+
+        df.columns = [c.split(".")[-1] if "." in c else c for c in df.columns]
+        df.columns = [c.split(":")[0] if ":" in c else c for c in df.columns]
+        cols = list(df.columns)
+        src = Mdf4ScenarioLoader._detect_source(cols) or "motor"
+        if sources and src not in sources:
+            return [], "Source non selectionnee dans les filtres."
+
+        timestamps = df.index.to_numpy(dtype=float)
+        t0 = float(timestamps[0]) if len(timestamps) else 0.0
+        rows = []
+        for i, ts in enumerate(timestamps):
+            row_dict: dict = {"source": src, "timestamp": str(ts)}
+            for col in cols:
+                try:
+                    v = df.iloc[i][col]
+                    if isinstance(v, (bytes, bytearray)):
+                        row_dict[col] = v.decode("utf-8", errors="replace").strip("\x00")
+                    elif v is not None:
+                        row_dict[col] = str(v)
+                    else:
+                        row_dict[col] = ""
+                except Exception:
+                    pass
+            Mdf4ScenarioLoader._remap(src, row_dict)
+            t_abs = float(ts)
+            rows.append(ScenarioRow(
+                t_abs=t_abs, t_rel=t_abs - t0,
+                source=src, raw=row_dict,
+                summary=Mdf4ScenarioLoader._summarise(src, row_dict),
+            ))
+        if not rows:
+            return [], "Aucune donnee valide dans ce fichier MDF4."
+        rows.sort(key=lambda x: x.t_rel)
+        return rows, ""
+
+    @staticmethod
+    def _detect_source(cols: list) -> str | None:
+        col_set = set(cols)
+        for src, hints in Mdf4ScenarioLoader._SRC_HINTS.items():
+            if col_set & hints:
+                return src
+        return None
+
+    @staticmethod
+    def _remap(src: str, r: dict) -> None:
+        """Renomme les canaux MDF vers les noms attendus par ScenarioEngine/VirtualECU.
+        Les clés ici doivent correspondre aux noms réels produits par mdf_exporter.py."""
+        aliases = {
+            # MOTOR
+            "motor_state_txt":   "state",
+            "motor_state_int":   "state_int",
+            "front_motor_on":    "front_on",
+            "rear_motor_on":     "rear_on",
+            "motor_current":     "current",
+            "crs_wiper_op":      "wiper_op",
+            "rest_contact":      "rest_contact_raw",
+            "front_blade_cycles":"blade_cycles",
+            "vehicle_speed":     "vehicle_speed",
+            "rain_intensity":    "rain_intensity",
+            "motor_fault":       "fault",
+            # LIN — noms produits par mdf_exporter.py
+            "lin_pid":               "lin_id",
+            "lin_wiper_op":          "wiper_op",
+            "lin_front_motor_on":    "front_on",    # nom réel dans le MDF4
+            "lin_front_on":          "front_on",    # alias de compatibilité
+            "lin_rest_contact_raw":  "rest_contact_raw",  # nom réel dans le MDF4
+            "lin_rest_raw":          "rest_contact_raw",  # alias de compatibilité
+            "lin_alive":             "alive",        # alive counter rolling
+            "lin_cs_int":            "cs_int",       # checksum entier
+            "lin_bcm_state":         "bcm_state",    # état BCM textuel
+            "lin_raw":               "raw",          # trame hex brute
+            # CAN
+            "can_direction":     "direction",
+            "can_wiper_cmd":     "wiper_cmd",
+            "can_payload_B0":    "can_payload_b0",  # normalisation casse
+            # PUMP
+            "pump_active":       "pump_on",
+            "pump_state":        "state",
+            "pump_current":      "current",
+            "pump_flow":         "pump_flow",
+            "pump_pressure":     "pump_pressure",
+            "pump_timeout_elapsed": "pump_remaining",
+            "pump_direction":    "direction",
+        }
+        for mdf_name, csv_name in aliases.items():
+            if mdf_name in r and csv_name not in r:
+                r[csv_name] = r[mdf_name]
+
+        # Reconstruire "state" textuel si absent mais state_int present
+        if src == "motor" and "state" not in r and "state_int" in r:
+            _WOP = {0:"OFF",1:"TOUCH",2:"SPEED1",3:"SPEED2",
+                    4:"AUTO",5:"FRONT_WASH",6:"REAR_WASH",7:"REAR_WIPE"}
+            try:
+                r["state"] = _WOP.get(int(float(r["state_int"])), "OFF")
+            except Exception:
+                r["state"] = "OFF"
+
+    @staticmethod
+    def _summarise(src: str, r: dict) -> str:
+        if src == "motor":
+            parts = [f"{k}={r[k]}" for k in
+                     ("state", "wiper_op", "ignition", "vehicle_speed", "rain_intensity")
+                     if r.get(k)]
+            return "  ".join(parts) or r.get("state", "—")
+        if src == "lin":
+            return f"{r.get('lin_type','')}  op={r.get('wiper_op','')} front={r.get('front_on','')}"
+        if src == "can":
+            return f"{r.get('can_id_hex', r.get('can_id',''))} {r.get('direction','')} dlc={r.get('can_dlc','')}"
+        if src == "pump":
+            return f"pump={r.get('state', r.get('pump_state',''))} cur={r.get('current', r.get('pump_current',''))} A"
+        return str(r)
+        if src == "pump":
             return f"state={r.get('state','')} dir={r.get('direction','')} I={r.get('current','')}A"
         return str(r)
 
@@ -563,6 +838,8 @@ class VirtualECU:
         self.pump_state  : str   = "OFF"
         self.pump_cur    : float = 0.0
         self.pump_vol    : float = 0.0
+        self.pump_flow   : float = 0.0
+        self.pump_pressure: float = 0.0
         self.motor_cur   : float = 0.0
         self.rest_contact: bool  = False
         self.blade_cycles: int   = 0
@@ -589,61 +866,118 @@ class VirtualECU:
         self._main_window  = main_window
 
     def apply_motor_row(self, r: dict):
-        wop_raw = str(r.get("crs_wiper_op", "") or r.get("state", "")).strip()
+        # Chercher wiper_op en priorité : crs_wiper_op (entier MDF4) > wiper_op (alias remap) > state (textuel)
+        # Ignorer les valeurs 'nan' produites par to_dataframe global quand les groupes sont fusionnés
+        def _clean(v):
+            s = str(v or "").strip()
+            return "" if s.lower() in ("nan", "none") else s
+
+        wop_raw = (
+            _clean(r.get("crs_wiper_op", "")) or
+            _clean(r.get("wiper_op",     "")) or
+            _clean(r.get("state",        ""))
+        )
+        # Si crs_wiper_op = "0" (valeur MDF par défaut quand non rempli)
+        # et que state est disponible, on préfère state
+        if wop_raw == "0" and _clean(r.get("state", "")):
+            wop_raw = _clean(r.get("state", ""))
         op = self._parse_wiper_op(wop_raw)
-        if op is not None and op != self.wiper_op:
+        # Mettre à jour sans la garde "op != self.wiper_op" pour garantir
+        # que _update_wiper_state() est appelée à chaque step de replay
+        # (sinon si le 1er step est déjà SPEED1, les suivants seraient ignorés)
+        if op is not None:
             self.wiper_op = op
             self._update_wiper_state()
         ign_raw = str(r.get("ignition", "") or r.get("ignition_status", "")).strip().upper()
         ign = self._parse_ignition(ign_raw)
-        if ign and ign != self.ignition:
+        if ign:
+            # Pas de garde != : chaque row de replay met à jour l'ignition
             self.ignition = ign
             self._apply_ignition()
         spd = r.get("vehicle_speed", "")
-        if spd not in ("", None):
+        if spd not in ("", None, "nan"):
             v = _safe_float(spd)
-            if abs(v - self.vehicle_spd) > 0.05:
-                self.vehicle_spd = v
-                self._apply_speed()
+            self.vehicle_spd = v
+            self._apply_speed()
         rain = r.get("rain_intensity", "")
-        if rain not in ("", None):
+        if rain not in ("", None, "nan"):
             v = _safe_int(rain)
-            if v != self.rain:
-                self.rain = v
-                self._apply_rain()
+            self.rain = v
+            self._apply_rain()
         rev_raw = str(r.get("reverse_gear", "")).strip().lower()
         if rev_raw in ("1", "true", "r", "reverse"):
-            if not self.reverse:
-                self.reverse = True
-                self._apply_reverse()
+            self.reverse = True
+            self._apply_reverse()
         elif rev_raw in ("0", "false", "d", "n", "p"):
-            if self.reverse:
-                self.reverse = False
-                self._apply_reverse()
+            self.reverse = False
+            self._apply_reverse()
         cur = r.get("current", "")
-        if cur not in ("", None):
+        if cur not in ("", None, "nan"):
             self.motor_cur = _safe_float(cur)
-        rest_raw = str(r.get("rest_contact", "")).strip().lower()
-        if rest_raw:
-            rest = rest_raw in ("moving", "1", "true")
-            if rest != self.rest_contact:
-                self.rest_contact = rest
-                self._apply_rest_contact()
-        bc = r.get("front_blade_cycles", "")
-        if bc not in ("", None):
+        rest_raw = str(r.get("rest_contact", "") or r.get("rest_contact_raw", "")).strip().lower()
+        if rest_raw and rest_raw not in ("nan", "none"):
+            # MDF stocke 1=PARKED (uint8), CSV stocke "PARKED"/"MOVING"
+            if rest_raw in ("1", "true", "parked"):
+                rest = False   # PARKED = lame en repos = rest_contact=False dans VirtualECU
+            else:
+                rest = True    # MOVING (0, false, moving)
+            self.rest_contact = rest
+            self._apply_rest_contact()
+        bc = r.get("front_blade_cycles", "") or r.get("blade_cycles", "")
+        if bc not in ("", None, "nan"):
             self.blade_cycles = _safe_int(bc)
+
+        # front_on / rear_on — clés remappées par _remap (front_motor_on → front_on)
+        # Le CSV live utilise "front"="ON"/"OFF", le MDF utilise "front_on"=0/1
+        front_raw = str(r.get("front_on", "") or r.get("front", "")).strip().lower()
+        if front_raw and front_raw not in ("nan", "none", ""):
+            self.front_on = front_raw in ("1", "true", "on")
+        rear_raw = str(r.get("rear_on", "") or r.get("rear", "")).strip().lower()
+        if rear_raw and rear_raw not in ("nan", "none", ""):
+            self.rear_on = rear_raw in ("1", "true", "on")
+
         self._push_motor_panel()
 
     def apply_lin_row(self, r: dict):
         op_raw = str(r.get("op", "") or r.get("wiper_op", "")).strip()
         op = self._parse_wiper_op(op_raw)
-        if op is not None and op != self.wiper_op:
+        if op is not None:
+            # Pas de garde != : chaque step LIN met à jour l'état wiper
             self.wiper_op = op
             self._update_wiper_state()
+
+        # Mettre à jour rest_contact depuis le fichier si présent
+        rest_raw = str(r.get("rest_contact_raw", "") or r.get("rest_contact", "")).strip().lower()
+        if rest_raw and rest_raw not in ("nan", "none", ""):
+            if rest_raw in ("1", "true", "parked"):
+                self.rest_contact = False   # PARKED = au repos
+            elif rest_raw in ("0", "false", "moving"):
+                self.rest_contact = True    # MOVING
+            self._apply_rest_contact()
+
+        # Mettre à jour front_on / rear_on si présents
+        front_raw = str(r.get("front_on", "") or r.get("front_motor_on", "")).strip().lower()
+        if front_raw and front_raw not in ("nan", "none", ""):
+            self.front_on = front_raw in ("1", "true")
+
+        # Mettre à jour bcm_state si présent (champ texte)
+        bcm_raw = str(r.get("bcm_state", "")).strip()
+        if bcm_raw and bcm_raw not in ("nan", "none", ""):
+            self.bcm_state = bcm_raw
+
+        # Blade cycles
+        bc = r.get("blade_cycles", "") or r.get("front_blade_cycles", "")
+        if bc not in ("", None, "nan"):
+            self.blade_cycles = _safe_int(bc)
+
         if self._crslin_panel:
+            alive_val = _safe_int(r.get("alive", 0))
+            cs_val    = _safe_int(r.get("cs_int", 0))
+            pid_val   = str(r.get("pid", "") or r.get("lin_id", "0xD6") or "0xD6")
             ev = {
-                "type": "TX", "op": self.wiper_op, "pid": "0xD6",
-                "alive": 0, "cs_int": 0, "raw": r.get("raw", ""),
+                "type": "TX", "op": self.wiper_op, "pid": pid_val,
+                "alive": alive_val, "cs_int": cs_val,
+                "raw": str(r.get("raw", "") or ""),
                 "time": time.time(), "bcm_state": self.bcm_state,
                 "front_motor_on": self.front_on, "rear_motor_on": self.rear_on,
                 "rest_contact_raw": self.rest_contact,
@@ -651,7 +985,7 @@ class VirtualECU:
             }
             try:
                 self._crslin_panel.add_lin_event(ev)
-                self._crslin_panel.on_wiper_sent(self.wiper_op, 0)
+                self._crslin_panel.on_wiper_sent(self.wiper_op, alive_val)
             except Exception:
                 pass
 
@@ -706,15 +1040,32 @@ class VirtualECU:
                 pass
 
     def apply_pump_row(self, r: dict):
-        state = str(r.get("state", self.pump_state)).strip().upper()
-        direc = str(r.get("direction", "")).strip().upper()
+        # "state" peut venir de pump_state (MDF remappé) ou directement
+        state = str(r.get("state") or r.get("pump_state") or "").strip().upper()
+        direc = str(r.get("direction", "") or r.get("pump_direction", "")).strip().upper()
         if direc in ("FWD", "FORWARD"):
             state = "FORWARD"
-        elif direc in ("BWD", "BACKWARD"):
+        elif direc in ("BWD", "BACKWARD", "REVERSE"):
             state = "BACKWARD"
-        self.pump_state = state
-        self.pump_cur   = _safe_float(r.get("current", r.get("pump_current", 0.0)))
-        self.pump_vol   = _safe_float(r.get("voltage", 12.0))
+        # Si pump_active=0 et state vide → OFF
+        active_raw = str(r.get("pump_on", r.get("pump_active", ""))).strip().lower()
+        if active_raw in ("0", "false") and state not in ("FORWARD", "BACKWARD"):
+            state = "OFF"
+        # Ignorer les valeurs NaN produites par asammdf sur colonnes mixtes
+        if state and state not in ("NAN", "NONE", ""):
+            self.pump_state = state
+        cur_raw = r.get("current") or r.get("pump_current") or "0"
+        if str(cur_raw).lower() not in ("nan", "none", ""):
+            self.pump_cur = _safe_float(cur_raw)
+        vol_raw = r.get("voltage") or "12.0"
+        if str(vol_raw).lower() not in ("nan", "none", ""):
+            self.pump_vol = _safe_float(vol_raw) or 12.0
+        flow_raw = r.get("pump_flow", r.get("flow", ""))
+        if str(flow_raw).lower() not in ("nan", "none", ""):
+            self.pump_flow = _safe_float(flow_raw)
+        pres_raw = r.get("pump_pressure", r.get("pressure", ""))
+        if str(pres_raw).lower() not in ("nan", "none", ""):
+            self.pump_pressure = _safe_float(pres_raw)
         self._apply_pump()
 
     def _update_wiper_state(self):
@@ -846,6 +1197,7 @@ class VirtualECU:
                     "state": self.pump_state, "current": self.pump_cur,
                     "voltage": self.pump_vol or 12.0, "fault": False,
                     "fault_reason": "",
+                    "flow": self.pump_flow, "pressure": self.pump_pressure,
                     "pump_remaining": 5.0 if active else 0.0,
                     "pump_duration": 5.0, "source": "REPLAY",
                 })
@@ -877,6 +1229,8 @@ class VirtualECU:
     @staticmethod
     def _parse_ignition(raw: str) -> Optional[str]:
         if raw in ("1", "ON", "TRUE"):
+            return "ON"
+        if raw in ("2",):          # MDF stocke 2=ON (int32 0=OFF 1=ACC 2=ON)
             return "ON"
         if raw == "ACC":
             return "ACC"
@@ -924,6 +1278,8 @@ class ScenarioEngine(QObject):
         self._motor_w = motor_worker
         self._rte     = rte_client
         self._rows:    list[ScenarioRow] = []
+        self._has_motor_rows = True
+        self._has_pump_rows  = True
         self._idx:     int  = 0
         self._t_start: float = 0.0
         self._speed:   float = 1.0
@@ -938,6 +1294,10 @@ class ScenarioEngine(QObject):
     def load(self, rows: list[ScenarioRow]):
         self._rows = rows
         self._idx  = 0
+        # Détecter quelles sources sont présentes dans le fichier
+        sources = {r.source for r in rows}
+        self._has_motor_rows = "motor" in sources or "lin" in sources
+        self._has_pump_rows  = "pump"  in sources
 
     def set_speed(self, factor: float):
         self._speed = max(0.1, factor)
@@ -1027,11 +1387,15 @@ class ScenarioEngine(QObject):
                 self.ecu.apply_motor_row(r)
             self._inject_motor_physical(r)
             self._emit_legacy_motor()
+            # Si pump absent du fichier, on réémet son dernier état connu
+            # pour que les widgets drag&drop Motor/Pump restent à jour
+            if not self._has_pump_rows:
+                self._emit_legacy_pump()
         elif src == "lin":
             if self._virtual_widgets:
                 self.ecu.apply_lin_row(r)
             self._inject_lin_physical(r)
-            self._emit_legacy_lin()
+            self._emit_legacy_lin(r)
         elif src == "can":
             if self._virtual_widgets:
                 self.ecu.apply_can_row(r)
@@ -1040,6 +1404,9 @@ class ScenarioEngine(QObject):
             if self._virtual_widgets:
                 self.ecu.apply_pump_row(r)
             self._emit_legacy_pump()
+            # Si motor absent du fichier, on réémet son dernier état connu
+            if not self._has_motor_rows:
+                self._emit_legacy_motor()
 
     def _inject_motor_physical(self, r: dict):
         stimuli = {}
@@ -1051,10 +1418,10 @@ class ScenarioEngine(QObject):
         if ign:
             stimuli["ignition_status"] = 1 if ign == "ON" else (2 if ign == "ACC" else 0)
         spd = r.get("vehicle_speed", "")
-        if spd not in ("", None):
+        if spd not in ("", None, "nan"):
             stimuli["vehicle_speed"] = _safe_float(spd)
         rain = r.get("rain_intensity", "")
-        if rain not in ("", None):
+        if rain not in ("", None, "nan"):
             stimuli["rain_intensity"] = _safe_int(rain)
         if not stimuli:
             return
@@ -1111,27 +1478,49 @@ class ScenarioEngine(QObject):
             f"ign={self.ecu.ignition} "
             f"spd={self.ecu.vehicle_spd:.0f}km/h rain={self.ecu.rain}%")
 
-    def _emit_legacy_lin(self):
+    def _emit_legacy_lin(self, r: dict | None = None):
+        r = r or {}
+        # Lire alive/cs_int depuis le fichier source (CSV ou MDF4 remappé).
+        # Fallback à 0 si absent (compatibilité anciens enregistrements).
+        alive_val = _safe_int(r.get("alive",  0))
+        cs_val    = _safe_int(r.get("cs_int", 0))
+        raw_val   = str(r.get("raw", "") or "")
+        pid_val   = str(r.get("pid", "") or r.get("lin_id", "0xD6") or "0xD6")
+        # bcm_state : priorité au champ remappé du fichier, sinon VirtualECU
+        bcm_val   = str(r.get("bcm_state", "") or self.ecu.bcm_state or "OFF")
         ev = {
-            "type": "TX", "op": self.ecu.wiper_op, "bcm_state": self.ecu.bcm_state,
-            "front_motor_on": self.ecu.front_on, "rear_motor_on": self.ecu.rear_on,
-            "rest_contact_raw": self.ecu.rest_contact,
+            "type": "TX",
+            "op":                 self.ecu.wiper_op,
+            "bcm_state":          bcm_val,
+            "front_motor_on":     self.ecu.front_on,
+            "rear_motor_on":      self.ecu.rear_on,
+            "rest_contact_raw":   self.ecu.rest_contact,
             "front_blade_cycles": self.ecu.blade_cycles,
-            "pid": "0xD6", "alive": 0, "cs_int": 0, "raw": "", "time": time.time(),
+            "pid":    pid_val,
+            "alive":  alive_val,
+            "cs_int": cs_val,
+            "raw":    raw_val,
+            "time":   time.time(),
         }
         self.virtual_lin_event.emit(ev)
-        self.log_msg.emit(f"  LIN  op={_WOP_NAME.get(self.ecu.wiper_op,'?')}")
+        self.log_msg.emit(
+            f"  LIN  op={_WOP_NAME.get(self.ecu.wiper_op,'?')}"
+            f"  alive=0x{alive_val:02X}  bcm={bcm_val}")
 
     def _emit_legacy_pump(self):
+        active = self.ecu.pump_state in ("FORWARD", "BACKWARD")
         virt = {
             "state": self.ecu.pump_state, "current": self.ecu.pump_cur,
             "voltage": self.ecu.pump_vol or 12.0, "fault": False,
-            "fault_reason": "", "pump_remaining": 0.0,
-            "pump_duration": 0.0, "source": "REPLAY",
+            "flow": self.ecu.pump_flow, "pressure": self.ecu.pump_pressure,
+            "fault_reason": "",
+            "pump_remaining": 5.0 if active else 0.0,
+            "pump_duration": 5.0, "source": "REPLAY",
         }
         self.virtual_pump_data.emit(virt)
         self.log_msg.emit(
-            f"  PMP  state={self.ecu.pump_state} I={self.ecu.pump_cur:.3f}A")
+            f"  PMP  state={self.ecu.pump_state} I={self.ecu.pump_cur:.3f}A"
+            f"  flow={self.ecu.pump_flow:.2f} pres={self.ecu.pump_pressure:.2f}")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1160,7 +1549,13 @@ class DataReplayPanel(QWidget):
     API publique :
       on_motor_data(data)  on_lin_event(ev)  on_can_event(ev)  on_pump_data(data)
       connect_panels(...)  _engine
+
+    Signaux StatusBar (connectés depuis MainWindow) :
+      trigger_fired(msg)   — émis quand un overcurrent déclenche l'enregistrement
+      trigger_cleared()    — émis quand l'alarme est acquittée / trigger désactivé
     """
+    trigger_fired   = Signal(str)   # message décrivant l'événement
+    trigger_cleared = Signal()
 
     def __init__(self, recorder: DataRecorder,
                  can_worker=None, lin_worker=None,
@@ -1691,15 +2086,21 @@ class DataReplayPanel(QWidget):
         tb1.setSpacing(5)
 
         self._btn_load  = _pill("Load CSV",  h=34, w=100, accent=True)
+        self._btn_load_mdf = _pill("Load MDF4", h=34, w=110)
+        if not _ASAMMDF_AVAILABLE:
+            self._btn_load_mdf.setToolTip("pip install asammdf")
+            self._btn_load_mdf.setEnabled(True)   # on laisse cliquable pour afficher le msg
         self._btn_play  = _pill("PLAY",      h=34, w=80)
         self._btn_pause = _pill("PAUSE",     h=34, w=72)
         self._btn_rstop = _pill("STOP",      h=34, w=72)
         self._btn_load.clicked.connect(self._on_load_csv)
+        self._btn_load_mdf.clicked.connect(self._on_load_mdf4)
         self._btn_play.clicked.connect(self._on_play)
         self._btn_pause.clicked.connect(self._on_pause_replay)
         self._btn_rstop.clicked.connect(self._on_stop_replay)
 
         tb1.addWidget(self._btn_load)
+        tb1.addWidget(self._btn_load_mdf)
         tb1.addWidget(_vsep())
         tb1.addWidget(self._btn_play)
         tb1.addWidget(self._btn_pause)
@@ -1954,6 +2355,9 @@ class DataReplayPanel(QWidget):
         self._title_status.setStyleSheet(
             f"color:#FF4444;letter-spacing:1px;background:transparent;font-weight:bold;")
 
+        # Notifier la StatusBar (visible depuis tous les onglets)
+        self.trigger_fired.emit(msg)
+
     def _on_alarm_blink(self):
         """Alterne couleur du bandeau alarme."""
         self._alarm_blink_state = not self._alarm_blink_state
@@ -1997,6 +2401,9 @@ class DataReplayPanel(QWidget):
             self._title_status.setText("IDLE")
             self._title_status.setStyleSheet(
                 f"color:{W_TEXT_DIM};letter-spacing:1px;background:transparent;")
+
+        # Notifier la StatusBar
+        self.trigger_cleared.emit()
 
     # ══════════════════════════════════════════════════════════
     #  SLOTS — DATA SAVE
@@ -2192,6 +2599,34 @@ class DataReplayPanel(QWidget):
         if path:
             self._csv_path = path
             self._load_csv(path)
+
+    def _on_load_mdf4(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load MDF4 scenario", "",
+            "MDF4 (*.mf4 *.MF4);;All (*)")
+        if not path:
+            return
+        sources = {s for s, c in self._rpl_chk.items() if c.isChecked()}
+        rows, err = Mdf4ScenarioLoader.load(path, sources or None)
+        if err:
+            self._replay_log(f"ERROR  {err}")
+            return
+        self._rows = rows
+        self._csv_path = path
+        self._engine.load(rows)
+        self._populate_timeline(rows)
+        self._update_replay_stats(rows)
+        self._replay_set_controls(True)
+        self._prog_replay.setValue(0)
+        self._lbl_rprog.setText(f"0 / {len(rows)}")
+        fname = os.path.basename(path)
+        self._file_badge.setText(fname)
+        self._file_badge.setStyleSheet(
+            f"color: {_KG}; background: {_KG_DIM}; border: 1px solid {_KG_GLOW};"            f"border-radius: 3px; padding: 1px 5px; font-family: '{_FONT_HMI}'; font-size: 7pt;")
+        self._replay_log(f"LOADED MDF4  {fname}  ({len(rows)} steps)")
+        self._sb_replay.setText(f"REPLAY MDF4  |  {fname}")
+        self._sb_replay.setStyleSheet(
+            f"color: {_KG}; font-family: '{_FONT_HMI}'; font-size: 7pt; background: transparent;")
 
     def _load_csv(self, path: str):
         sources = {s for s, c in self._rpl_chk.items() if c.isChecked()}

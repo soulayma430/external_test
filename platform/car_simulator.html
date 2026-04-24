@@ -8,10 +8,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
-/* ========================================
-   CONTROLDESK — BMW HUD THEME
-   KPIT Green #8DC63F | Pearl White | Black
-   ======================================== */
 :root {
   --bg: #FFFFF;
   --surface: rgba(15,15,15,0.93);
@@ -30,7 +26,6 @@
   --wash-blue-glow: rgba(79,195,247,0.3);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-
 body {
   background: var(--bg);
   min-height: 100vh;
@@ -44,8 +39,6 @@ body {
   overflow-x: hidden;
   position: relative;
 }
-
-/* ---- BACKGROUND ---- */
 .bg-grid {
   position: fixed; inset: 0;
   background-image:
@@ -59,10 +52,6 @@ body {
   background: radial-gradient(ellipse 55% 40% at 50% 55%, rgba(141,198,63,0.06) 0%, transparent 70%);
   pointer-events: none; z-index: 0;
 }
-
-/* ---- HEADER supprimé ---- */
-
-/* ---- STATUS BAR ---- */
 .status-bar {
   position: relative; z-index: 10;
   display: flex; gap: 24px; margin-bottom: 10px;
@@ -80,14 +69,10 @@ body {
 .status-dot.open-dot { background: var(--green); box-shadow: 0 0 10px var(--green-glow); }
 .status-dot.wash-dot { background: var(--wash-blue); box-shadow: 0 0 10px var(--wash-blue-glow); animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-/* ---- MAIN LAYOUT ---- */
 .main-layout {
   position: relative; z-index: 10;
   display: flex; align-items: center; gap: 18px;
 }
-
-/* ---- PANELS ---- */
 .panel {
   width: 160px; min-height: 200px;
   display: flex; flex-direction: column; gap: 11px;
@@ -124,56 +109,45 @@ body {
 .door-name { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--white); }
 .door-state { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--white-dim); transition: color 0.3s; }
 .door-state.open { color: var(--green); text-shadow: 0 0 8px var(--green-glow); }
-
-/* ---- CAR STAGE ---- */
 .car-stage {
   display: flex; flex-direction: column; align-items: center; gap: 14px;
   position: relative;
 }
-/* White showroom floor with green reflection from the car */
 .showroom-bg {
   position: absolute;
   width: 580px; height: 570px;
   border-radius: 32px;
-  /* Pure white base */
   background: #ffffff;
-  /* Green reflection blob cast by the car lights/body */
   box-shadow:
     inset 0 0 0 1px rgba(141,198,63,0.18),
     0 0 0 2px rgba(141,198,63,0.08);
   pointer-events: none; z-index: 0;
   overflow: hidden;
 }
-/* Green reflection SVG overlay inside showroom */
 .showroom-bg::before {
   content: '';
   position: absolute; inset: 0;
   background:
-    /* central green glow from car underbody */
     radial-gradient(ellipse 60% 45% at 50% 52%,
       rgba(141,198,63,0.22) 0%,
       rgba(141,198,63,0.10) 38%,
       transparent 70%),
-    /* tail-light green hotspot (top) */
     radial-gradient(ellipse 30% 12% at 25% 18%,
       rgba(141,198,63,0.30) 0%,
       transparent 70%),
     radial-gradient(ellipse 30% 12% at 75% 18%,
       rgba(141,198,63,0.30) 0%,
       transparent 70%),
-    /* headlight white hotspot (bottom) */
     radial-gradient(ellipse 18% 8% at 22% 87%,
       rgba(255,255,255,0.9) 0%,
       transparent 70%),
     radial-gradient(ellipse 18% 8% at 78% 87%,
       rgba(255,255,255,0.9) 0%,
       transparent 70%),
-    /* subtle ground shadow under car */
     radial-gradient(ellipse 55% 18% at 50% 90%,
       rgba(0,0,0,0.10) 0%,
       transparent 70%);
 }
-/* Subtle scanline shimmer for "waxed floor" effect */
 .showroom-bg::after {
   content: '';
   position: absolute; inset: 0; border-radius: 32px;
@@ -222,15 +196,11 @@ body {
     drop-shadow(0 0 36px rgba(141,198,63,0.45))
     drop-shadow(0 8px 28px rgba(0,0,0,0.55));
 }
-
-/* ---- DOOR ANIMATIONS ---- */
 .g32682-toggle { transform: rotate(-40deg); transform-origin: 67px 175px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
 .g32696-toggle { transform: rotate(-45deg) skewY(39deg); transform-origin: 76px 132px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
 .g130-toggle   { transform: rotate(40deg); transform-origin: 125px 175px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
 .g136-toggle   { transform: rotate(45deg) skewY(-39deg); transform-origin: 119px 132px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
 .path32797-toggle { transform: scale(1,0.68); transform-origin: 80px 95px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
-
-/* ---- LOCK BUTTON ---- */
 .lock-btn {
   display: flex; align-items: center; gap: 9px;
   padding: 10px 22px; position: relative; z-index: 2;
@@ -242,8 +212,6 @@ body {
 .lock-btn:hover { background: rgba(255,64,64,0.16); box-shadow: 0 0 16px rgba(255,64,64,0.25); }
 .lock-btn.unlocked { background: var(--green-dim); border-color: rgba(141,198,63,0.55); color: var(--green); }
 .lock-btn.unlocked:hover { box-shadow: 0 0 16px var(--green-glow); }
-
-/* ---- BOTTOM CONTROLS ---- */
 .bottom-controls {
   position: relative; z-index: 10;
   display: flex; gap: 12px; margin-top: 8px;
@@ -257,10 +225,6 @@ body {
 }
 .action-btn:hover { background: var(--green-dim); border-color: var(--green); color: var(--green); box-shadow: 0 0 12px var(--green-glow); }
 .action-btn-close:hover { background: rgba(255,64,64,0.1); border-color: rgba(255,64,64,0.5); color: #ff7070; box-shadow: 0 0 12px rgba(255,64,64,0.2); }
-
-/* ================================================
-   WIPE & WASH SYSTEM
-   ================================================ */
 .ww-panel {
   position: relative; z-index: 10;
   margin-top: 12px;
@@ -342,15 +306,8 @@ body {
 .wiper-speed-indicator.washing { color: var(--wash-blue); text-shadow: 0 0 6px var(--wash-blue-glow); }
 .rear-wmode-row { display: flex; gap: 4px; }
 .rear-btn { flex: 1; }
-
-/* ================================================
-   WIPER SVG ANIMATIONS
-   ================================================ */
-/* These classes applied to wiper groups inside the SVG */
 .wiper-arm { display: none; }
 .wiper-arm.visible { display: block; }
-
-/* Front left wiper — pivot in SVG coords: (22, 111) */
 @keyframes swipe-fl-slow {
   0%   { transform: rotate(-38deg); }
   50%  { transform: rotate(28deg); }
@@ -361,34 +318,27 @@ body {
   50%  { transform: rotate(28deg); }
   100% { transform: rotate(-38deg); }
 }
-/* Front right wiper — pivot: (47, 111) */
 @keyframes swipe-fr-slow {
   0%   { transform: rotate(38deg); }
   50%  { transform: rotate(-28deg); }
   100% { transform: rotate(38deg); }
 }
-/* Rear wiper — pivot: (34, 47) */
 @keyframes swipe-rear {
   0%   { transform: rotate(-30deg); }
   50%  { transform: rotate(30deg); }
   100% { transform: rotate(-30deg); }
 }
-
 #wiper-fl { transform-origin: 22px 111px; }
 #wiper-fr { transform-origin: 47px 111px; }
 #wiper-rear { transform-origin: 34px 47px; }
-
 .wiper-slow #wiper-fl { animation: swipe-fl-slow 2.6s ease-in-out infinite; }
 .wiper-slow #wiper-fr { animation: swipe-fr-slow 2.6s ease-in-out infinite; animation-delay: 0.05s; }
 .wiper-fast #wiper-fl { animation: swipe-fl-slow 0.85s ease-in-out infinite; }
 .wiper-fast #wiper-fr { animation: swipe-fr-slow 0.85s ease-in-out infinite; animation-delay: 0.04s; }
 .wiper-auto #wiper-fl { animation: swipe-fl-slow 1.7s ease-in-out infinite; }
 .wiper-auto #wiper-fr { animation: swipe-fr-slow 1.7s ease-in-out infinite; animation-delay: 0.05s; }
-
 .wiper-rear-on #wiper-rear { animation: swipe-rear 2s ease-in-out infinite; }
 .wiper-rear-int #wiper-rear { animation: swipe-rear 2s ease-in-out infinite 0s 1 forwards; animation-iteration-count: infinite; animation-duration: 3.5s; }
-
-/* Wash droplet animation */
 @keyframes dropFall {
   0%   { opacity: 0; transform: translate(0,0) scale(0.4); }
   15%  { opacity: 1; }
@@ -405,22 +355,13 @@ body {
 <div class="bg-grid"></div>
 <div class="bg-glow"></div>
 
-<!-- HEADER supprimé -->
-
-<!-- MAIN LAYOUT -->
 <div class="main-layout">
-
-  <!-- LEFT PANEL HIDDEN (doors removed per requirements) -->
-
-  <!-- CAR STAGE -->
   <div class="car-stage">
     <div class="showroom-bg"></div>
-    <!-- RAIN CANVAS OVERLAY over the car -->
     <canvas id="rainCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;border-radius:32px;"></canvas>
     <div class="showroom-floor"></div>
     <div class="car-glow-ring"></div>
 
-    <!-- LARGER SVG (540×560) with WHITE body + wipers - WIDER CAR -->
     <svg
       id="car"
       width="540"
@@ -429,7 +370,6 @@ body {
       xmlns="http://www.w3.org/2000/svg">
 
       <defs>
-        <!-- Body: rich black with subtle sheen (original) -->
         <linearGradient id="bodyMain" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%"   stop-color="#0d0d0d"/>
           <stop offset="22%"  stop-color="#1c1c1c"/>
@@ -438,7 +378,6 @@ body {
           <stop offset="78%"  stop-color="#1c1c1c"/>
           <stop offset="100%" stop-color="#0d0d0d"/>
         </linearGradient>
-        <!-- Highlight sheen (original) -->
         <linearGradient id="sheenH" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%"   stop-color="#fff" stop-opacity="0"/>
           <stop offset="38%"  stop-color="#fff" stop-opacity="0.07"/>
@@ -446,7 +385,6 @@ body {
           <stop offset="65%"  stop-color="#fff" stop-opacity="0.05"/>
           <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
         </linearGradient>
-        <!-- Window glass: transparent with light blue tint -->
         <linearGradient id="glassGrad" x1="10%" y1="0%" x2="90%" y2="100%">
           <stop offset="0%"  stop-color="#a8d4f5" stop-opacity="0.30"/>
           <stop offset="40%" stop-color="#c5e8ff" stop-opacity="0.18"/>
@@ -457,7 +395,6 @@ body {
           <stop offset="50%"  stop-color="#d0eeff" stop-opacity="0.10"/>
           <stop offset="100%" stop-color="#ffffff" stop-opacity="0.06"/>
         </linearGradient>
-        <!-- Chrome/silver -->
         <linearGradient id="chromeV" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%"   stop-color="#d0d0d0"/>
           <stop offset="35%"  stop-color="#ffffff"/>
@@ -471,49 +408,41 @@ body {
           <stop offset="70%"  stop-color="#e8e8e8"/>
           <stop offset="100%" stop-color="#888"/>
         </linearGradient>
-        <!-- Tyre -->
         <radialGradient id="tyreGrad" cx="50%" cy="50%" r="50%">
           <stop offset="0%"  stop-color="#2a2a2a"/>
           <stop offset="60%" stop-color="#141414"/>
           <stop offset="100%" stop-color="#080808"/>
         </radialGradient>
-        <!-- Rim -->
         <radialGradient id="rimGrad" cx="40%" cy="35%" r="60%">
           <stop offset="0%"  stop-color="#e0e0e0"/>
           <stop offset="50%" stop-color="#a0a0a0"/>
           <stop offset="100%" stop-color="#606060"/>
         </radialGradient>
-        <!-- KPIT green tail lights -->
         <radialGradient id="tailLight" cx="50%" cy="50%" r="50%">
           <stop offset="0%"   stop-color="#8DC63F"/>
           <stop offset="60%"  stop-color="#6a9e2e"/>
           <stop offset="100%" stop-color="#3d6010" stop-opacity="0.7"/>
         </radialGradient>
-        <!-- White headlights -->
         <radialGradient id="headLight" cx="50%" cy="50%" r="50%">
           <stop offset="0%"  stop-color="#ffffff"/>
           <stop offset="60%" stop-color="#dddddd"/>
           <stop offset="100%" stop-color="#aaaaaa" stop-opacity="0.6"/>
         </radialGradient>
-        <!-- Door panel inner (original dark) -->
         <linearGradient id="doorPanel" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%"  stop-color="#181818"/>
           <stop offset="50%" stop-color="#222222"/>
           <stop offset="100%" stop-color="#181818"/>
         </linearGradient>
-        <!-- Green accent strip -->
         <linearGradient id="greenStrip" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%"   stop-color="#8DC63F" stop-opacity="0"/>
           <stop offset="30%"  stop-color="#8DC63F" stop-opacity="0.9"/>
           <stop offset="70%"  stop-color="#8DC63F" stop-opacity="0.9"/>
           <stop offset="100%" stop-color="#8DC63F" stop-opacity="0"/>
         </linearGradient>
-        <!-- Ground shadow -->
         <radialGradient id="groundShadow" cx="50%" cy="50%" r="50%">
           <stop offset="0%"  stop-color="#000" stop-opacity="0.35"/>
           <stop offset="100%" stop-color="#000" stop-opacity="0"/>
         </radialGradient>
-        <!-- Filters -->
         <filter id="glowGreen" x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation="1.2" result="b"/>
           <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
@@ -525,16 +454,13 @@ body {
         <filter id="bodyDropShadow">
           <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#8DC63F" flood-opacity="0.20"/>
         </filter>
-        <!-- Wash droplet blur -->
         <filter id="dropBlur">
           <feGaussianBlur stdDeviation="0.3"/>
         </filter>
-        <!-- Wiper glow -->
         <filter id="wiperGlow">
           <feGaussianBlur stdDeviation="0.6" result="b"/>
           <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
-        <!-- Clip front windshield -->
         <clipPath id="frontWS-clip">
           <path d="m 76.769879,158.46897
                c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487
@@ -558,13 +484,10 @@ body {
         </clipPath>
       </defs>
 
-      <!-- ===== MAIN CAR BODY GROUP (world coordinates) ===== -->
       <g transform="translate(-62.420581,-72.080961)">
 
-        <!-- GROUND SHADOW -->
         <ellipse cx="96.3" cy="228" rx="34" ry="6.5" fill="url(#groundShadow)"/>
 
-        <!-- TYRES -->
         <ellipse cx="68" cy="176" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
         <ellipse cx="68" cy="176" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
         <ellipse cx="68" cy="176" rx="2.2" ry="2.4" fill="#181818"/>
@@ -601,7 +524,6 @@ body {
           <line x1="120.2" y1="117" x2="122.3" y2="118.8"/>
         </g>
 
-        <!-- MAIN WHITE BODY -->
         <path style="fill:url(#bodyMain)" filter="url(#bodyDropShadow)"
           d="m 70.894176,80.187691 c 3.417738,-2.734443 15.364246,-8.914729 25.639467,-8.01877
              0.469179,45.842279 0.308415,150.479219 0.308415,150.479219
@@ -620,7 +542,6 @@ body {
              c 0,0 -0.0852,-22.13264 0.80212,-47.78644
              5.01974,3.38846 6.07697,7.19544 6.07697,7.19544
              0,0 0.9159,-24.608352 -4.06227,-35.278889 z"/>
-        <!-- Green sheen reflection -->
         <path style="fill:url(#sheenH);pointer-events:none"
           d="m 70.894176,80.187691 c 3.417738,-2.734443 15.364246,-8.914729 25.639467,-8.01877
              0.469179,45.842279 0.308415,150.479219 0.308415,150.479219
@@ -640,14 +561,12 @@ body {
              5.01974,3.38846 6.07697,7.19544 6.07697,7.19544
              0,0 0.9159,-24.608352 -4.06227,-35.278889 z"/>
 
-        <!-- DOOR SEAM LINES (original dark) -->
         <line x1="76.8" y1="99" x2="76.8" y2="193" stroke="#080808" stroke-width="1.2"/>
         <line x1="116.2" y1="99" x2="116.2" y2="193" stroke="#080808" stroke-width="1.2"/>
         <line x1="76.8" y1="135.5" x2="116.2" y2="135.5" stroke="#080808" stroke-width="0.9"/>
         <line x1="77.4" y1="99" x2="77.4" y2="193" stroke="#555" stroke-width="0.35" opacity="0.7"/>
         <line x1="115.6" y1="99" x2="115.6" y2="193" stroke="#555" stroke-width="0.35" opacity="0.7"/>
 
-        <!-- REAR WINDOW (transparent blue tint) -->
         <path style="fill:url(#glassGrad);stroke:#4a8ab5;stroke-width:0.6;stroke-opacity:0.5"
           d="m 76.138579,93.273644
              c 0.05453,12.002696 0.260395,27.789346 0.260395,27.789346
@@ -667,7 +586,6 @@ body {
         <path style="fill:#ffffff;opacity:0.07"
           d="m 79,94.5 c 4,-1.8 9,-2.8 13.5,-2.9 l 0,10.5 c -4.5,0.6 -9.5,1.6 -13.5,2.9 z"/>
 
-        <!-- FRONT WINDOW (transparent blue tint) -->
         <path style="fill:url(#glassGrad);stroke:#4a8ab5;stroke-width:0.6;stroke-opacity:0.5"
           d="m 76.769879,158.46897
              c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487
@@ -689,7 +607,6 @@ body {
         <path style="fill:#ffffff;opacity:0.06"
           d="m 79,160 c 7,2 14,2.4 18,2.2 l -1.2,9 c -5,-0.5 -11.5,-2 -16.5,-4 z"/>
 
-        <!-- CHROME TRIM -->
         <path style="fill:none;stroke:url(#chromeH);stroke-width:0.65;opacity:0.8"
           d="m 76.8,121 c 9,-1.8 28,-1.8 39.5,0"/>
         <path style="fill:none;stroke:url(#chromeH);stroke-width:0.65;opacity:0.8"
@@ -697,13 +614,11 @@ body {
         <rect x="68.5" y="148" width="6" height="0.8" rx="0.4" fill="url(#greenStrip)" opacity="0.85"/>
         <rect x="118.5" y="148" width="6" height="0.8" rx="0.4" fill="url(#greenStrip)" opacity="0.85"/>
 
-        <!-- DOOR PANELS -->
         <rect x="69.2" y="106" width="6.5" height="24" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
         <rect x="117.3" y="106" width="6.5" height="24" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
         <rect x="69.2" y="138" width="6.5" height="35" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
         <rect x="117.3" y="138" width="6.5" height="35" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
 
-        <!-- RIGHT BACK DOOR (g32696) -->
         <g id="g32696">
           <path style="fill:#141414"
             d="m 72.908871,108.27114 c 0,0 -4.48587,3.09726 -6.076963,7.19544
@@ -716,7 +631,6 @@ body {
           <rect x="66.8" y="118.3" width="4.2" height="0.3" rx="0.15" fill="#fff" opacity="0.4"/>
         </g>
 
-        <!-- RIGHT FRONT DOOR (g32682) -->
         <g id="g32682">
           <path style="fill:#141414"
             d="m 67.234294,179.49706 2.326555,-3.92867 4.150143,-19.51081
@@ -743,7 +657,6 @@ body {
           <rect x="66.8" y="153.8" width="4.2" height="0.3" rx="0.15" fill="#fff" opacity="0.4"/>
         </g>
 
-        <!-- LEFT BACK DOOR (g136) -->
         <g id="g136">
           <path style="fill:#141414"
             d="m 120.15841,108.27114 c 0,0 4.48587,3.09726 6.07696,7.19544
@@ -756,7 +669,6 @@ body {
           <rect x="122" y="118.3" width="4.2" height="0.3" rx="0.15" fill="#fff" opacity="0.4"/>
         </g>
 
-        <!-- LEFT FRONT DOOR (g130) -->
         <g id="g130">
           <path style="fill:#141414"
             d="m 125.83299,179.49706 -2.32656,-3.92867 -4.15014,-19.51081
@@ -769,7 +681,6 @@ body {
           <path style="fill:#1e1e1e"
             d="m 119.57208,134.77476 3.82578,1.94645 -0.20136,34.90183
                -0.46983,-0.40272 -3.37038,-15.16274 z"/>
-          <!-- Mirror housing -->
           <path style="fill:#222"
             d="m 121.66129,166.87993 1.46809,0.24614 v 2.41628
                l 1.14102,-0.13424 0.13424,-0.60406
@@ -784,7 +695,6 @@ body {
           <rect x="120" y="153.8" width="4.2" height="0.3" rx="0.15" fill="#fff" opacity="0.4"/>
         </g>
 
-        <!-- TRUNK (original dark) -->
         <path id="path32798" style="fill:#1a1a1a;opacity:0.5"
           d="m 80.125937,75.606668 c -3.146306,5.453596 -5.162573,10.831431 -3.987358,16.608641
              10.950061,-5.570942 29.002691,-6.289797 40.458011,0.05064
@@ -795,7 +705,6 @@ body {
              10.950061,-5.570942 29.002691,-6.289797 40.458011,0.05064
              1.4446,-5.802346 -0.95145,-11.205685 -4.09778,-16.659283
              -15.965167,-4.496079 -15.965167,-4.496079 -32.372873,2e-6 z"/>
-        <!-- Trunk sheen (original) -->
         <path style="fill:url(#sheenH);opacity:0.5"
           d="m 80.125937,75.606668 c -3.146306,5.453596 -5.162573,10.831431 -3.987358,16.608641
              10.950061,-5.570942 29.002691,-6.289797 40.458011,0.05064
@@ -804,29 +713,26 @@ body {
         <path style="fill:none;stroke:url(#chromeH);stroke-width:0.55;opacity:0.75"
           d="m 82.5,82 c 7,-2.5 20,-2.5 28,-0.5"/>
 
-        <!-- BMW KIDNEY GRILLE -->
+        <!-- KPIT LOGO (forme circulaire style BMW — bleu remplacé par vert KPIT, blanc remplacé par noir) -->
         <rect x="89" y="76" width="5.8" height="9" rx="2.8" fill="none" stroke="url(#chromeH)" stroke-width="0.8" opacity="0.9"/>
         <rect x="96.4" y="76" width="5.8" height="9" rx="2.8" fill="none" stroke="url(#chromeH)" stroke-width="0.8" opacity="0.9"/>
         <circle cx="96.3" cy="80.5" r="3.5" fill="none" stroke="url(#chromeH)" stroke-width="0.55" opacity="0.9"/>
         <circle cx="96.3" cy="80.5" r="2.5" fill="#111"/>
-        <path d="m 96.3,78 a 2.5,2.5 0 0,1 2.5,2.5 l -2.5,0 z" fill="#1c47a8" opacity="0.85"/>
-        <path d="m 96.3,83 a 2.5,2.5 0 0,1 -2.5,-2.5 l 2.5,0 z" fill="#1c47a8" opacity="0.85"/>
-        <path d="m 93.8,80.5 a 2.5,2.5 0 0,1 2.5,-2.5 l 0,2.5 z" fill="#f0f0f0" opacity="0.9"/>
-        <path d="m 98.8,80.5 a 2.5,2.5 0 0,1 -2.5,2.5 l 0,-2.5 z" fill="#f0f0f0" opacity="0.9"/>
+        <path d="m 96.3,78 a 2.5,2.5 0 0,1 2.5,2.5 l -2.5,0 z" fill="#8DC63F" opacity="0.85"/>
+        <path d="m 96.3,83 a 2.5,2.5 0 0,1 -2.5,-2.5 l 2.5,0 z" fill="#8DC63F" opacity="0.85"/>
+        <path d="m 93.8,80.5 a 2.5,2.5 0 0,1 2.5,-2.5 l 0,2.5 z" fill="#111111" opacity="0.9"/>
+        <path d="m 98.8,80.5 a 2.5,2.5 0 0,1 -2.5,2.5 l 0,-2.5 z" fill="#111111" opacity="0.9"/>
         <circle cx="96.3" cy="80.5" r="0.8" fill="none" stroke="url(#chromeH)" stroke-width="0.4" opacity="0.9"/>
 
-        <!-- ControlDesk TEXT -->
         <text x="96.3" y="151" text-anchor="middle"
           font-family="Rajdhani, sans-serif" font-size="5.8" font-weight="700"
           letter-spacing="0.5" fill="#8DC63F" opacity="0.88">ControlDesk</text>
         <line x1="80" y1="152.5" x2="112.5" y2="152.5" stroke="#8DC63F" stroke-width="0.35" opacity="0.4"/>
 
-        <!-- KPIT LOGO (small, centered on car body, white text only) -->
         <text x="96.3" y="144" text-anchor="middle"
           font-family="Arial Black, sans-serif" font-size="6.5" font-weight="900"
           letter-spacing="1.2" fill="#ffffff" opacity="0.90">KPIT</text>
 
-        <!-- TAIL LIGHTS (KPIT green) -->
         <path filter="url(#glowGreen)" style="fill:url(#tailLight)"
           d="m 122.35729,91.242887 c 0.54338,-5.632185 -1.25853,-8.809659 -1.25853,-8.809659
              l -8.59995,-5.768226 3.04145,3.670688 0.10488,1.782908
@@ -836,20 +742,17 @@ body {
              l 8.599903,-5.768226 -3.041428,3.670688 -0.104878,1.782908
              c 0,0 -3.636655,2.58239 -6.712119,9.124289 z"/>
 
-        <!-- FRONT LIGHTS (white) -->
         <path filter="url(#glowWhite)" style="fill:url(#headLight);opacity:0.9"
           d="m 69.3,200 c -1.5,-2 -2.8,-5 -2.5,-7 l 3,1 z"/>
         <path filter="url(#glowWhite)" style="fill:url(#headLight);opacity:0.9"
           d="m 123.7,200 c 1.5,-2 2.8,-5 2.5,-7 l -3,1 z"/>
 
-        <!-- CHROME BUMPER -->
         <path style="fill:url(#chromeH);opacity:0.88"
           d="m 79.182046,215.62687 3.041428,4.0902
              c 12.135649,3.93965 16.660877,3.65944 28.421636,0
              l 3.04143,-4.0902
              c -12.92568,5.24513 -21.354188,5.23836 -34.504494,0 z"/>
 
-        <!-- REAR REFLECTORS -->
         <path filter="url(#glowWhite)" style="fill:#e0e0e0;opacity:0.75"
           d="m 112.95718,217.40499 c 0,0 5.61703,-3.66512 10.80232,-15.83641
              -0.85267,3.48874 -0.0214,4.23515 -1.04877,5.97798
@@ -859,60 +762,35 @@ body {
              0.852672,3.48874 0.02142,4.23515 1.048768,5.97798
              3.90467,6.624 9.75355,9.85843 9.75355,9.85843 z"/>
 
-        <!-- GREEN ACCENT STRIPE -->
         <path style="fill:none;stroke:#8DC63F;stroke-width:0.45;opacity:0.6"
           d="m 70,200 c 9,4 43,4 53,0"/>
 
-        <!-- ===== WASH SPRAY NOZZLES (on hood, above front windshield) ===== -->
-        <!-- Left nozzle dot -->
         <circle id="nozzle-fl" cx="84" cy="158" r="0.8" fill="#4fc3f7" opacity="0.7"/>
-        <!-- Right nozzle dot -->
         <circle id="nozzle-fr" cx="109" cy="158" r="0.8" fill="#4fc3f7" opacity="0.7"/>
-        <!-- Rear nozzle -->
         <circle id="nozzle-rear" cx="96.3" cy="121.5" r="0.7" fill="#4fc3f7" opacity="0.7"/>
 
-        <!-- WASH SPRAY DROPLETS (dynamically added via JS) -->
         <g id="spray-front" opacity="0"></g>
         <g id="spray-rear" opacity="0"></g>
 
-      </g><!-- end main car group (world coords) -->
+      </g>
 
-      <!-- ===== WIPERS (SVG coordinate space, OUTSIDE translate group) ===== -->
-      <!-- The SVG viewBox: -21.7 0 113 150.57 -->
-      <!-- Front windshield in SVG space: x≈14-54, y≈86-111 -->
-      <!-- Front wiper LEFT — pivot at SVG (22, 111) -->
       <g id="wiper-fl" class="wiper-arm">
-        <!-- Arm -->
-        <line x1="22" y1="111" x2="19.5" y2="88.5"
-          stroke="#111111" stroke-width="1.1" stroke-linecap="round"/>
-        <!-- Blade -->
-        <line x1="18.2" y1="89.5" x2="23" y2="87.5"
-          stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
-        <!-- Blade rubber -->
-        <line x1="18.5" y1="89.2" x2="22.7" y2="87.8"
-          stroke="#222222" stroke-width="0.7" stroke-linecap="round" opacity="0.95"/>
+        <line x1="22" y1="111" x2="19.5" y2="88.5" stroke="#111111" stroke-width="1.1" stroke-linecap="round"/>
+        <line x1="18.2" y1="89.5" x2="23" y2="87.5" stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="18.5" y1="89.2" x2="22.7" y2="87.8" stroke="#222222" stroke-width="0.7" stroke-linecap="round" opacity="0.95"/>
       </g>
-      <!-- Front wiper RIGHT — pivot at SVG (47, 111) -->
       <g id="wiper-fr" class="wiper-arm">
-        <line x1="47" y1="111" x2="49.5" y2="88.5"
-          stroke="#111111" stroke-width="1.1" stroke-linecap="round"/>
-        <line x1="46" y1="87.5" x2="50.8" y2="89.5"
-          stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
-        <line x1="46.3" y1="87.8" x2="50.5" y2="89.2"
-          stroke="#222222" stroke-width="0.7" stroke-linecap="round" opacity="0.95"/>
+        <line x1="47" y1="111" x2="49.5" y2="88.5" stroke="#111111" stroke-width="1.1" stroke-linecap="round"/>
+        <line x1="46" y1="87.5" x2="50.8" y2="89.5" stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="46.3" y1="87.8" x2="50.5" y2="89.2" stroke="#222222" stroke-width="0.7" stroke-linecap="round" opacity="0.95"/>
       </g>
-      <!-- Rear window: SVG x≈14-54, y≈21-49 -->
-      <!-- Rear wiper — pivot at SVG (34, 47) -->
       <g id="wiper-rear" class="wiper-arm">
-        <line x1="34" y1="47" x2="34" y2="26"
-          stroke="#111111" stroke-width="0.9" stroke-linecap="round"/>
-        <line x1="29.5" y1="26.5" x2="38.5" y2="25.5"
-          stroke="#000000" stroke-width="1.4" stroke-linecap="round"/>
-        <line x1="30" y1="26.2" x2="38" y2="25.8"
-          stroke="#222222" stroke-width="0.6" stroke-linecap="round" opacity="0.95"/>
+        <line x1="34" y1="47" x2="34" y2="26" stroke="#111111" stroke-width="0.9" stroke-linecap="round"/>
+        <line x1="29.5" y1="26.5" x2="38.5" y2="25.5" stroke="#000000" stroke-width="1.4" stroke-linecap="round"/>
+        <line x1="30" y1="26.2" x2="38" y2="25.8" stroke="#222222" stroke-width="0.6" stroke-linecap="round" opacity="0.95"/>
       </g>
 
-    </svg><!-- end SVG -->
+    </svg>
 
     <button class="lock-btn" id="lock-btn" onclick="toggleLock()">
       <svg id="lock-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -920,17 +798,9 @@ body {
       </svg>
       <span id="lock-text">UNLOCK</span>
     </button>
-  </div><!-- end car-stage -->
+  </div>
+</div>
 
-  <!-- RIGHT PANEL HIDDEN (doors/trunk removed per requirements) -->
-
-</div><!-- end main-layout -->
-
-<!-- BOTTOM DOOR CONTROLS REMOVED -->
-
-<!-- ================================================
-     WIPE & WASH CONTROL PANEL
-     ================================================ -->
 <div class="ww-panel">
   <div class="ww-title">
     <span>💧</span>
@@ -939,7 +809,6 @@ body {
   </div>
   <div class="ww-grid" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr;">
 
-    <!-- RAIN SIMULATION -->
     <div class="ww-section" style="grid-column:1/-1;flex-direction:row;align-items:center;gap:10px;padding:8px 14px;">
       <span style="font-family:'Share Tech Mono',monospace;font-size:8.5px;letter-spacing:0.3em;color:var(--wash-blue);text-transform:uppercase;white-space:nowrap;">🌧 RAIN</span>
       <button class="wmode-btn" id="rain-off-btn"  onclick="setRain('off')"    style="flex:1;">OFF</button>
@@ -949,7 +818,6 @@ body {
       <div class="wiper-speed-indicator" id="rain-ind" style="white-space:nowrap;min-width:70px;">● NO RAIN</div>
     </div>
 
-    <!-- FRONT WIPER MODE -->
     <div class="ww-section">
       <div class="ww-sec-label">FRONT WIPERS</div>
       <div class="wmode-row">
@@ -961,7 +829,6 @@ body {
       <div class="wiper-speed-indicator" id="front-wiper-ind">● STANDBY</div>
     </div>
 
-    <!-- FRONT WASH -->
     <div class="ww-section">
       <div class="ww-sec-label">FRONT WASH</div>
       <button class="wash-btn" id="front-wash-btn"
@@ -976,7 +843,6 @@ body {
       <div class="wiper-speed-indicator" id="front-wash-ind">● READY</div>
     </div>
 
-    <!-- REAR WIPER -->
     <div class="ww-section">
       <div class="ww-sec-label">REAR WIPER</div>
       <div class="rear-wmode-row wmode-row">
@@ -987,7 +853,6 @@ body {
       <div class="wiper-speed-indicator" id="rear-wiper-ind">● STANDBY</div>
     </div>
 
-    <!-- REAR WASH -->
     <div class="ww-section">
       <div class="ww-sec-label">REAR WASH</div>
       <button class="wash-btn" id="rear-wash-btn"
@@ -1005,9 +870,6 @@ body {
   </div>
 </div>
 
-<!-- ================================================
-     VEHICLE SIMULATION PANEL
-     ================================================ -->
 <div class="ww-panel" id="vehicle-sim-panel" style="margin-top:14px; max-width:580px;">
   <div class="ww-title">
     <span>🚗</span>
@@ -1015,10 +877,7 @@ body {
     <span>⚡</span>
   </div>
 
-  <!-- ROW 1: IGNITION + SPEED + GEAR -->
   <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;margin-bottom:10px;">
-
-    <!-- IGNITION COLUMN -->
     <div class="ww-section" style="gap:7px;">
       <div class="ww-sec-label">IGNITION</div>
       <button class="wmode-btn" id="btn-off" onclick="setIgnition('off')" style="padding:7px 4px;font-size:9px;">OFF</button>
@@ -1027,7 +886,6 @@ body {
       <div class="wiper-speed-indicator" id="ign-ind" style="margin-top:2px;">● OFF</div>
     </div>
 
-    <!-- SPEEDOMETER COLUMN -->
     <div class="ww-section" style="align-items:center;">
       <div class="ww-sec-label">SPEED</div>
       <canvas id="speedCanvas" width="130" height="80" style="display:block;margin:0 auto;"></canvas>
@@ -1043,7 +901,6 @@ body {
       </div>
     </div>
 
-    <!-- GEAR / REVERSE COLUMN -->
     <div class="ww-section" style="gap:7px;">
       <div class="ww-sec-label">GEAR</div>
       <button class="wmode-btn" id="btn-park"    onclick="setGear('P')" style="padding:7px 4px;font-size:9px;">P</button>
@@ -1054,7 +911,6 @@ body {
     </div>
   </div>
 
-  <!-- ROW 2: ENGINE RPM + PUMP STATUS -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
     <div class="ww-section" style="align-items:center;">
       <div class="ww-sec-label">ENGINE RPM</div>
@@ -1087,12 +943,18 @@ body {
   0%,100%{transform:translateY(0)} 50%{transform:translateY(0.5px)}
 }
 #car.engine-run { animation: engineVibe 0.1s linear infinite; }
+
+/* Status bar hidden elements needed by JS */
+#doors-status, #lock-status, #wiper-status, #wash-status { display:none; }
 </style>
 
+<!-- Hidden status elements required by JS -->
+<div id="doors-status" style="display:none"><span class="status-dot"></span><span>ALL CLOSED</span></div>
+<div id="lock-status"  style="display:none"><span class="status-dot locked"></span><span>LOCKED</span></div>
+<div id="wiper-status" style="display:none"><span class="status-dot"></span><span>WIPERS OFF</span></div>
+<div id="wash-status"  style="display:none"><span class="status-dot"></span><span>WASH</span></div>
+
 <script>
-/* ====================================================
-   VEHICLE SIMULATION
-   ==================================================== */
 let ignState = 'off';
 let gear     = 'P';
 let speed    = 0;
@@ -1160,7 +1022,6 @@ function startPump() {
     src.start();
     pumpNode={src,g};
   } catch(e){}
-  // Animate pump ring
   let prog=0;
   const ring=document.getElementById('pump-ring');
   const icon=document.getElementById('pump-icon');
@@ -1315,14 +1176,9 @@ function drawRPM(){
   c.fillStyle='rgba(255,255,255,0.45)'; c.font='8px Share Tech Mono,monospace'; c.textAlign='center';
   c.fillText((rpm/1000).toFixed(1)+'k',cx,cy-5);
 }
-
-// Gauges initialized after all scripts load — see bottom of main script
 </script>
 
 <script>
-/* ====================================================
-   DOOR & LOCK SYSTEM
-   ==================================================== */
 const doorState = {};
 let isLocked = true;
 
@@ -1348,8 +1204,8 @@ function updateDoorsStatus() {
   const el = document.getElementById("doors-status");
   if (el) {
     const dot = el.querySelector(".status-dot"), label = el.querySelector("span");
-    dot.classList.toggle("open-dot", anyOpen);
-    label.textContent = anyOpen ? "DOOR OPEN" : "ALL CLOSED";
+    if(dot) dot.classList.toggle("open-dot", anyOpen);
+    if(label) label.textContent = anyOpen ? "DOOR OPEN" : "ALL CLOSED";
   }
 }
 
@@ -1359,78 +1215,40 @@ function toggleLock() {
   const btn = document.getElementById("lock-btn");
   const txt = document.getElementById("lock-text");
   const lockStatus = document.getElementById("lock-status");
-  const dot = lockStatus.querySelector(".status-dot"), label = lockStatus.querySelector("span");
-  if (isLocked) {
-    btn.classList.remove("unlocked"); txt.textContent = "UNLOCK";
-    dot.classList.add("locked"); dot.classList.remove("open-dot"); label.textContent = "LOCKED";
+  if(lockStatus) {
+    const dot = lockStatus.querySelector(".status-dot"), label = lockStatus.querySelector("span");
+    if (isLocked) {
+      btn.classList.remove("unlocked"); txt.textContent = "UNLOCK";
+      if(dot){ dot.classList.add("locked"); dot.classList.remove("open-dot"); }
+      if(label) label.textContent = "LOCKED";
+    } else {
+      btn.classList.add("unlocked"); txt.textContent = "LOCK";
+      if(dot){ dot.classList.remove("locked"); dot.classList.add("open-dot"); }
+      if(label) label.textContent = "UNLOCKED";
+    }
   } else {
-    btn.classList.add("unlocked"); txt.textContent = "LOCK";
-    dot.classList.remove("locked"); dot.classList.add("open-dot"); label.textContent = "UNLOCKED";
+    if (isLocked) { btn.classList.remove("unlocked"); txt.textContent = "UNLOCK"; }
+    else { btn.classList.add("unlocked"); txt.textContent = "LOCK"; }
   }
 }
 
-function openAll() {
-  ["g136","g130","g32696","g32682","path32797"].forEach(door => {
-    if (!doorState[door]) {
-      const el = document.getElementById(door);
-      if (el) el.classList.add(door + "-toggle");
-      doorState[door] = true;
-      const se = document.getElementById("state-" + door);
-      if (se) { se.textContent = "OPEN"; se.classList.add("open"); }
-      const ce = document.getElementById("ctrl-" + door);
-      if (ce) { ce.classList.add("is-open"); const b = ce.querySelector(".door-btn"); if (b) b.classList.add("is-open"); }
-    }
-  });
-  try { const s = new Audio("sound/car-door-open-1.wav"); s.volume = 0.4; s.play(); } catch(e) {}
-  updateDoorsStatus();
-}
-
-function closeAll() {
-  ["g136","g130","g32696","g32682","path32797"].forEach(door => {
-    if (doorState[door]) {
-      const el = document.getElementById(door);
-      if (el) el.classList.remove(door + "-toggle");
-      doorState[door] = false;
-      const se = document.getElementById("state-" + door);
-      if (se) { se.textContent = "CLOSED"; se.classList.remove("open"); }
-      const ce = document.getElementById("ctrl-" + door);
-      if (ce) { ce.classList.remove("is-open"); const b = ce.querySelector(".door-btn"); if (b) b.classList.remove("is-open"); }
-    }
-  });
-  try { const s = new Audio("sound/car-lock-sound-effect.mp3"); s.volume = 0.4; s.play(); } catch(e) {}
-  updateDoorsStatus();
-}
-
-/* ====================================================
-   WIPE & WASH SYSTEM
-   ==================================================== */
 let frontWiperMode = 'off';
 let rearWiperMode  = 'off';
 let frontWashActive = false;
 let rearWashActive  = false;
 let washAutoStopTimer = null;
 let rearIntTimer = null;
-let sprayAnimFrame = null;
 
 const car = document.getElementById('car');
 
-// ---------- FRONT WIPER ----------
 function setFrontWiper(mode) {
   frontWiperMode = mode;
-
-  // Update button states
   document.querySelectorAll('[data-front]').forEach(b => b.classList.remove('active'));
   document.querySelector(`[data-front="${mode}"]`).classList.add('active');
-
-  // Remove all wiper CSS classes
   car.classList.remove('wiper-slow','wiper-fast','wiper-auto');
-
-  // Show/hide wiper arms
   const fl = document.getElementById('wiper-fl');
   const fr = document.getElementById('wiper-fr');
-
   const ind = document.getElementById('front-wiper-ind');
-
   if (mode === 'off') {
     fl.classList.remove('visible'); fr.classList.remove('visible');
     ind.className = 'wiper-speed-indicator'; ind.textContent = '● STANDBY';
@@ -1447,18 +1265,14 @@ function setFrontWiper(mode) {
   }
 }
 
-// ---------- REAR WIPER ----------
 function setRearWiper(mode) {
   rearWiperMode = mode;
   document.querySelectorAll('[data-rear]').forEach(b => b.classList.remove('active'));
   document.querySelector(`[data-rear="${mode}"]`).classList.add('active');
   car.classList.remove('wiper-rear-on','wiper-rear-int');
-
   const rw = document.getElementById('wiper-rear');
   const ind = document.getElementById('rear-wiper-ind');
-
   if (rearIntTimer) { clearInterval(rearIntTimer); rearIntTimer = null; }
-
   if (mode === 'off') {
     rw.classList.remove('visible');
     ind.className = 'wiper-speed-indicator'; ind.textContent = '● STANDBY';
@@ -1469,7 +1283,6 @@ function setRearWiper(mode) {
     ind.className = 'wiper-speed-indicator running'; ind.textContent = '◐ ON — CONTINUOUS';
     playWiperBeep(true);
   } else if (mode === 'int') {
-    // Intermittent: wipe every 4 seconds
     rw.classList.add('visible');
     ind.className = 'wiper-speed-indicator running'; ind.textContent = '◑ INT — INTERMITTENT';
     doIntermittentRear();
@@ -1482,73 +1295,60 @@ function setRearWiper(mode) {
 function doIntermittentRear() {
   const rw = document.getElementById('wiper-rear');
   car.classList.remove('wiper-rear-int');
-  void rw.offsetWidth; // reflow
+  void rw.offsetWidth;
   car.classList.add('wiper-rear-int');
 }
 
 function updateWiperStatus() {
   const el = document.getElementById('wiper-status');
+  if(!el) return;
   const dot = el.querySelector('.status-dot'), label = el.querySelector('span');
   const anyOn = (frontWiperMode !== 'off') || (rearWiperMode !== 'off');
   if (anyOn) {
-    dot.classList.add('open-dot'); dot.classList.remove('closed-color');
-    label.textContent = 'WIPERS ON'; el.style.display = '';
+    if(dot) dot.classList.add('open-dot');
+    if(label) label.textContent = 'WIPERS ON';
   } else {
-    dot.classList.remove('open-dot');
-    label.textContent = 'WIPERS OFF'; el.style.display = '';
+    if(dot) dot.classList.remove('open-dot');
+    if(label) label.textContent = 'WIPERS OFF';
   }
 }
 
-// ---------- WASH SYSTEM ----------
 function startWash(side) {
+  startPump();
   if (side === 'front') {
     frontWashActive = true;
-    const btn = document.getElementById('front-wash-btn');
-    btn.classList.add('active-wash');
+    document.getElementById('front-wash-btn').classList.add('active-wash');
     document.getElementById('front-wash-ind').className = 'wiper-speed-indicator washing';
     document.getElementById('front-wash-ind').textContent = '💧 SPRAYING...';
-    document.getElementById('wash-status').style.display = '';
-
-    // Auto-activate front wiper during wash
-    if (frontWiperMode === 'off') {
-      setFrontWiper('slow');
-    }
-
+    const ws = document.getElementById('wash-status');
+    if(ws) ws.style.display = '';
+    if (frontWiperMode === 'off') setFrontWiper('slow');
     animateSpray('front');
     playSpraySound();
-
   } else {
     rearWashActive = true;
-    const btn = document.getElementById('rear-wash-btn');
-    btn.classList.add('active-wash');
+    document.getElementById('rear-wash-btn').classList.add('active-wash');
     document.getElementById('rear-wash-ind').className = 'wiper-speed-indicator washing';
     document.getElementById('rear-wash-ind').textContent = '💧 SPRAYING...';
-    document.getElementById('wash-status').style.display = '';
-
-    // Auto-activate rear wiper during wash
-    if (rearWiperMode === 'off') {
-      setRearWiper('on');
-    }
-
+    const ws = document.getElementById('wash-status');
+    if(ws) ws.style.display = '';
+    if (rearWiperMode === 'off') setRearWiper('on');
     animateSpray('rear');
     playSpraySound();
   }
 }
 
 function stopWash(side) {
+  stopPump();
   if (side === 'front') {
     frontWashActive = false;
     document.getElementById('front-wash-btn').classList.remove('active-wash');
     document.getElementById('front-wash-ind').className = 'wiper-speed-indicator';
     document.getElementById('front-wash-ind').textContent = '● READY';
     stopSpray('front');
-
-    // Keep wipers on for 3 more seconds after wash
     if (frontWiperMode !== 'off') {
       if (washAutoStopTimer) clearTimeout(washAutoStopTimer);
-      washAutoStopTimer = setTimeout(() => {
-        if (!frontWashActive) setFrontWiper('off');
-      }, 3000);
+      washAutoStopTimer = setTimeout(() => { if (!frontWashActive) setFrontWiper('off'); }, 3000);
     }
   } else {
     rearWashActive = false;
@@ -1558,17 +1358,13 @@ function stopWash(side) {
     stopSpray('rear');
     setTimeout(() => { if (!rearWashActive) setRearWiper('off'); }, 3000);
   }
-  // Hide wash status if both off
   setTimeout(() => {
     if (!frontWashActive && !rearWashActive) {
-      document.getElementById('wash-status').style.display = 'none';
+      const ws = document.getElementById('wash-status');
+      if(ws) ws.style.display = 'none';
     }
   }, 100);
 }
-
-// ---------- REALISTIC WATER DROP PHYSICS ----------
-// SVG coords: front windshield x≈14-54, y≈86-111 | rear window x≈14-54, y≈21-49
-// Nozzles: front-left=(21.6,85.9), front-right=(46.6,85.9), rear=(33.9,49.4)
 
 const DROP_CONFIGS = {
   front: {
@@ -1613,12 +1409,9 @@ function animateSpray(side) {
   animRunning[side] = true;
   particles[side] = [];
   let tick = 0;
-
   function frame() {
     if (!animRunning[side]) return;
     tick++;
-
-    // Spawn new drops every other frame
     if (tick % 2 === 0) {
       cfg.nozzles.forEach(n => {
         const count = side === 'front' ? 3 : 2;
@@ -1627,38 +1420,28 @@ function animateSpray(side) {
         }
       });
     }
-
-    // Update particles
     particles[side].forEach(p => {
       if (p.splat) {
-        p.splatR += 0.08;
-        p.life -= 0.055;
+        p.splatR += 0.08; p.life -= 0.055;
       } else {
         p.trailTimer++;
         if (p.trailTimer % 2 === 0) {
           p.trail.push({ x: p.x, y: p.y });
           if (p.trail.length > 6) p.trail.shift();
         }
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += cfg.gravity;
-        p.vx *= 0.975;
-        p.life -= p.decay;
+        p.x += p.vx; p.y += p.vy; p.vy += cfg.gravity; p.vx *= 0.975; p.life -= p.decay;
         const b = cfg.bounds;
         if (p.x < b.xMin || p.x > b.xMax || p.y > b.yMax || p.y < b.yMin) {
-          p.splat = true; p.splatR = p.r * 0.5;
-          p.life = 0.85;
+          p.splat = true; p.splatR = p.r * 0.5; p.life = 0.85;
           p.x = Math.max(b.xMin+0.5, Math.min(b.xMax-0.5, p.x));
           p.y = Math.max(b.yMin+0.5, Math.min(b.yMax-0.5, p.y));
         }
       }
     });
-
     particles[side] = particles[side].filter(p => p.life > 0.01);
     renderDrops(side, grp);
     rafIds[side] = requestAnimationFrame(frame);
   }
-
   if (rafIds[side]) cancelAnimationFrame(rafIds[side]);
   rafIds[side] = requestAnimationFrame(frame);
 }
@@ -1668,16 +1451,11 @@ function renderDrops(side, grp) {
   particles[side].forEach(p => {
     const op = Math.max(0, Math.min(1, p.life));
     if (p.splat) {
-      // Ripple rings expanding on glass
-      const r1 = p.splatR;
-      const r2 = p.splatR * 0.55;
+      const r1 = p.splatR, r2 = p.splatR * 0.55;
       svg += `<ellipse cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" rx="${Math.min(r1,3.5).toFixed(2)}" ry="${Math.min(r2,1.6).toFixed(2)}" fill="none" stroke="rgba(100,185,255,${(op*0.65).toFixed(2)})" stroke-width="0.22"/>`;
-      // Second inner ring
       svg += `<ellipse cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" rx="${Math.min(r1*0.5,1.8).toFixed(2)}" ry="${Math.min(r2*0.5,0.9).toFixed(2)}" fill="rgba(160,215,255,${(op*0.40).toFixed(2)})" stroke="none"/>`;
-      // Center residual drop
       svg += `<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${(p.r*0.32).toFixed(2)}" fill="rgba(200,235,255,${(op*0.70).toFixed(2)})"/>`;
     } else {
-      // Trail: fading streak in direction of travel
       if (p.trail.length >= 2) {
         for (let i = 1; i < p.trail.length; i++) {
           const tp = p.trail[i-1], tc = p.trail[i];
@@ -1686,16 +1464,12 @@ function renderDrops(side, grp) {
           svg += `<line x1="${tp.x.toFixed(2)}" y1="${tp.y.toFixed(2)}" x2="${tc.x.toFixed(2)}" y2="${tc.y.toFixed(2)}" stroke="rgba(90,180,255,${tOp.toFixed(2)})" stroke-width="${tw}" stroke-linecap="round"/>`;
         }
       }
-      // Drop body: teardrop elongated in velocity direction
-      const speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+      const speed2 = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
       const ang = Math.atan2(p.vy, p.vx) * 180 / Math.PI;
-      const rx = (p.r * (1 + speed * 0.15)).toFixed(2);
+      const rx = (p.r * (1 + speed2 * 0.15)).toFixed(2);
       const ry = (p.r * 0.62).toFixed(2);
-      // Outer drop (semi-transparent body)
       svg += `<ellipse cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" rx="${rx}" ry="${ry}" transform="rotate(${ang.toFixed(1)},${p.x.toFixed(2)},${p.y.toFixed(2)})" fill="rgba(100,190,255,${(op*0.75).toFixed(2)})"/>`;
-      // Inner highlight
       svg += `<ellipse cx="${(p.x-p.r*0.22).toFixed(2)}" cy="${(p.y-p.r*0.22).toFixed(2)}" rx="${(p.r*0.38).toFixed(2)}" ry="${(p.r*0.25).toFixed(2)}" fill="rgba(230,248,255,${(op*0.95).toFixed(2)})"/>`;
-      // Specular micro-glint
       svg += `<circle cx="${(p.x-p.r*0.3).toFixed(2)}" cy="${(p.y-p.r*0.3).toFixed(2)}" r="${(p.r*0.16).toFixed(2)}" fill="rgba(255,255,255,${op.toFixed(2)})"/>`;
     }
   });
@@ -1718,9 +1492,7 @@ function stopSpray(side) {
   requestAnimationFrame(fadeOut);
 }
 
-// ---------- AUDIO ----------
 let audioCtx = null;
-
 function getAudioCtx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   return audioCtx;
@@ -1743,39 +1515,29 @@ function playWiperBeep(isOn) {
 function playSpraySound() {
   try {
     const ctx = getAudioCtx();
-    // White noise burst for spray
     const bufferSize = ctx.sampleRate * 0.3;
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.15;
-
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass'; filter.frequency.value = 3500; filter.Q.value = 0.5;
-
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.6, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-
     src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
     src.start(ctx.currentTime); src.stop(ctx.currentTime + 0.3);
   } catch(e) {}
 }
 
-// Prevent context loss on mobile
 document.addEventListener('touchstart', () => { try { getAudioCtx().resume(); } catch(e){} }, { once: true });
 
-/* ====================================================
-   RAIN SIMULATION
-   ==================================================== */
 let rainMode = 'off';
 let rainRAF  = null;
 let rainDrops = [];
 let rainAudioNode = null;
 
-// Rain configs per intensity
 const RAIN_CFG = {
   off:    { count: 0,   speed: [4,8],  len: [6,14], opacity: [0.3,0.6], wind: 0.6 },
   light:  { count: 40,  speed: [3,6],  len: [5,12], opacity: [0.2,0.5], wind: 0.5 },
@@ -1803,22 +1565,15 @@ function startRainSound(mode) {
     const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1);
-
     const src = ctx.createBufferSource();
     src.buffer = buf; src.loop = true;
-
-    // High-pass for rain hiss
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass'; hp.frequency.value = 4000;
-
-    // Low-pass to soften
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = 12000;
-
     const gain = ctx.createGain();
     const vol = mode === 'light' ? 0.08 : mode === 'medium' ? 0.18 : 0.32;
     gain.gain.value = vol;
-
     src.connect(hp); hp.connect(lp); lp.connect(gain); gain.connect(ctx.destination);
     src.start();
     rainAudioNode = { src, gain };
@@ -1831,28 +1586,18 @@ function stopRainSound() {
 
 function setRain(mode) {
   rainMode = mode;
-  // Update buttons
   ['rain-off-btn','rain-light-btn','rain-med-btn','rain-heavy-btn'].forEach(id => {
     document.getElementById(id).classList.remove('active','active-wash');
   });
   const btnMap = { off:'rain-off-btn', light:'rain-light-btn', medium:'rain-med-btn', heavy:'rain-heavy-btn' };
   const btn = document.getElementById(btnMap[mode]);
   btn.classList.add(mode === 'off' ? 'active' : 'active-wash');
-
-  // Update indicator
   const ind = document.getElementById('rain-ind');
   const labels = { off:'● NO RAIN', light:'● LIGHT', medium:'● MEDIUM', heavy:'● HEAVY' };
   ind.textContent = labels[mode];
   ind.className = mode === 'off' ? 'wiper-speed-indicator' : 'wiper-speed-indicator washing';
-
-  // Sound
   startRainSound(mode);
-
-  // Stop or start animation
-  if (mode === 'off') {
-    stopRainAnim();
-    return;
-  }
+  if (mode === 'off') { stopRainAnim(); return; }
   startRainAnim(mode);
 }
 
@@ -1867,34 +1612,24 @@ function startRainAnim(mode) {
   stopRainAnim();
   const canvas = document.getElementById('rainCanvas');
   if (!canvas) return;
-
-  // Size canvas to match its CSS display size
   const stage = canvas.parentElement;
   canvas.width  = stage.offsetWidth  || 580;
   canvas.height = stage.offsetHeight || 570;
-
   const cfg = RAIN_CFG[mode];
-  // Seed initial drops spread across the canvas
   for (let i = 0; i < cfg.count; i++) {
     const drop = spawnRainDrop(canvas, cfg);
-    drop.y = Math.random() * canvas.height; // start spread vertically
+    drop.y = Math.random() * canvas.height;
     rainDrops.push(drop);
   }
-
   function frame() {
     const ctx2d = canvas.getContext('2d');
     ctx2d.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw each drop
     rainDrops.forEach(p => {
       ctx2d.beginPath();
       ctx2d.moveTo(p.x, p.y);
-      // Angled streak
       const ex = p.x + p.wind * (p.len / p.speed);
       const ey = p.y + p.len;
       ctx2d.lineTo(ex, ey);
-
-      // Gradient: transparent at top, blue-white at bottom
       const grd = ctx2d.createLinearGradient(p.x, p.y, ex, ey);
       grd.addColorStop(0, `rgba(180,220,255,0)`);
       grd.addColorStop(1, `rgba(180,220,255,${p.opacity})`);
@@ -1902,56 +1637,31 @@ function startRainAnim(mode) {
       ctx2d.lineWidth = 0.8 + Math.random() * 0.5;
       ctx2d.lineCap = 'round';
       ctx2d.stroke();
-
-      // Advance drop
-      p.x += p.wind;
-      p.y += p.speed;
-
-      // Splat on "glass" — tiny horizontal ripple near bottom
+      p.x += p.wind; p.y += p.speed;
       if (p.y > canvas.height * 0.88) {
         ctx2d.beginPath();
         ctx2d.ellipse(p.x, p.y, 1.8 + Math.random(), 0.6, 0, 0, Math.PI*2);
         ctx2d.fillStyle = `rgba(180,220,255,${p.opacity * 0.5})`;
         ctx2d.fill();
       }
-
-      // Respawn when off-screen
       if (p.y > canvas.height + 20 || p.x > canvas.width + 20) {
         Object.assign(p, spawnRainDrop(canvas, cfg));
       }
     });
-
-    // Maintain drop count (add new ones if needed)
     while (rainDrops.length < cfg.count) rainDrops.push(spawnRainDrop(canvas, cfg));
-    // Remove excess
     if (rainDrops.length > cfg.count + 10) rainDrops.splice(cfg.count);
-
     rainRAF = requestAnimationFrame(frame);
   }
-
   rainRAF = requestAnimationFrame(frame);
 }
 
-/* ====================================================
-   INIT — runs after ALL functions are defined
-   ==================================================== */
 (function initAll() {
-  // Patch startWash/stopWash to also trigger pump sound
-  const _sw0 = window.startWash;
-  const _sw1 = window.stopWash;
-  window.startWash = function(side) { startPump(); _sw0(side); };
-  window.stopWash  = function(side) { stopPump();  _sw1(side); };
-
-  // Set default button states
   const bOff  = document.getElementById('btn-off');
   const bPark = document.getElementById('btn-park');
   if (bOff)  bOff.classList.add('active');
   if (bPark) bPark.classList.add('active');
-  // Rain default
   const rainOffBtn = document.getElementById('rain-off-btn');
   if (rainOffBtn) rainOffBtn.classList.add('active');
-
-  // Draw initial gauges
   updateGauges();
 })();
 </script>

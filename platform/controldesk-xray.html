@@ -3,14 +3,14 @@
 <head>
   <meta charset='utf-8'>
   <meta http-equiv='X-UA-Compatible' content='IE=edge'>
-  <title>ControlDesk — BMW X-Ray</title>
+  <title>ControlDesk — BMW</title>
   <meta name='viewport' content='width=device-width, initial-scale=1'>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #ffffff;
-  --surface: rgba(240,242,245,0.97);
+  --bg: #0a0a0a;
+  --surface: rgba(15,15,15,0.93);
   --border: rgba(141,198,63,0.2);
   --border-bright: rgba(141,198,63,0.6);
   --green: #8DC63F;
@@ -27,7 +27,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body {
-  background: transparent;
+  background: var(--bg);
   min-height: 100vh;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
   padding-top: 10px;
@@ -36,26 +36,17 @@ body {
   overflow-x: hidden;
   position: relative;
 }
-.bg-grid { display: none; }
-.bg-glow { display: none; }
-.status-bar {
-  position: relative; z-index: 10;
-  display: flex; gap: 24px; margin-bottom: 10px;
-  font-family: 'Share Tech Mono', monospace; font-size: 9.5px;
-  letter-spacing: 0.15em; color: var(--white-dim);
+.bg-grid {
+  position: fixed; inset: 0;
+  background-image: linear-gradient(rgba(141,198,63,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(141,198,63,0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none; z-index: 0;
 }
-.status-item { display: flex; align-items: center; gap: 7px; }
-.status-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--closed-color);
-  transition: background 0.4s, box-shadow 0.4s;
+.bg-glow {
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse 55% 40% at 50% 55%, rgba(141,198,63,0.06) 0%, transparent 70%);
+  pointer-events: none; z-index: 0;
 }
-.status-dot.active { background: var(--green); box-shadow: 0 0 10px var(--green-glow); animation: pulse 2.5s infinite; }
-.status-dot.locked { background: var(--danger); box-shadow: 0 0 8px rgba(255,64,64,0.5); }
-.status-dot.open-dot { background: var(--green); box-shadow: 0 0 10px var(--green-glow); }
-.status-dot.wash-dot { background: var(--wash-blue); box-shadow: 0 0 10px var(--wash-blue-glow); animation: pulse 1s infinite; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
 .main-layout {
   position: relative; z-index: 10;
   display: flex; align-items: center; gap: 18px;
@@ -68,34 +59,34 @@ body {
   position: absolute;
   width: 580px; height: 570px;
   border-radius: 32px;
-  background: #ffffff;
+  background: #111;
   box-shadow: inset 0 0 0 1px rgba(141,198,63,0.18), 0 0 0 2px rgba(141,198,63,0.08);
   pointer-events: none; z-index: 0; overflow: hidden;
 }
 .showroom-bg::before {
   content: ''; position: absolute; inset: 0;
   background:
-    radial-gradient(ellipse 60% 45% at 50% 52%, rgba(141,198,63,0.10) 0%, rgba(141,198,63,0.04) 38%, transparent 70%),
-    radial-gradient(ellipse 30% 12% at 25% 18%, rgba(141,198,63,0.18) 0%, transparent 70%),
-    radial-gradient(ellipse 30% 12% at 75% 18%, rgba(141,198,63,0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 45% at 50% 52%, rgba(141,198,63,0.22) 0%, rgba(141,198,63,0.10) 38%, transparent 70%),
+    radial-gradient(ellipse 30% 12% at 25% 18%, rgba(141,198,63,0.30) 0%, transparent 70%),
+    radial-gradient(ellipse 30% 12% at 75% 18%, rgba(141,198,63,0.30) 0%, transparent 70%),
     radial-gradient(ellipse 18% 8% at 22% 87%, rgba(255,255,255,0.06) 0%, transparent 70%),
     radial-gradient(ellipse 18% 8% at 78% 87%, rgba(255,255,255,0.06) 0%, transparent 70%);
 }
 .showroom-bg::after {
   content: ''; position: absolute; inset: 0; border-radius: 32px;
-  background: repeating-linear-gradient(135deg, transparent 0px, transparent 28px, rgba(141,198,63,0.015) 28px, rgba(141,198,63,0.015) 29px);
+  background: repeating-linear-gradient(135deg, transparent 0px, transparent 28px, rgba(141,198,63,0.025) 28px, rgba(141,198,63,0.025) 29px);
   animation: shimmer 8s linear infinite;
 }
 @keyframes shimmer { 0%{background-position:0 0} 100%{background-position:80px 80px} }
 .showroom-floor {
   position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
   width: 380px; height: 45px;
-  background: radial-gradient(ellipse 85% 100% at 50% 100%, rgba(141,198,63,0.18) 0%, rgba(141,198,63,0.05) 60%, transparent 100%);
+  background: radial-gradient(ellipse 85% 100% at 50% 100%, rgba(141,198,63,0.28) 0%, rgba(141,198,63,0.08) 60%, transparent 100%);
   pointer-events: none;
 }
 .car-glow-ring {
   position: absolute; width: 330px; height: 330px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(141,198,63,0.05) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(141,198,63,0.07) 0%, transparent 70%);
   top: 50%; left: 50%; transform: translate(-50%,-50%);
   pointer-events: none; animation: ringPulse 4s ease-in-out infinite;
 }
@@ -107,14 +98,13 @@ body {
 }
 #car:hover { filter: drop-shadow(0 0 36px rgba(141,198,63,0.45)) drop-shadow(0 8px 28px rgba(0,0,0,0.55)); }
 
-/* ---- DOOR ANIMATIONS ---- */
+/* Door animations */
 .g32682-toggle { transform: rotate(-40deg); transform-origin: 67px 175px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
 .g32696-toggle { transform: rotate(-45deg) skewY(39deg); transform-origin: 76px 132px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
 .g130-toggle   { transform: rotate(40deg); transform-origin: 125px 175px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
 .g136-toggle   { transform: rotate(45deg) skewY(-39deg); transform-origin: 119px 132px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
 .path32797-toggle { transform: scale(1,0.68); transform-origin: 80px 95px; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
 
-/* ---- LOCK BUTTON ---- */
 .lock-btn {
   display: flex; align-items: center; gap: 9px;
   padding: 10px 22px; position: relative; z-index: 2;
@@ -127,7 +117,6 @@ body {
 .lock-btn.unlocked { background: var(--green-dim); border-color: rgba(141,198,63,0.55); color: var(--green); }
 .lock-btn.unlocked:hover { box-shadow: 0 0 16px var(--green-glow); }
 
-/* ---- WIPE & WASH PANEL ---- */
 .ww-panel {
   position: relative; z-index: 10;
   margin-top: 12px;
@@ -148,10 +137,9 @@ body {
   margin-bottom: 12px;
   display: flex; align-items: center; justify-content: center; gap: 10px;
 }
-.ww-icon { font-size: 14px; }
 .ww-section {
   background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 8px; padding: 10px 10px;
+  border-radius: 8px; padding: 10px;
   display: flex; flex-direction: column; gap: 8px;
 }
 .ww-sec-label {
@@ -175,8 +163,7 @@ body {
   border-radius: 6px; color: var(--wash-blue);
   font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 700;
   letter-spacing: 0.15em; cursor: pointer; transition: all 0.2s;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  user-select: none;
+  display: flex; align-items: center; justify-content: center; gap: 6px; user-select: none;
 }
 .wash-btn:hover { background: rgba(79,195,247,0.14); box-shadow: 0 0 12px var(--wash-blue-glow); }
 .wash-btn.active-wash { background: rgba(79,195,247,0.2); box-shadow: 0 0 18px var(--wash-blue-glow); animation: washPulse 0.5s infinite; }
@@ -187,12 +174,8 @@ body {
 }
 .wiper-speed-indicator.running { color: var(--green); text-shadow: 0 0 6px var(--green-glow); }
 .wiper-speed-indicator.washing { color: var(--wash-blue); text-shadow: 0 0 6px var(--wash-blue-glow); }
-.rear-wmode-row { display: flex; gap: 4px; }
-.rear-btn { flex: 1; }
 
-/* ============================================
-   WIPER ANIMATIONS
-   ============================================ */
+/* Wiper animations */
 .wiper-arm { display: none; }
 .wiper-arm.visible { display: block; }
 @keyframes swipe-fl-slow { 0%{transform:rotate(-38deg)} 50%{transform:rotate(28deg)} 100%{transform:rotate(-38deg)} }
@@ -210,139 +193,40 @@ body {
 .wiper-rear-on  #wiper-rear { animation: swipe-rear 2s ease-in-out infinite; }
 .wiper-rear-int #wiper-rear { animation: swipe-rear 3.5s ease-in-out infinite; }
 
-/* ============================================
-   X-RAY: TRANSPARENT BODY + INTERNAL COMPONENT ANIMATIONS
-   ============================================ */
+/* Internal component animations */
+@keyframes motorGlow    { 0%,100%{opacity:0.75} 50%{opacity:1.0} }
+@keyframes rotorSpin    { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+@keyframes fluidFlow    { from{stroke-dashoffset:20} to{stroke-dashoffset:0} }
+@keyframes pumpPulse    { 0%,100%{opacity:0.65} 50%{opacity:1.0} }
+@keyframes impellerSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+@keyframes bcmSigFlow   { from{stroke-dashoffset:7} to{stroke-dashoffset:0} }
 
-/* Ghost body */
-.xray-body   { opacity: 1; stroke: #111111; stroke-width: 0.8; fill: #000000 !important; }
-.xray-sheen  { opacity: 0.04; }
-.xray-door   { opacity: 1; }
-.xray-trunk  { opacity: 1; }
-.xray-panel  { opacity: 0; }
-.xray-seam   { opacity: 0.5; }
+#car.front-motor-active .front-motor-body { animation: motorGlow 0.7s ease-in-out infinite; }
+#car.front-motor-active #front-rotor { transform-box:fill-box; transform-origin:center; animation: rotorSpin 0.35s linear infinite; }
+#car.rear-motor-active  .rear-motor-body  { animation: motorGlow 0.85s ease-in-out infinite; }
+#car.rear-motor-active  #rear-rotor  { transform-box:fill-box; transform-origin:center; animation: rotorSpin 0.45s linear infinite; }
+#car.pump-front-active .pump-impeller { transform-box:fill-box; transform-origin:center; animation: impellerSpin 0.25s linear infinite; }
+#car.pump-front-active .pump-body { animation: pumpPulse 0.3s ease-in-out infinite; }
+#car.pump-rear-active  .pump-impeller { transform-box:fill-box; transform-origin:center; animation: impellerSpin 0.25s linear infinite; }
+#car.pump-rear-active  .pump-body { animation: pumpPulse 0.3s ease-in-out infinite; }
+#car.pump-front-active .fluid-line { stroke: rgba(79,195,247,0.95) !important; stroke-width: 0.85 !important; animation: fluidFlow 0.4s linear infinite; }
+#car.pump-rear-active  .fluid-line { stroke: rgba(79,195,247,0.95) !important; stroke-width: 0.85 !important; animation: fluidFlow 0.4s linear infinite; }
 
-/* Internal component base styles */
-.int-comp-label {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 3.1px;
-  letter-spacing: 0.06em;
-}
-.int-outline-green { fill: rgba(141,198,63,0.07); stroke: rgba(141,198,63,0.50); stroke-width: 0.65; }
-.int-outline-blue  { fill: rgba(79,195,247,0.07);  stroke: rgba(79,195,247,0.50);  stroke-width: 0.65; }
-.int-gear-ring     { fill: none; stroke: rgba(141,198,63,0.42); stroke-width: 0.5; }
-.int-gear-tooth    { stroke: rgba(141,198,63,0.55); stroke-width: 0.55; stroke-linecap: round; }
-.int-shaft         { stroke: rgba(141,198,63,0.65); stroke-width: 0.85; stroke-linecap: round; }
-.int-linkage       { stroke: rgba(141,198,63,0.60); stroke-width: 1.1; stroke-linecap: round; }
-.int-pivot         { fill: rgba(141,198,63,0.20); stroke: rgba(141,198,63,0.72); stroke-width: 0.55; }
-.int-fluid-front   { fill: none; stroke: rgba(79,195,247,0.38); stroke-width: 0.60; stroke-dasharray: 2.5,1.5; stroke-linecap: round; }
-.int-fluid-rear    { fill: none; stroke: rgba(79,195,247,0.30); stroke-width: 0.55; stroke-dasharray: 2.2,1.8; stroke-linecap: round; }
-.int-wire          { fill: none; stroke: rgba(141,198,63,0.22); stroke-width: 0.45; stroke-dasharray: 1.5,1.2; }
-.int-nozzle-ring   { fill: none; stroke: rgba(79,195,247,0.55); stroke-width: 0.5; }
-.int-reservoir-fill { fill: rgba(79,195,247,0.18); }
-.int-reservoir-line { stroke: rgba(79,195,247,0.70); stroke-width: 0.35; stroke-dasharray: 1.2,0.7; }
-.int-pump-blade    { stroke: rgba(79,195,247,0.65); stroke-width: 0.70; stroke-linecap: round; }
-.int-pump-hub      { fill: rgba(79,195,247,0.35); stroke: rgba(79,195,247,0.80); stroke-width: 0.45; }
+.bcm-sig { fill:none; stroke:rgba(141,198,63,0.22); stroke-width:0.5; stroke-dasharray:2,1.5; }
+#car.front-motor-active .bcm-sig-front { stroke:rgba(255,165,0,0.90) !important; stroke-width:0.75 !important; animation: bcmSigFlow 0.28s linear infinite !important; }
+#car.rear-motor-active  .bcm-sig-rear  { stroke:rgba(255,165,0,0.90) !important; stroke-width:0.75 !important; animation: bcmSigFlow 0.32s linear infinite !important; }
 
-/* ---- Spin / Glow / Flow animations ---- */
-@keyframes impellerSpin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-@keyframes fluidFlowAnim {
-  from { stroke-dashoffset: 16; }
-  to   { stroke-dashoffset: 0; }
-}
-@keyframes compGlowPulse {
-  0%,100% { opacity: 0.65; }
-  50%     { opacity: 1.0;  }
-}
-@keyframes compGlowFast {
-  0%,100% { opacity: 0.55; }
-  50%     { opacity: 1.0;  }
-}
-@keyframes gearRotate {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-/* Pump impeller spinning */
-#car.pump-active #pump-impeller-vis {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: impellerSpin 0.28s linear infinite;
-}
-/* Pump body pulsing */
-#car.pump-active .pump-comp { animation: compGlowFast 0.35s ease-in-out infinite; }
-
-/* Fluid lines animate flow */
-#car.pump-front-active .int-fluid-front {
-  stroke: rgba(79,195,247,0.90) !important;
-  stroke-width: 0.9 !important;
-  animation: fluidFlowAnim 0.40s linear infinite;
-}
-#car.pump-rear-active .int-fluid-rear {
-  stroke: rgba(79,195,247,0.90) !important;
-  stroke-width: 0.85 !important;
-  animation: fluidFlowAnim 0.50s linear infinite;
-}
-
-/* Front motor + linkage glow */
-#car.front-motor-active .front-motor-comp { animation: compGlowPulse 0.70s ease-in-out infinite; }
-#car.front-motor-active .front-linkage-comp { animation: compGlowPulse 0.70s ease-in-out infinite; }
-
-/* Rear motor glow */
-#car.rear-motor-active .rear-motor-comp { animation: compGlowPulse 0.85s ease-in-out infinite; }
-
-/* Gear inner rotor rotation when motor active */
-#car.front-motor-active #front-gear-rotor {
-  transform-box: fill-box; transform-origin: center;
-  animation: gearRotate 0.35s linear infinite;
-}
-#car.rear-motor-active #rear-gear-rotor {
-  transform-box: fill-box; transform-origin: center;
-  animation: gearRotate 0.45s linear infinite;
-}
-
-/* Nozzle rings pulsing when washing */
-#car.pump-front-active .int-nozzle-front-ring {
-  animation: compGlowFast 0.3s ease-in-out infinite;
-  stroke: rgba(79,195,247,0.95) !important;
-}
-#car.pump-rear-active .int-nozzle-rear-ring {
-  animation: compGlowFast 0.35s ease-in-out infinite;
-  stroke: rgba(79,195,247,0.95) !important;
-}
-
-/* Wash spray particles */
-@keyframes dropFall {
-  0%   { opacity: 0; transform: translate(0,0) scale(0.4); }
-  15%  { opacity: 1; }
-  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.8); }
-}
-.wash-drop { animation: dropFall 0.7s ease-out forwards; transform-origin: center; }
-
-/* Vehicle sim styles */
-#car.reverse-active {
-  filter: drop-shadow(0 0 22px rgba(141,198,63,0.28)) drop-shadow(0 8px 28px rgba(0,0,0,0.55)) drop-shadow(0 -8px 22px rgba(255,255,255,0.6));
-}
 @keyframes engineVibe { 0%,100%{transform:translateY(0)} 50%{transform:translateY(0.5px)} }
 #car.engine-run { animation: engineVibe 0.1s linear infinite; }
+#car.reverse-active { filter: drop-shadow(0 0 22px rgba(141,198,63,0.28)) drop-shadow(0 8px 28px rgba(0,0,0,0.55)) drop-shadow(0 -8px 22px rgba(255,255,255,0.6)); }
+
+/* Correction : suppression de l'encadré gris et mise en blanc des textes cochés */
+/* Aucun rectangle gris autour des composants internes — on retire les bordures/fonds indésirables */
 </style>
 </head>
 <body>
-<style>
-html, body {
-  background: #ffffff !important;
-  background-color: #ffffff !important;
-}
-.bg-grid, .bg-glow, .status-bar {
-  display: none !important;
-}
-.car-stage {
-  background: transparent !important;
-}
-</style>
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
 
 <div class="main-layout">
   <div class="car-stage">
@@ -351,29 +235,16 @@ html, body {
     <div class="showroom-floor"></div>
     <div class="car-glow-ring"></div>
 
-    <svg
-      id="car"
-      width="540"
-      height="560"
-      viewBox="-32 -17 136 196"
-      xmlns="http://www.w3.org/2000/svg">
+    <svg id="car" width="540" height="560" viewBox="-32 0 136 150.56797" xmlns="http://www.w3.org/2000/svg">
 
       <defs>
         <linearGradient id="bodyMain" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="#f0f0f0"/>
-          <stop offset="22%"  stop-color="#f8f8f8"/>
-          <stop offset="45%"  stop-color="#ffffff"/>
-          <stop offset="55%"  stop-color="#ffffff"/>
-          <stop offset="78%"  stop-color="#f8f8f8"/>
-          <stop offset="100%" stop-color="#f0f0f0"/>
-        </linearGradient>
-        <linearGradient id="bodyKPIT" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="#A8D878"/>
-          <stop offset="20%"  stop-color="#D4F0A8"/>
-          <stop offset="45%"  stop-color="#FFFFFF"/>
-          <stop offset="55%"  stop-color="#FFFFFF"/>
-          <stop offset="80%"  stop-color="#D4F0A8"/>
-          <stop offset="100%" stop-color="#A8D878"/>
+          <stop offset="0%"   stop-color="#0d0d0d"/>
+          <stop offset="22%"  stop-color="#1c1c1c"/>
+          <stop offset="45%"  stop-color="#2d2d2d"/>
+          <stop offset="55%"  stop-color="#303030"/>
+          <stop offset="78%"  stop-color="#1c1c1c"/>
+          <stop offset="100%" stop-color="#0d0d0d"/>
         </linearGradient>
         <linearGradient id="sheenH" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%"   stop-color="#fff" stop-opacity="0"/>
@@ -383,27 +254,31 @@ html, body {
           <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
         </linearGradient>
         <linearGradient id="glassGrad" x1="10%" y1="0%" x2="90%" y2="100%">
-          <stop offset="0%"   stop-color="#a8d4f5" stop-opacity="0.30"/>
-          <stop offset="40%"  stop-color="#c5e8ff" stop-opacity="0.18"/>
+          <stop offset="0%"  stop-color="#a8d4f5" stop-opacity="0.30"/>
+          <stop offset="40%" stop-color="#c5e8ff" stop-opacity="0.18"/>
           <stop offset="100%" stop-color="#80c0f0" stop-opacity="0.25"/>
         </linearGradient>
         <linearGradient id="glassGlare" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.22"/>
+          <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.22"/>
           <stop offset="50%"  stop-color="#d0eeff" stop-opacity="0.10"/>
           <stop offset="100%" stop-color="#ffffff" stop-opacity="0.06"/>
         </linearGradient>
         <linearGradient id="chromeV" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#d0d0d0"/><stop offset="35%" stop-color="#ffffff"/>
-          <stop offset="65%"  stop-color="#e8e8e8"/><stop offset="100%" stop-color="#888"/>
+          <stop offset="0%"   stop-color="#d0d0d0"/>
+          <stop offset="35%"  stop-color="#ffffff"/>
+          <stop offset="65%"  stop-color="#e8e8e8"/>
+          <stop offset="100%" stop-color="#888"/>
         </linearGradient>
         <linearGradient id="chromeH" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="#888"/><stop offset="30%" stop-color="#e8e8e8"/>
-          <stop offset="50%"  stop-color="#ffffff"/><stop offset="70%" stop-color="#e8e8e8"/>
+          <stop offset="0%"   stop-color="#888"/>
+          <stop offset="30%"  stop-color="#e8e8e8"/>
+          <stop offset="50%"  stop-color="#ffffff"/>
+          <stop offset="70%"  stop-color="#e8e8e8"/>
           <stop offset="100%" stop-color="#888"/>
         </linearGradient>
         <radialGradient id="tyreGrad" cx="50%" cy="50%" r="50%">
-          <stop offset="0%"   stop-color="#2a2a2a"/>
-          <stop offset="60%"  stop-color="#141414"/>
+          <stop offset="0%"  stop-color="#2a2a2a"/>
+          <stop offset="60%" stop-color="#141414"/>
           <stop offset="100%" stop-color="#080808"/>
         </radialGradient>
         <radialGradient id="rimGrad" cx="40%" cy="35%" r="60%">
@@ -422,9 +297,9 @@ html, body {
           <stop offset="100%" stop-color="#aaaaaa" stop-opacity="0.6"/>
         </radialGradient>
         <linearGradient id="doorPanel" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"  stop-color="#ffffff"/>
-          <stop offset="50%" stop-color="#ffffff"/>
-          <stop offset="100%" stop-color="#ffffff"/>
+          <stop offset="0%"  stop-color="#181818"/>
+          <stop offset="50%" stop-color="#222222"/>
+          <stop offset="100%" stop-color="#181818"/>
         </linearGradient>
         <linearGradient id="greenStrip" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%"   stop-color="#8DC63F" stop-opacity="0"/>
@@ -436,6 +311,28 @@ html, body {
           <stop offset="0%"  stop-color="#000" stop-opacity="0.35"/>
           <stop offset="100%" stop-color="#000" stop-opacity="0"/>
         </radialGradient>
+        <!-- Motor gradients — realistic -->
+        <linearGradient id="motorBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stop-color="#4a4a52"/>
+          <stop offset="50%"  stop-color="#2e2e36"/>
+          <stop offset="100%" stop-color="#1a1a22"/>
+        </linearGradient>
+        <linearGradient id="motorEndGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#666670"/>
+          <stop offset="100%" stop-color="#38383f"/>
+        </linearGradient>
+        <linearGradient id="resBgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="rgba(180,225,255,0.18)"/>
+          <stop offset="100%" stop-color="rgba(80,160,230,0.28)"/>
+        </linearGradient>
+        <linearGradient id="resWaterGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="rgba(0,149,246,0.50)"/>
+          <stop offset="100%" stop-color="rgba(0,90,190,0.68)"/>
+        </linearGradient>
+        <linearGradient id="pumpBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stop-color="#3c3c4a"/>
+          <stop offset="100%" stop-color="#1e1e28"/>
+        </linearGradient>
         <filter id="glowGreen" x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation="1.2" result="b"/>
           <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
@@ -448,204 +345,163 @@ html, body {
           <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#8DC63F" flood-opacity="0.20"/>
         </filter>
         <filter id="intGlow">
-          <feGaussianBlur stdDeviation="0.8" result="b"/>
+          <feGaussianBlur stdDeviation="0.7" result="b"/>
           <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
         <clipPath id="frontWS-clip">
-          <path d="m 76.769879,158.46897 c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487 1.87685,7.70946 4.19508,17.51444 4.19508,17.51444 l 0.4195,7.13163 c 0,0 -10.31198,4.90514 -24.436309,4.92921 -13.704819,0.0241 -24.121684,-4.71946 -24.121684,-4.71946 l 0.314632,-6.92187 c 0,0 2.56054,-9.89684 4.40483,-18.03882 z"
-               transform="translate(-62.420581,-72.080961)"/>
-        </clipPath>
-        <clipPath id="rearWS-clip">
-          <path d="m 76.138579,93.273644 c 0.05453,12.002696 0.260395,27.789346 0.260395,27.789346 0,0 12.258858,-2.83888 18.90718,-2.92577 6.783606,-0.0887 21.055356,2.45562 21.055356,2.45562 0,0 0.38302,-18.95612 0.23508,-27.268555 -7.82954,-3.590432 -13.59743,-4.545434 -20.686495,-4.517043 -6.788702,0.02719 -10.992865,0.787988 -19.771516,4.466402 z"
-               transform="translate(-62.420581,-72.080961)"/>
+          <path d="m 76.769879,158.46897 c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487 1.87685,7.70946 4.19508,17.51444 4.19508,17.51444 l 0.4195,7.13163 c 0,0 -10.31198,4.90514 -24.436309,4.92921 -13.704819,0.0241 -24.121684,-4.71946 -24.121684,-4.71946 l 0.314632,-6.92187 c 0,0 2.56054,-9.89684 4.40483,-18.03882 z" transform="translate(-62.420581,-72.080961)"/>
         </clipPath>
       </defs>
 
-      <!-- ===== MAIN CAR BODY (world coords) — TRANSPARENT X-RAY ===== -->
       <g transform="translate(-62.420581,-72.080961)">
 
-        <!-- GROUND SHADOW -->
         <ellipse cx="96.3" cy="228" rx="34" ry="6.5" fill="url(#groundShadow)"/>
 
-        <!-- TYRES (slightly dimmed) -->
-        <g opacity="0.55">
-          <ellipse cx="68" cy="176" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
-          <ellipse cx="68" cy="176" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
-          <ellipse cx="68" cy="176" rx="2.2" ry="2.4" fill="#181818"/>
-          <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
-            <line x1="68" y1="170.8" x2="68" y2="173.6"/><line x1="72.8" y1="173" x2="70.7" y2="174.8"/>
-            <line x1="71" y1="178.9" x2="69.3" y2="177.3"/><line x1="65" y1="178.9" x2="66.7" y2="177.3"/>
-            <line x1="63.2" y1="173" x2="65.3" y2="174.8"/>
-          </g>
-          <ellipse cx="68" cy="120" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
-          <ellipse cx="68" cy="120" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
-          <ellipse cx="68" cy="120" rx="2.2" ry="2.4" fill="#181818"/>
-          <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
-            <line x1="68" y1="114.8" x2="68" y2="117.6"/><line x1="72.8" y1="117" x2="70.7" y2="118.8"/>
-            <line x1="71" y1="122.9" x2="69.3" y2="121.3"/><line x1="65" y1="122.9" x2="66.7" y2="121.3"/>
-            <line x1="63.2" y1="117" x2="65.3" y2="118.8"/>
-          </g>
-          <ellipse cx="125" cy="176" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
-          <ellipse cx="125" cy="176" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
-          <ellipse cx="125" cy="176" rx="2.2" ry="2.4" fill="#181818"/>
-          <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
-            <line x1="125" y1="170.8" x2="125" y2="173.6"/><line x1="129.8" y1="173" x2="127.7" y2="174.8"/>
-            <line x1="128" y1="178.9" x2="126.3" y2="177.3"/><line x1="122" y1="178.9" x2="123.7" y2="177.3"/>
-            <line x1="120.2" y1="173" x2="122.3" y2="174.8"/>
-          </g>
-          <ellipse cx="125" cy="120" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
-          <ellipse cx="125" cy="120" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
-          <ellipse cx="125" cy="120" rx="2.2" ry="2.4" fill="#181818"/>
-          <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
-            <line x1="125" y1="114.8" x2="125" y2="117.6"/><line x1="129.8" y1="117" x2="127.7" y2="118.8"/>
-            <line x1="128" y1="122.9" x2="126.3" y2="121.3"/><line x1="122" y1="122.9" x2="123.7" y2="121.3"/>
-            <line x1="120.2" y1="117" x2="122.3" y2="118.8"/>
-          </g>
+        <!-- Tyres -->
+        <ellipse cx="68" cy="176" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
+        <ellipse cx="68" cy="176" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
+        <ellipse cx="68" cy="176" rx="2.2" ry="2.4" fill="#181818"/>
+        <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
+          <line x1="68" y1="170.8" x2="68" y2="173.6"/><line x1="72.8" y1="173" x2="70.7" y2="174.8"/>
+          <line x1="71" y1="178.9" x2="69.3" y2="177.3"/><line x1="65" y1="178.9" x2="66.7" y2="177.3"/>
+          <line x1="63.2" y1="173" x2="65.3" y2="174.8"/>
+        </g>
+        <ellipse cx="68" cy="120" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
+        <ellipse cx="68" cy="120" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
+        <ellipse cx="68" cy="120" rx="2.2" ry="2.4" fill="#181818"/>
+        <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
+          <line x1="68" y1="114.8" x2="68" y2="117.6"/><line x1="72.8" y1="117" x2="70.7" y2="118.8"/>
+          <line x1="71" y1="122.9" x2="69.3" y2="121.3"/><line x1="65" y1="122.9" x2="66.7" y2="121.3"/>
+          <line x1="63.2" y1="117" x2="65.3" y2="118.8"/>
+        </g>
+        <ellipse cx="125" cy="176" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
+        <ellipse cx="125" cy="176" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
+        <ellipse cx="125" cy="176" rx="2.2" ry="2.4" fill="#181818"/>
+        <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
+          <line x1="125" y1="170.8" x2="125" y2="173.6"/><line x1="129.8" y1="173" x2="127.7" y2="174.8"/>
+          <line x1="128" y1="178.9" x2="126.3" y2="177.3"/><line x1="122" y1="178.9" x2="123.7" y2="177.3"/>
+          <line x1="120.2" y1="173" x2="122.3" y2="174.8"/>
+        </g>
+        <ellipse cx="125" cy="120" rx="7.2" ry="7.8" fill="url(#tyreGrad)"/>
+        <ellipse cx="125" cy="120" rx="4.8" ry="5.2" fill="url(#rimGrad)"/>
+        <ellipse cx="125" cy="120" rx="2.2" ry="2.4" fill="#181818"/>
+        <g stroke="#c0c0c0" stroke-width="0.7" opacity="0.85">
+          <line x1="125" y1="114.8" x2="125" y2="117.6"/><line x1="129.8" y1="117" x2="127.7" y2="118.8"/>
+          <line x1="128" y1="122.9" x2="126.3" y2="121.3"/><line x1="122" y1="122.9" x2="123.7" y2="121.3"/>
+          <line x1="120.2" y1="117" x2="122.3" y2="118.8"/>
         </g>
 
-        <!-- MAIN BODY — X-RAY transparent -->
-        <path class="xray-body" style="fill:url(#bodyMain);stroke:#111111;stroke-width:0.8" filter="url(#bodyDropShadow)"
-          d="m 70.894176,80.187691 c 3.417738,-2.734443 15.364246,-8.914729 25.639467,-8.01877
-             0.469179,45.842279 0.308415,150.479219 0.308415,150.479219
-             0,0 -21.665918,0.39993 -29.131692,-16.65436
-             -1.189515,-10.13623 -0.476072,-26.49672 -0.476072,-26.49672
-             l 2.326557,-3.92867 4.150141,-19.51081
-             c 0,0 0.08521,-22.13264 -0.802119,-47.78644
-             -5.019741,3.38846 -6.076964,7.19544 -6.076964,7.19544
-             0,0 -0.915901,-24.608352 4.062267,-35.278889 z"/>
-        <path class="xray-body" style="fill:url(#bodyMain);stroke:#111111;stroke-width:0.8"
-          d="m 122.17311,80.187691 c -3.41774,-2.734443 -15.36425,-8.914729 -25.639467,-8.01877
-             -0.469179,45.842279 -0.308415,150.479219 -0.308415,150.479219
-             0,0 21.665922,0.39993 29.131692,-16.65436
-             1.18952,-10.13623 0.47607,-26.49672 0.47607,-26.49672
-             l -2.32655,-3.92867 -4.15015,-19.51081
-             c 0,0 -0.0852,-22.13264 0.80212,-47.78644
-             5.01974,3.38846 6.07697,7.19544 6.07697,7.19544
-             0,0 0.9159,-24.608352 -4.06227,-35.278889 z"/>
-        <!-- Sheen -->
-        <path class="xray-sheen" style="fill:url(#sheenH);pointer-events:none"
-          d="m 70.894176,80.187691 c 3.417738,-2.734443 15.364246,-8.914729 25.639467,-8.01877
-             0.469179,45.842279 0.308415,150.479219 0.308415,150.479219
-             0,0 -21.665918,0.39993 -29.131692,-16.65436
-             -1.189515,-10.13623 -0.476072,-26.49672 -0.476072,-26.49672
-             l 2.326557,-3.92867 4.150141,-19.51081
-             c 0,0 0.08521,-22.13264 -0.802119,-47.78644
-             -5.019741,3.38846 -6.076964,7.19544 -6.076964,7.19544
-             0,0 -0.915901,-24.608352 4.062267,-35.278889 z"/>
-        <path class="xray-sheen" style="fill:url(#sheenH);pointer-events:none"
-          d="m 122.17311,80.187691 c -3.41774,-2.734443 -15.36425,-8.914729 -25.639467,-8.01877
-             -0.469179,45.842279 -0.308415,150.479219 -0.308415,150.479219
-             0,0 21.665922,0.39993 29.131692,-16.65436
-             1.18952,-10.13623 0.47607,-26.49672 0.47607,-26.49672
-             l -2.32655,-3.92867 -4.15015,-19.51081
-             c 0,0 -0.0852,-22.13264 0.80212,-47.78644
-             5.01974,3.38846 6.07697,7.19544 6.07697,7.19544
-             0,0 0.9159,-24.608352 -4.06227,-35.278889 z"/>
+        <!-- Body -->
+        <path style="fill:url(#bodyMain)" filter="url(#bodyDropShadow)"
+          d="m 70.894176,80.187691 c 3.417738,-2.734443 15.364246,-8.914729 25.639467,-8.01877 0.469179,45.842279 0.308415,150.479219 0.308415,150.479219 0,0 -21.665918,0.39993 -29.131692,-16.65436 -1.189515,-10.13623 -0.476072,-26.49672 -0.476072,-26.49672 l 2.326557,-3.92867 4.150141,-19.51081 c 0,0 0.08521,-22.13264 -0.802119,-47.78644 -5.019741,3.38846 -6.076964,7.19544 -6.076964,7.19544 0,0 -0.915901,-24.608352 4.062267,-35.278889 z"/>
+        <path style="fill:url(#bodyMain)"
+          d="m 122.17311,80.187691 c -3.41774,-2.734443 -15.36425,-8.914729 -25.639467,-8.01877 -0.469179,45.842279 -0.308415,150.479219 -0.308415,150.479219 0,0 21.665922,0.39993 29.131692,-16.65436 1.18952,-10.13623 0.47607,-26.49672 0.47607,-26.49672 l -2.32655,-3.92867 -4.15015,-19.51081 c 0,0 -0.0852,-22.13264 0.80212,-47.78644 5.01974,3.38846 6.07697,7.19544 6.07697,7.19544 0,0 0.9159,-24.608352 -4.06227,-35.278889 z"/>
+        <path style="fill:url(#sheenH);pointer-events:none"
+          d="m 70.894176,80.187691 c 3.417738,-2.734443 15.364246,-8.914729 25.639467,-8.01877 0.469179,45.842279 0.308415,150.479219 0.308415,150.479219 0,0 -21.665918,0.39993 -29.131692,-16.65436 -1.189515,-10.13623 -0.476072,-26.49672 -0.476072,-26.49672 l 2.326557,-3.92867 4.150141,-19.51081 c 0,0 0.08521,-22.13264 -0.802119,-47.78644 -5.019741,3.38846 -6.076964,7.19544 -6.076964,7.19544 0,0 -0.915901,-24.608352 4.062267,-35.278889 z"/>
+        <path style="fill:url(#sheenH);pointer-events:none"
+          d="m 122.17311,80.187691 c -3.41774,-2.734443 -15.36425,-8.914729 -25.639467,-8.01877 -0.469179,45.842279 -0.308415,150.479219 -0.308415,150.479219 0,0 21.665922,0.39993 29.131692,-16.65436 1.18952,-10.13623 0.47607,-26.49672 0.47607,-26.49672 l -2.32655,-3.92867 -4.15015,-19.51081 c 0,0 -0.0852,-22.13264 0.80212,-47.78644 5.01974,3.38846 6.07697,7.19544 6.07697,7.19544 0,0 0.9159,-24.608352 -4.06227,-35.278889 z"/>
 
-        <!-- DOOR SEAM LINES -->
-        <line class="xray-seam" x1="76.8" y1="99" x2="76.8" y2="193" stroke="#8DC63F" stroke-width="0.6"/>
-        <line class="xray-seam" x1="116.2" y1="99" x2="116.2" y2="193" stroke="#8DC63F" stroke-width="0.6"/>
-        <line class="xray-seam" x1="76.8" y1="135.5" x2="116.2" y2="135.5" stroke="#8DC63F" stroke-width="0.5"/>
+        <line x1="76.8" y1="99" x2="76.8" y2="193" stroke="#080808" stroke-width="1.2"/>
+        <line x1="116.2" y1="99" x2="116.2" y2="193" stroke="#080808" stroke-width="1.2"/>
+        <line x1="76.8" y1="135.5" x2="116.2" y2="135.5" stroke="#080808" stroke-width="0.9"/>
+        <line x1="77.4" y1="99" x2="77.4" y2="193" stroke="#555" stroke-width="0.35" opacity="0.7"/>
+        <line x1="115.6" y1="99" x2="115.6" y2="193" stroke="#555" stroke-width="0.35" opacity="0.7"/>
 
-        <!-- WINDOWS (keep visible — already translucent) -->
+        <!-- Windows -->
         <path style="fill:url(#glassGrad);stroke:#4a8ab5;stroke-width:0.6;stroke-opacity:0.5"
-          d="m 76.138579,93.273644 c 0.05453,12.002696 0.260395,27.789346 0.260395,27.789346
-             0,0 12.258858,-2.83888 18.90718,-2.92577 6.783606,-0.0887 21.055356,2.45562 21.055356,2.45562
-             0,0 0.38302,-18.95612 0.23508,-27.268555 -7.82954,-3.590432 -13.59743,-4.545434 -20.686495,-4.517043
-             -6.788702,0.02719 -10.992865,0.787988 -19.771516,4.466402 z"/>
+          d="m 76.138579,93.273644 c 0.05453,12.002696 0.260395,27.789346 0.260395,27.789346 0,0 12.258858,-2.83888 18.90718,-2.92577 6.783606,-0.0887 21.055356,2.45562 21.055356,2.45562 0,0 0.38302,-18.95612 0.23508,-27.268555 -7.82954,-3.590432 -13.59743,-4.545434 -20.686495,-4.517043 -6.788702,0.02719 -10.992865,0.787988 -19.771516,4.466402 z"/>
         <path style="fill:url(#glassGlare)"
-          d="m 76.138579,93.273644 c 0.05453,12.002696 0.260395,27.789346 0.260395,27.789346
-             0,0 12.258858,-2.83888 18.90718,-2.92577 6.783606,-0.0887 21.055356,2.45562 21.055356,2.45562
-             0,0 0.38302,-18.95612 0.23508,-27.268555 -7.82954,-3.590432 -13.59743,-4.545434 -20.686495,-4.517043
-             -6.788702,0.02719 -10.992865,0.787988 -19.771516,4.466402 z"/>
+          d="m 76.138579,93.273644 c 0.05453,12.002696 0.260395,27.789346 0.260395,27.789346 0,0 12.258858,-2.83888 18.90718,-2.92577 6.783606,-0.0887 21.055356,2.45562 21.055356,2.45562 0,0 0.38302,-18.95612 0.23508,-27.268555 -7.82954,-3.590432 -13.59743,-4.545434 -20.686495,-4.517043 -6.788702,0.02719 -10.992865,0.787988 -19.771516,4.466402 z"/>
+        <path style="fill:#ffffff;opacity:0.07"
+          d="m 79,94.5 c 4,-1.8 9,-2.8 13.5,-2.9 l 0,10.5 c -4.5,0.6 -9.5,1.6 -13.5,2.9 z"/>
         <path style="fill:url(#glassGrad);stroke:#4a8ab5;stroke-width:0.6;stroke-opacity:0.5"
-          d="m 76.769879,158.46897 c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487
-             1.87685,7.70946 4.19508,17.51444 4.19508,17.51444 l 0.4195,7.13163
-             c 0,0 -10.31198,4.90514 -24.436309,4.92921 -13.704819,0.0241 -24.121684,-4.71946 -24.121684,-4.71946
-             l 0.314632,-6.92187 c 0,0 2.56054,-9.89684 4.40483,-18.03882 z"/>
+          d="m 76.769879,158.46897 c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487 1.87685,7.70946 4.19508,17.51444 4.19508,17.51444 l 0.4195,7.13163 c 0,0 -10.31198,4.90514 -24.436309,4.92921 -13.704819,0.0241 -24.121684,-4.71946 -24.121684,-4.71946 l 0.314632,-6.92187 c 0,0 2.56054,-9.89684 4.40483,-18.03882 z"/>
         <path style="fill:url(#glassGlare)"
-          d="m 76.769879,158.46897 c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487
-             1.87685,7.70946 4.19508,17.51444 4.19508,17.51444 l 0.4195,7.13163
-             c 0,0 -10.31198,4.90514 -24.436309,4.92921 -13.704819,0.0241 -24.121684,-4.71946 -24.121684,-4.71946
-             l 0.314632,-6.92187 c 0,0 2.56054,-9.89684 4.40483,-18.03882 z"/>
+          d="m 76.769879,158.46897 c 15.444104,4.58634 24.144801,4.1597 39.223951,0.10487 1.87685,7.70946 4.19508,17.51444 4.19508,17.51444 l 0.4195,7.13163 c 0,0 -10.31198,4.90514 -24.436309,4.92921 -13.704819,0.0241 -24.121684,-4.71946 -24.121684,-4.71946 l 0.314632,-6.92187 c 0,0 2.56054,-9.89684 4.40483,-18.03882 z"/>
+        <path style="fill:#ffffff;opacity:0.06"
+          d="m 79,160 c 7,2 14,2.4 18,2.2 l -1.2,9 c -5,-0.5 -11.5,-2 -16.5,-4 z"/>
 
-        <!-- CHROME TRIM (keep visible) -->
-        <path style="fill:none;stroke:url(#chromeH);stroke-width:0.65;opacity:0.5" d="m 76.8,121 c 9,-1.8 28,-1.8 39.5,0"/>
-        <path style="fill:none;stroke:url(#chromeH);stroke-width:0.65;opacity:0.5" d="m 76.8,135.5 c 9,-1.2 28,-1.2 39.5,0"/>
-        <rect x="68.5" y="148" width="6" height="0.8" rx="0.4" fill="url(#greenStrip)" opacity="0.6"/>
-        <rect x="118.5" y="148" width="6" height="0.8" rx="0.4" fill="url(#greenStrip)" opacity="0.6"/>
+        <!-- Chrome + accents -->
+        <path style="fill:none;stroke:url(#chromeH);stroke-width:0.65;opacity:0.8" d="m 76.8,121 c 9,-1.8 28,-1.8 39.5,0"/>
+        <path style="fill:none;stroke:url(#chromeH);stroke-width:0.65;opacity:0.8" d="m 76.8,135.5 c 9,-1.2 28,-1.2 39.5,0"/>
+        <rect x="68.5" y="148" width="6" height="0.8" rx="0.4" fill="url(#greenStrip)" opacity="0.85"/>
+        <rect x="118.5" y="148" width="6" height="0.8" rx="0.4" fill="url(#greenStrip)" opacity="0.85"/>
+        <rect x="69.2" y="106" width="6.5" height="24" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
+        <rect x="117.3" y="106" width="6.5" height="24" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
+        <rect x="69.2" y="138" width="6.5" height="35" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
+        <rect x="117.3" y="138" width="6.5" height="35" rx="1" fill="url(#doorPanel)" opacity="0.55"/>
 
-        <!-- DOOR PANELS — very faint -->
-        <rect class="xray-panel" x="69.2" y="106" width="6.5" height="24" rx="1" fill="url(#doorPanel)"/>
-        <rect class="xray-panel" x="117.3" y="106" width="6.5" height="24" rx="1" fill="url(#doorPanel)"/>
-        <rect class="xray-panel" x="69.2" y="138" width="6.5" height="35" rx="1" fill="url(#doorPanel)"/>
-        <rect class="xray-panel" x="117.3" y="138" width="6.5" height="35" rx="1" fill="url(#doorPanel)"/>
-
-        <!-- DOOR GROUPS — very transparent -->
-        <g id="g32696" class="xray-door">
-          <path style="fill:#000000;stroke:#111111;stroke-width:0.5" d="m 72.908871,108.27114 c 0,0 -4.48587,3.09726 -6.076963,7.19544 1.187985,6.61867 0.318981,19.36709 0.318981,19.36709 l 6.382658,-2.52647 z"/>
-          <path style="fill:#000000;stroke:#111111;stroke-width:0.4" d="m 73.533547,132.3072 -4.065482,1.39366 c 0,0 -0.02502,-15.51524 3.355947,-24.02857 0.285247,9.50922 0.709535,22.63491 0.709535,22.63491 z"/>
-          <rect x="66.8" y="118.5" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.7"/>
+        <!-- Doors -->
+        <g id="g32696">
+          <path style="fill:#141414" d="m 72.908871,108.27114 c 0,0 -4.48587,3.09726 -6.076963,7.19544 1.187985,6.61867 0.318981,19.36709 0.318981,19.36709 l 6.382658,-2.52647 z"/>
+          <path style="fill:#1e1e1e" d="m 73.533547,132.3072 -4.065482,1.39366 c 0,0 -0.02502,-15.51524 3.355947,-24.02857 0.285247,9.50922 0.709535,22.63491 0.709535,22.63491 z"/>
+          <rect x="66.8" y="118.5" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.95"/>
         </g>
-        <g id="g32682" class="xray-door">
-          <path style="fill:#000000;stroke:#111111;stroke-width:0.5" d="m 67.234294,179.49706 2.326555,-3.92867 4.150143,-19.51081 -0.177445,-23.75038 -6.382658,2.52647 z"/>
-          <path style="fill:#000000;stroke:#111111;stroke-width:0.4" d="m 73.495201,134.77476 -3.825777,1.94645 0.201355,34.90183 0.469832,-0.40272 3.370381,-15.16274 z"/>
-          <rect x="66.8" y="154" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.7"/>
+        <g id="g32682">
+          <path style="fill:#141414" d="m 67.234294,179.49706 2.326555,-3.92867 4.150143,-19.51081 -0.177445,-23.75038 -6.382658,2.52647 z"/>
+          <path style="fill:#1e1e1e" d="m 73.495201,134.77476 -3.825777,1.94645 0.201355,34.90183 0.469832,-0.40272 3.370381,-15.16274 z"/>
+          <path style="fill:#222" d="m 71.405993,166.87993 -1.468094,0.24614 v 2.41628 l -1.141021,-0.13424 -0.134239,-0.60406 c 0,0 -2.849954,-0.40563 -6.242058,-2.4834 0.122824,3.33483 4.899679,5.83934 4.899679,5.83934 l 1.073904,-0.3356 1.409496,0.3356 0.201356,1.47661 z"/>
+          <rect x="66.8" y="154" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.95"/>
         </g>
-        <g id="g136" class="xray-door">
-          <path style="fill:#000000;stroke:#111111;stroke-width:0.5" d="m 120.15841,108.27114 c 0,0 4.48587,3.09726 6.07696,7.19544 -1.18798,6.61867 -0.31898,19.36709 -0.31898,19.36709 l -6.38266,-2.52647 z"/>
-          <path style="fill:#000000;stroke:#111111;stroke-width:0.4" d="m 119.53373,132.3072 4.06549,1.39366 c 0,0 0.025,-15.51524 -3.35595,-24.02857 -0.28525,9.50922 -0.70954,22.63491 -0.70954,22.63491 z"/>
-          <rect x="122" y="118.5" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.7"/>
+        <g id="g136">
+          <path style="fill:#141414" d="m 120.15841,108.27114 c 0,0 4.48587,3.09726 6.07696,7.19544 -1.18798,6.61867 -0.31898,19.36709 -0.31898,19.36709 l -6.38266,-2.52647 z"/>
+          <path style="fill:#1e1e1e" d="m 119.53373,132.3072 4.06549,1.39366 c 0,0 0.025,-15.51524 -3.35595,-24.02857 -0.28525,9.50922 -0.70954,22.63491 -0.70954,22.63491 z"/>
+          <rect x="122" y="118.5" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.95"/>
         </g>
-        <g id="g130" class="xray-door">
-          <path style="fill:#000000;stroke:#111111;stroke-width:0.5" d="m 125.83299,179.49706 -2.32656,-3.92867 -4.15014,-19.51081 0.17744,-23.75038 6.38266,2.52647 z"/>
-          <path style="fill:#000000;stroke:#111111;stroke-width:0.4" d="m 119.57208,134.77476 3.82578,1.94645 -0.20136,34.90183 -0.46983,-0.40272 -3.37038,-15.16274 z"/>
-          <path style="fill:#000000;stroke:#111111;stroke-width:0.4" d="m 121.66129,166.87993 1.46809,0.24614 v 2.41628 l 1.14102,-0.13424 0.13424,-0.60406 c 0,0 2.84995,-0.40563 6.24206,-2.4834 -0.12283,3.33483 -4.89968,5.83934 -4.89968,5.83934 l -1.0739,-0.3356 -1.4095,0.3356 -0.20136,1.47661 z"/>
-          <rect x="120" y="154" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.7"/>
+        <g id="g130">
+          <path style="fill:#141414" d="m 125.83299,179.49706 -2.32656,-3.92867 -4.15014,-19.51081 0.17744,-23.75038 6.38266,2.52647 z"/>
+          <path style="fill:#1e1e1e" d="m 119.57208,134.77476 3.82578,1.94645 -0.20136,34.90183 -0.46983,-0.40272 -3.37038,-15.16274 z"/>
+          <path style="fill:#222" d="m 121.66129,166.87993 1.46809,0.24614 v 2.41628 l 1.14102,-0.13424 0.13424,-0.60406 c 0,0 2.84995,-0.40563 6.24206,-2.4834 -0.12283,3.33483 -4.89968,5.83934 -4.89968,5.83934 l -1.0739,-0.3356 -1.4095,0.3356 -0.20136,1.47661 z"/>
+          <rect x="120" y="154" width="4.2" height="1.4" rx="0.7" fill="url(#chromeV)" opacity="0.95"/>
         </g>
 
-        <!-- TRUNK — transparent -->
-        <path id="path32798" class="xray-trunk" style="fill:#000000;stroke:#111111;stroke-width:0.6"
+        <!-- Trunk -->
+        <path id="path32798" style="fill:#1a1a1a;opacity:0.5"
           d="m 80.125937,75.606668 c -3.146306,5.453596 -5.162573,10.831431 -3.987358,16.608641 10.950061,-5.570942 29.002691,-6.289797 40.458011,0.05064 1.4446,-5.802346 -0.95145,-11.205685 -4.09778,-16.659283 -15.965167,-4.496079 -15.965167,-4.496079 -32.372873,2e-6 z"/>
-        <path id="path32797" class="xray-trunk" style="fill:#000000;stroke:#111111;stroke-width:0.6"
+        <path id="path32797" style="fill:#101010"
           d="m 80.125937,75.606668 c -3.146306,5.453596 -5.162573,10.831431 -3.987358,16.608641 10.950061,-5.570942 29.002691,-6.289797 40.458011,0.05064 1.4446,-5.802346 -0.95145,-11.205685 -4.09778,-16.659283 -15.965167,-4.496079 -15.965167,-4.496079 -32.372873,2e-6 z"/>
-        <path class="xray-sheen" style="fill:url(#sheenH)"
+        <path style="fill:url(#sheenH);opacity:0.5"
           d="m 80.125937,75.606668 c -3.146306,5.453596 -5.162573,10.831431 -3.987358,16.608641 10.950061,-5.570942 29.002691,-6.289797 40.458011,0.05064 1.4446,-5.802346 -0.95145,-11.205685 -4.09778,-16.659283 -15.965167,-4.496079 -15.965167,-4.496079 -32.372873,2e-6 z"/>
 
-        <!-- BMW KIDNEY GRILLE (keep visible) -->
+        <!-- Kidney grille (BMW — no logo text) -->
         <rect x="89" y="76" width="5.8" height="9" rx="2.8" fill="none" stroke="url(#chromeH)" stroke-width="0.8" opacity="0.9"/>
         <rect x="96.4" y="76" width="5.8" height="9" rx="2.8" fill="none" stroke="url(#chromeH)" stroke-width="0.8" opacity="0.9"/>
         <circle cx="96.3" cy="80.5" r="3.5" fill="none" stroke="url(#chromeH)" stroke-width="0.55" opacity="0.9"/>
         <circle cx="96.3" cy="80.5" r="2.5" fill="#111"/>
-        <path d="m 96.3,78 a 2.5,2.5 0 0,1 2.5,2.5 l -2.5,0 z" fill="#1c47a8" opacity="0.85"/>
-        <path d="m 96.3,83 a 2.5,2.5 0 0,1 -2.5,-2.5 l 2.5,0 z" fill="#1c47a8" opacity="0.85"/>
-        <path d="m 93.8,80.5 a 2.5,2.5 0 0,1 2.5,-2.5 l 0,2.5 z" fill="#f0f0f0" opacity="0.9"/>
-        <path d="m 98.8,80.5 a 2.5,2.5 0 0,1 -2.5,2.5 l 0,-2.5 z" fill="#f0f0f0" opacity="0.9"/>
+        <path d="m 96.3,78 a 2.5,2.5 0 0,1 2.5,2.5 l -2.5,0 z" fill="#8DC63F" opacity="0.85"/>
+        <path d="m 96.3,83 a 2.5,2.5 0 0,1 -2.5,-2.5 l 2.5,0 z" fill="#8DC63F" opacity="0.85"/>
+        <path d="m 93.8,80.5 a 2.5,2.5 0 0,1 2.5,-2.5 l 0,2.5 z" fill="#111111" opacity="0.9"/>
+        <path d="m 98.8,80.5 a 2.5,2.5 0 0,1 -2.5,2.5 l 0,-2.5 z" fill="#111111" opacity="0.9"/>
         <circle cx="96.3" cy="80.5" r="0.8" fill="none" stroke="url(#chromeH)" stroke-width="0.4" opacity="0.9"/>
 
-        <!-- TAIL LIGHTS (keep visible) -->
+        <!-- KPIT CONTROLDESK Logo -->
+        <text x="96.3" y="152" text-anchor="middle"
+          font-family="Rajdhani, sans-serif" font-size="4.8" font-weight="700"
+          letter-spacing="0.5" fill="#8DC63F" opacity="0.88">KPIT</text>
+        <text x="96.3" y="157" text-anchor="middle"
+          font-family="Rajdhani, sans-serif" font-size="3.8" font-weight="400"
+          letter-spacing="0.4" fill="#ffffff" opacity="0.65">ControlDesk</text>
+
+        <!-- Tail lights -->
         <path filter="url(#glowGreen)" style="fill:url(#tailLight)"
           d="m 122.35729,91.242887 c 0.54338,-5.632185 -1.25853,-8.809659 -1.25853,-8.809659 l -8.59995,-5.768226 3.04145,3.670688 0.10488,1.782908 c 0,0 3.63667,2.58239 6.71215,9.124289 z"/>
         <path filter="url(#glowGreen)" style="fill:url(#tailLight)"
           d="m 70.267512,91.242887 c -0.543377,-5.632185 1.258522,-8.809659 1.258522,-8.809659 l 8.599903,-5.768226 -3.041428,3.670688 -0.104878,1.782908 c 0,0 -3.636655,2.58239 -6.712119,9.124289 z"/>
 
-        <!-- HEAD LIGHTS -->
+        <!-- Head lights -->
         <path filter="url(#glowWhite)" style="fill:url(#headLight);opacity:0.9" d="m 69.3,200 c -1.5,-2 -2.8,-5 -2.5,-7 l 3,1 z"/>
         <path filter="url(#glowWhite)" style="fill:url(#headLight);opacity:0.9" d="m 123.7,200 c 1.5,-2 2.8,-5 2.5,-7 l -3,1 z"/>
 
-        <!-- CHROME BUMPER -->
+        <!-- Bumper -->
         <path style="fill:url(#chromeH);opacity:0.88"
           d="m 79.182046,215.62687 3.041428,4.0902 c 12.135649,3.93965 16.660877,3.65944 28.421636,0 l 3.04143,-4.0902 c -12.92568,5.24513 -21.354188,5.23836 -34.504494,0 z"/>
+        <path filter="url(#glowWhite)" style="fill:#e0e0e0;opacity:0.75"
+          d="m 112.95718,217.40499 c 0,0 5.61703,-3.66512 10.80232,-15.83641 -0.85267,3.48874 -0.0214,4.23515 -1.04877,5.97798 -3.90467,6.624 -9.75355,9.85843 -9.75355,9.85843 z"/>
+        <path filter="url(#glowWhite)" style="fill:#e0e0e0;opacity:0.75"
+          d="m 79.916183,217.72441 c 0,0 -5.617028,-3.66512 -10.802318,-15.83641 0.852672,3.48874 0.02142,4.23515 1.048768,5.97798 3.90467,6.624 9.75355,9.85843 9.75355,9.85843 z"/>
+        <path style="fill:none;stroke:#8DC63F;stroke-width:0.45;opacity:0.6" d="m 70,200 c 9,4 43,4 53,0"/>
 
-        <!-- LABELS -->
-        <text x="96.3" y="151" text-anchor="middle" font-family="Rajdhani,sans-serif" font-size="5.8" font-weight="700" letter-spacing="0.5" fill="#8DC63F" opacity="0.88">ControlDesk</text>
-        <line x1="80" y1="152.5" x2="112.5" y2="152.5" stroke="#8DC63F" stroke-width="0.35" opacity="0.4"/>
-        <text x="96.3" y="144" text-anchor="middle" font-family="Arial Black,sans-serif" font-size="6.5" font-weight="900" letter-spacing="1.2" fill="#111111" opacity="0.90">KPIT</text>
-
-        <!-- GREEN ACCENT STRIPE -->
-        <path style="fill:none;stroke:#8DC63F;stroke-width:0.45;opacity:0.5" d="m 70,200 c 9,4 43,4 53,0"/>
-
-        <!-- WASH SPRAY NOZZLES -->
+        <!-- Spray nozzles -->
         <circle id="nozzle-fl" cx="84" cy="158" r="0.8" fill="#4fc3f7" opacity="0.7"/>
         <circle id="nozzle-fr" cx="109" cy="158" r="0.8" fill="#4fc3f7" opacity="0.7"/>
         <circle id="nozzle-rear" cx="96.3" cy="121.5" r="0.7" fill="#4fc3f7" opacity="0.7"/>
@@ -654,160 +510,182 @@ html, body {
 
       </g><!-- end world group -->
 
-      <!-- ========================================================
-           INTERNAL COMPONENTS — SVG coordinate space
-           ViewBox: -32 0 136 150.57
-           Car x: ~4-64   Car y: ~2-150
-           
-           LAYOUT (no overlaps):
-             TOP    (y 44-68): Rear wiper motor  — center x≈34
-             LEFT   (y 65-105): Reservoir + Pump — x≈3-14
-             BOTTOM (y 112-125): Front motor     — right x≈49-64
-             BAR    (y=111):  Linkage bar        — x≈22-47
-             LINES: Fluid lines crossing body
-           ======================================================== -->
+      <!-- ================================================================
+           INTERNAL COMPONENTS — NO GRAY BOX / FRAME. TEXTS IN WHITE WHERE REQUESTED
+           ================================================================ -->
 
-      <!-- ─── WASHER FLUID RESERVOIR — left side, y 64-90 ─── -->
-      <g id="comp-reservoir" filter="url(#intGlow)">
-        <!-- Label above -->
-        <!-- Housing -->
-        <rect x="3.0" y="64.5" width="11" height="26" rx="1.8" class="int-outline-blue"/>
-        <!-- Fluid fill (75%) -->
-        <rect x="3.8" y="70.5" width="9.4" height="19.2" rx="1.2" class="int-reservoir-fill"/>
-        <!-- Level mark -->
-        <line x1="3.2" y1="70.5" x2="13.8" y2="70.5" class="int-reservoir-line" fill="none"/>
-        <!-- Cap -->
-        <rect x="6.2" y="63.0" width="5.2" height="2.0" rx="0.8" fill="rgba(79,195,247,0.40)" stroke="rgba(79,195,247,0.70)" stroke-width="0.40"/>
-        <!-- Outlet port bottom -->
-        <rect x="7.8" y="90.0" width="2.8" height="1.4" rx="0.5" fill="rgba(79,195,247,0.50)"/>
-        <!-- Inner grid (tank structure) -->
-        <line x1="3.8" y1="79" x2="13.2" y2="79" stroke="rgba(79,195,247,0.18)" stroke-width="0.35" fill="none"/>
-        <line x1="8.5" y1="70.5" x2="8.5" y2="90" stroke="rgba(79,195,247,0.15)" stroke-width="0.35" fill="none"/>
-      </g>
-
-      <!-- ─── WASHER PUMP — left side, y 92-102 ─── -->
-      <g id="comp-pump-body" filter="url(#intGlow)">
-        <!-- Label -->
-        <!-- Housing circle -->
-        <circle cx="8.5" cy="101" r="5.8" class="int-outline-blue pump-comp"/>
-        <!-- Inner chamber -->
-        <circle cx="8.5" cy="101" r="4.0" fill="none" stroke="rgba(79,195,247,0.25)" stroke-width="0.4"/>
-        <!-- Impeller (rotates when active) -->
-        <g id="pump-impeller-vis">
-          <line x1="8.5" y1="97.5" x2="8.5" y2="104.5" class="int-pump-blade"/>
-          <line x1="5.0"  y1="101"  x2="12.0" y2="101"  class="int-pump-blade"/>
-          <line x1="6.1"  y1="98.1" x2="10.9" y2="103.9" stroke="rgba(79,195,247,0.42)" stroke-width="0.5" stroke-linecap="round"/>
-          <line x1="10.9" y1="98.1" x2="6.1"  y2="103.9" stroke="rgba(79,195,247,0.42)" stroke-width="0.5" stroke-linecap="round"/>
-        </g>
-        <!-- Hub -->
-        <circle cx="8.5" cy="101" r="1.3" class="int-pump-hub"/>
-        <!-- Inlet from reservoir -->
-        <line x1="8.5" y1="91.4" x2="8.5" y2="95.2" stroke="rgba(79,195,247,0.60)" stroke-width="1.1"/>
-      </g>
-
-      <!-- ─── FLUID LINES — from pump to nozzles ─── -->
-      <!-- Front-left nozzle -->
-      <path id="fl-front-l" class="int-fluid-front"
-        d="M 8.5,95 C 8.5,89 14,87.5 21.6,85.9"/>
-      <!-- Front-right nozzle (T-branch from pump right outlet) -->
-      <path id="fl-front-r" class="int-fluid-front"
-        d="M 13.5,101 C 24,101 36,94 46.6,85.9"/>
-      <!-- T-junction marker -->
-      <circle cx="13.5" cy="101" r="1.1" fill="rgba(79,195,247,0.38)" stroke="rgba(79,195,247,0.58)" stroke-width="0.40"/>
-      <!-- Rear nozzle line (up the left edge) -->
-      <path id="fl-rear-l" class="int-fluid-rear"
-        d="M 8.5,95 C 8.5,80 9,65 9.5,55 C 11,50.5 20,49.4 33.9,49.4"/>
-
-      <!-- Nozzle highlight rings — front -->
-      <circle cx="21.6" cy="85.9" r="2.0" class="int-nozzle-ring int-nozzle-front-ring"/>
-      <circle cx="46.6" cy="85.9" r="2.0" class="int-nozzle-ring int-nozzle-front-ring"/>
-      <!-- Nozzle highlight — rear -->
-      <circle cx="33.9" cy="49.4" r="1.8" class="int-nozzle-ring int-nozzle-rear-ring"/>
-
-      <!-- ─── REAR WIPER MOTOR — top center, y 51-62 ─── -->
+      <!-- REAR MOTOR — pas de rectangle gris, texte blanc (couleur par défaut du texte) -->
       <g id="comp-rear-motor" filter="url(#intGlow)">
-        <!-- Label -->
-        <!-- Motor casing -->
-        <rect x="26.5" y="51.5" width="15" height="11" rx="2.0" class="int-outline-green rear-motor-comp"/>
-        <!-- Gear ring -->
-        <circle cx="34" cy="57" r="3.8" class="int-gear-ring rear-motor-comp"/>
-        <!-- Gear teeth (6) -->
-        <g class="int-gear-tooth rear-motor-comp">
-          <line x1="34"   y1="53.8" x2="34"   y2="52.8"/>
-          <line x1="37.1" y1="55.1" x2="37.8" y2="54.3"/>
-          <line x1="37.3" y1="59.1" x2="38.1" y2="59.6"/>
-          <line x1="34"   y1="60.2" x2="34"   y2="61.2"/>
-          <line x1="30.9" y1="59.1" x2="30.1" y2="59.6"/>
-          <line x1="30.9" y1="55.1" x2="30.2" y2="54.3"/>
+        <!-- Housing sans bordure grise épaisse -->
+        <rect x="-10" y="8" width="20" height="12" rx="4" fill="url(#motorBodyGrad)" stroke="#5a5a62" stroke-width="0.6" class="rear-motor-body"/>
+        <line x1="-5"  y1="8.3" x2="-5"  y2="19.7" stroke="#555560" stroke-width="0.35" opacity="0.7"/>
+        <line x1="-2"  y1="8.3" x2="-2"  y2="19.7" stroke="#555560" stroke-width="0.35" opacity="0.7"/>
+        <line x1="1"   y1="8.3" x2="1"   y2="19.7" stroke="#555560" stroke-width="0.35" opacity="0.7"/>
+        <line x1="4"   y1="8.3" x2="4"   y2="19.7" stroke="#555560" stroke-width="0.35" opacity="0.7"/>
+        <line x1="7"   y1="8.3" x2="7"   y2="19.7" stroke="#555560" stroke-width="0.35" opacity="0.7"/>
+        <rect x="-10" y="8" width="5" height="12" rx="2.5" fill="url(#motorEndGrad)" stroke="#686870" stroke-width="0.5"/>
+        <rect x="5"   y="8" width="5" height="12" rx="2.5" fill="url(#motorEndGrad)" stroke="#686870" stroke-width="0.5"/>
+        <rect x="-5" y="9.5" width="10" height="9" rx="0.7" fill="rgba(160,90,15,0.22)" stroke="rgba(190,110,25,0.35)" stroke-width="0.28"/>
+        <line x1="-4"  y1="9.8" x2="-4"  y2="18.2" stroke="rgba(190,110,25,0.55)" stroke-width="0.65"/>
+        <line x1="-2"  y1="9.8" x2="-2"  y2="18.2" stroke="rgba(190,110,25,0.55)" stroke-width="0.65"/>
+        <line x1="0"   y1="9.8" x2="0"   y2="18.2" stroke="rgba(190,110,25,0.55)" stroke-width="0.65"/>
+        <line x1="2"   y1="9.8" x2="2"   y2="18.2" stroke="rgba(190,110,25,0.55)" stroke-width="0.65"/>
+        <line x1="4"   y1="9.8" x2="4"   y2="18.2" stroke="rgba(190,110,25,0.55)" stroke-width="0.65"/>
+        <g id="rear-rotor">
+          <circle cx="0" cy="14" r="3" fill="rgba(55,55,68,0.88)" stroke="#888898" stroke-width="0.45"/>
+          <line x1="0" y1="11.3" x2="0" y2="16.7" stroke="#aaaaae" stroke-width="0.7" stroke-linecap="round"/>
+          <line x1="-2.7" y1="14" x2="2.7" y2="14" stroke="#aaaaae" stroke-width="0.7" stroke-linecap="round"/>
+          <line x1="-2.0" y1="11.7" x2="2.0" y2="16.3" stroke="#77777f" stroke-width="0.4" stroke-linecap="round"/>
+          <line x1="2.0"  y1="11.7" x2="-2.0" y2="16.3" stroke="#77777f" stroke-width="0.4" stroke-linecap="round"/>
+          <circle cx="0" cy="14" r="1.1" fill="#b8b8bc" stroke="#cccccc" stroke-width="0.3"/>
         </g>
-        <!-- Inner rotor (rotates) -->
-        <g id="rear-gear-rotor">
-          <circle cx="34" cy="57" r="2.0" fill="rgba(141,198,63,0.10)" stroke="rgba(141,198,63,0.45)" stroke-width="0.40"/>
-          <line x1="34" y1="55.2" x2="34"   y2="58.8" stroke="rgba(141,198,63,0.55)" stroke-width="0.55" stroke-linecap="round"/>
-          <line x1="32.2" y1="57" x2="35.8" y2="57"  stroke="rgba(141,198,63,0.55)" stroke-width="0.55" stroke-linecap="round"/>
-        </g>
-        <!-- Center hub -->
-        <circle cx="34" cy="57" r="0.9" fill="rgba(141,198,63,0.50)" stroke="rgba(141,198,63,0.80)" stroke-width="0.35"/>
-        <!-- Output shaft up to pivot -->
-        <line x1="34" y1="51.5" x2="34" y2="49.0" class="int-shaft rear-motor-comp"/>
-        <!-- Pivot bushing -->
-        <circle cx="34" cy="47.0" r="2.2" class="int-pivot rear-motor-comp"/>
-        <!-- Power leads (implied wiring left) -->
-        <path d="M 26.5,55 C 22,55 20,58 18,67" class="int-wire" fill="none"/>
-        <path d="M 26.5,59 C 22,59 20,62 18,67" class="int-wire" fill="none"/>
+        <rect x="10" y="9.5" width="8" height="9" rx="1.2" fill="rgba(30,30,42,0.92)" stroke="#4a4a56" stroke-width="0.5"/>
+        <circle cx="13" cy="14" r="2.3" fill="rgba(60,60,75,0.85)" stroke="#707078" stroke-width="0.45"/>
+        <circle cx="16" cy="14" r="1.5" fill="rgba(55,55,70,0.80)" stroke="#707078" stroke-width="0.40"/>
+        <circle cx="13" cy="14" r="0.75" fill="#aaaab0"/>
+        <circle cx="16" cy="14" r="0.50" fill="#aaaab0"/>
+        <rect x="18" y="13.2" width="4" height="1.6" rx="0.5" fill="#606068" stroke="#888898" stroke-width="0.3"/>
+        <circle cx="21.5" cy="14" r="0.9" fill="#aaaaae" stroke="#cccccc" stroke-width="0.25"/>
+        <line x1="21.5" y1="14" x2="21.5" y2="26" stroke="#787880" stroke-width="0.9" stroke-linecap="round"/>
+        <circle cx="21.5" cy="26" r="1.8" fill="#565660" stroke="#888898" stroke-width="0.45"/>
+        <circle cx="21.5" cy="26" r="0.75" fill="#aaaaae"/>
+        <rect x="-9" y="20.2" width="5" height="2.5" rx="0.6" fill="rgba(25,25,38,0.90)" stroke="#555565" stroke-width="0.3"/>
+        <circle cx="-7.8" cy="21.45" r="0.27" fill="rgba(255,255,180,0.9)"/>
+        <circle cx="-6.3" cy="21.45" r="0.27" fill="rgba(255,255,180,0.9)"/>
+        <circle cx="-4.8" cy="21.45" r="0.27" fill="rgba(255,255,180,0.9)"/>
+        <!-- TEXTE EN BLANC (couleur par défaut) -->
+        <text x="0" y="6.2" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="2.1" fill="#ffffff" font-weight="bold">REAR MOTOR</text>
       </g>
 
-      <!-- ─── FRONT WIPER MOTOR — right side, y 112-124 ─── -->
+      <!-- RESERVOIR — pas de rectangle gris, texte blanc -->
+      <g id="comp-reservoir" filter="url(#intGlow)">
+        <rect x="-29" y="75" width="14" height="28" rx="2.5"
+              fill="rgba(180,215,255,0.12)" stroke="rgba(79,195,247,0.65)" stroke-width="0.65"/>
+        <rect x="-28" y="76.5" width="12" height="25" rx="1.8"
+              fill="url(#resBgGrad)" stroke="rgba(100,180,240,0.30)" stroke-width="0.3"/>
+        <rect x="-27.6" y="84.8" width="11.2" height="16.3" rx="0.9" fill="url(#resWaterGrad)"/>
+        <rect x="-27.4" y="84.8" width="10.8" height="0.7" rx="0.35" fill="rgba(255,255,255,0.40)"/>
+        <line x1="-29.2" y1="99.8" x2="-27" y2="99.8" stroke="rgba(79,195,247,0.60)" stroke-width="0.38"/>
+        <line x1="-29.2" y1="84.8" x2="-27" y2="84.8" stroke="rgba(79,195,247,0.68)" stroke-width="0.38"/>
+        <text x="-29.8" y="100.4" text-anchor="end" font-family="Share Tech Mono,monospace" font-size="1.6" fill="rgba(79,195,247,0.60)">MIN</text>
+        <text x="-29.8" y="85.3"  text-anchor="end" font-family="Share Tech Mono,monospace" font-size="1.6" fill="rgba(79,195,247,0.72)">MAX</text>
+        <rect x="-24.5" y="71.5" width="5" height="4.5" rx="1.2"
+              fill="rgba(40,60,85,0.88)" stroke="rgba(79,195,247,0.68)" stroke-width="0.5"/>
+        <line x1="-24" y1="72.4" x2="-20" y2="72.4" stroke="rgba(120,170,210,0.45)" stroke-width="0.28"/>
+        <line x1="-24" y1="73.2" x2="-20" y2="73.2" stroke="rgba(120,170,210,0.45)" stroke-width="0.28"/>
+        <line x1="-24" y1="74.0" x2="-20" y2="74.0" stroke="rgba(120,170,210,0.45)" stroke-width="0.28"/>
+        <text x="-22" y="75.0" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="1.9" fill="rgba(100,185,245,0.88)">~</text>
+        <rect x="-23.5" y="103" width="4" height="2.5" rx="0.65"
+              fill="rgba(28,45,65,0.85)" stroke="rgba(0,110,180,0.65)" stroke-width="0.38"/>
+        <path d="M -21.5,105.5 C -21.5,108 -21.5,108.5 -21.5,110"
+              fill="none" stroke="rgba(0,110,180,0.68)" stroke-width="1.5" stroke-linecap="round"/>
+        <!-- RESERVOIR en blanc -->
+        <text x="-22" y="70.0" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="1.9" fill="#ffffff" font-weight="bold">RESERVOIR</text>
+      </g>
+
+      <!-- PUMP — pas de cadre -->
+      <g id="comp-pump" filter="url(#intGlow)">
+        <ellipse cx="-21.5" cy="114" rx="5.5" ry="5.5"
+                 fill="url(#pumpBodyGrad)" stroke="rgba(79,195,247,0.72)" stroke-width="0.65" class="pump-body"/>
+        <ellipse cx="-21.5" cy="114" rx="3.8" ry="3.8"
+                 fill="rgba(25,25,38,0.80)" stroke="rgba(79,195,247,0.40)" stroke-width="0.38"/>
+        <g class="pump-impeller">
+          <path d="M -21.5,114 C -21.5,114 -19.8,112.2 -18.9,111.7" fill="none" stroke="rgba(79,195,247,0.85)" stroke-width="0.70" stroke-linecap="round"/>
+          <path d="M -21.5,114 C -21.5,114 -19.5,114.5 -19.1,115.6" fill="none" stroke="rgba(79,195,247,0.85)" stroke-width="0.70" stroke-linecap="round"/>
+          <path d="M -21.5,114 C -21.5,114 -21.1,116.3 -21.5,117.2" fill="none" stroke="rgba(79,195,247,0.80)" stroke-width="0.70" stroke-linecap="round"/>
+          <path d="M -21.5,114 C -21.5,114 -23.2,116.0 -24.0,115.6" fill="none" stroke="rgba(79,195,247,0.80)" stroke-width="0.70" stroke-linecap="round"/>
+          <path d="M -21.5,114 C -21.5,114 -23.9,113.4 -23.9,112.2" fill="none" stroke="rgba(79,195,247,0.78)" stroke-width="0.70" stroke-linecap="round"/>
+          <path d="M -21.5,114 C -21.5,114 -21.9,111.8 -21.5,110.8" fill="none" stroke="rgba(79,195,247,0.78)" stroke-width="0.70" stroke-linecap="round"/>
+        </g>
+        <circle cx="-21.5" cy="114" r="1.2" fill="#353545" stroke="rgba(79,195,247,0.55)" stroke-width="0.32"/>
+        <circle cx="-21.5" cy="114" r="0.5" fill="#7878a0"/>
+        <rect x="-16" y="113" width="4.5" height="2.5" rx="0.65"
+              fill="rgba(28,42,62,0.85)" stroke="rgba(79,195,247,0.62)" stroke-width="0.38"/>
+        <rect x="-27" y="111" width="4" height="6" rx="1.2"
+              fill="rgba(35,35,50,0.85)" stroke="rgba(55,55,72,0.60)" stroke-width="0.38"/>
+        <line x1="-26" y1="111.5" x2="-26" y2="116.5" stroke="rgba(175,100,20,0.50)" stroke-width="0.55"/>
+        <line x1="-25" y1="111.5" x2="-25" y2="116.5" stroke="rgba(175,100,20,0.50)" stroke-width="0.55"/>
+        <line x1="-24" y1="111.5" x2="-24" y2="116.5" stroke="rgba(175,100,20,0.50)" stroke-width="0.55"/>
+        <rect x="-26.5" y="117.2" width="4" height="2.2" rx="0.5" fill="rgba(22,22,36,0.90)" stroke="#454555" stroke-width="0.28"/>
+        <circle cx="-25.5" cy="118.3" r="0.25" fill="rgba(255,255,180,0.9)"/>
+        <circle cx="-24.2" cy="118.3" r="0.25" fill="rgba(255,255,180,0.9)"/>
+        <!-- PUMP en blanc -->
+        <text x="-21.5" y="122" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="1.9" fill="#ffffff" font-weight="bold">PUMP</text>
+      </g>
+
+      <!-- FRONT MOTOR — texte blanc -->
       <g id="comp-front-motor" filter="url(#intGlow)">
-        <!-- Label -->
-        <!-- Motor casing -->
-        <rect x="49.0" y="112.5" width="15" height="12" rx="2.0" class="int-outline-green front-motor-comp"/>
-        <!-- Gear ring -->
-        <circle cx="56.5" cy="118.5" r="3.8" class="int-gear-ring front-motor-comp"/>
-        <!-- Gear teeth -->
-        <g class="int-gear-tooth front-motor-comp">
-          <line x1="56.5" y1="115.3" x2="56.5" y2="114.3"/>
-          <line x1="59.6" y1="116.6" x2="60.3" y2="115.8"/>
-          <line x1="59.8" y1="120.6" x2="60.6" y2="121.1"/>
-          <line x1="56.5" y1="121.7" x2="56.5" y2="122.7"/>
-          <line x1="53.4" y1="120.6" x2="52.6" y2="121.1"/>
-          <line x1="53.4" y1="116.6" x2="52.7" y2="115.8"/>
+        <rect x="55" y="105" width="24" height="14" rx="4" fill="url(#motorBodyGrad)" stroke="#5a5a62" stroke-width="0.65" class="front-motor-body"/>
+        <line x1="61" y1="105.3" x2="61" y2="118.7" stroke="#555560" stroke-width="0.35" opacity="0.7"/>
+        <line x1="64" y1="105.3" x2="64" y2="118.7" stroke="#555560" stroke-width="0.35" opacity="0.7"/>
+        <line x1="67" y1="105.3" x2="67" y2="118.7" stroke="#555560" stroke-width="0.35" opacity="0.7"/>
+        <line x1="70" y1="105.3" x2="70" y2="118.7" stroke="#555560" stroke-width="0.35" opacity="0.7"/>
+        <line x1="73" y1="105.3" x2="73" y2="118.7" stroke="#555560" stroke-width="0.35" opacity="0.7"/>
+        <rect x="55" y="105" width="5" height="14" rx="2.5" fill="url(#motorEndGrad)" stroke="#686870" stroke-width="0.5"/>
+        <rect x="74" y="105" width="5" height="14" rx="2.5" fill="url(#motorEndGrad)" stroke="#686870" stroke-width="0.5"/>
+        <rect x="60" y="106.8" width="14" height="10.4" rx="0.7" fill="rgba(160,90,15,0.20)" stroke="rgba(190,110,25,0.32)" stroke-width="0.27"/>
+        <line x1="61" y1="107.2" x2="61" y2="116.8" stroke="rgba(190,110,25,0.55)" stroke-width="0.72"/>
+        <line x1="63" y1="107.2" x2="63" y2="116.8" stroke="rgba(190,110,25,0.55)" stroke-width="0.72"/>
+        <line x1="65" y1="107.2" x2="65" y2="116.8" stroke="rgba(190,110,25,0.55)" stroke-width="0.72"/>
+        <line x1="67" y1="107.2" x2="67" y2="116.8" stroke="rgba(190,110,25,0.55)" stroke-width="0.72"/>
+        <line x1="69" y1="107.2" x2="69" y2="116.8" stroke="rgba(190,110,25,0.55)" stroke-width="0.72"/>
+        <line x1="71" y1="107.2" x2="71" y2="116.8" stroke="rgba(190,110,25,0.55)" stroke-width="0.72"/>
+        <line x1="73" y1="107.2" x2="73" y2="116.8" stroke="rgba(190,110,25,0.55)" stroke-width="0.72"/>
+        <g id="front-rotor">
+          <circle cx="67" cy="112" r="3.5" fill="rgba(52,52,66,0.88)" stroke="#888898" stroke-width="0.5"/>
+          <line x1="67" y1="108.8" x2="67" y2="115.2" stroke="#aaaaae" stroke-width="0.78" stroke-linecap="round"/>
+          <line x1="63.8" y1="112" x2="70.2" y2="112" stroke="#aaaaae" stroke-width="0.78" stroke-linecap="round"/>
+          <line x1="64.8" y1="109.5" x2="69.2" y2="114.5" stroke="#77777f" stroke-width="0.45" stroke-linecap="round"/>
+          <line x1="69.2" y1="109.5" x2="64.8" y2="114.5" stroke="#77777f" stroke-width="0.45" stroke-linecap="round"/>
+          <circle cx="67" cy="112" r="1.3" fill="#bcbcc0" stroke="#d8d8d8" stroke-width="0.32"/>
         </g>
-        <!-- Inner rotor -->
-        <g id="front-gear-rotor">
-          <circle cx="56.5" cy="118.5" r="2.0" fill="rgba(141,198,63,0.10)" stroke="rgba(141,198,63,0.45)" stroke-width="0.40"/>
-          <line x1="56.5" y1="116.7" x2="56.5" y2="120.3" stroke="rgba(141,198,63,0.55)" stroke-width="0.55" stroke-linecap="round"/>
-          <line x1="54.7" y1="118.5" x2="58.3" y2="118.5" stroke="rgba(141,198,63,0.55)" stroke-width="0.55" stroke-linecap="round"/>
-        </g>
-        <circle cx="56.5" cy="118.5" r="0.9" fill="rgba(141,198,63,0.50)" stroke="rgba(141,198,63,0.80)" stroke-width="0.35"/>
-        <!-- Crank arm to linkage right pivot -->
-        <line x1="49.0" y1="115.5" x2="47.0" y2="111.0" class="int-shaft front-motor-comp"/>
-        <!-- Power leads (right side) -->
-        <path d="M 64,116 C 68,116 70,114 70,110" class="int-wire" fill="none"/>
-        <path d="M 64,121 C 68,121 70,120 70,115" class="int-wire" fill="none"/>
+        <rect x="79" y="107" width="9" height="10" rx="1.5" fill="rgba(28,28,42,0.93)" stroke="#444450" stroke-width="0.5"/>
+        <circle cx="82" cy="112" r="2.5" fill="rgba(58,58,74,0.85)" stroke="#707078" stroke-width="0.48"/>
+        <circle cx="85.5" cy="112" r="1.6" fill="rgba(52,52,68,0.80)" stroke="#707078" stroke-width="0.42"/>
+        <circle cx="82" cy="112" r="0.9" fill="#aaaab2"/>
+        <circle cx="85.5" cy="112" r="0.55" fill="#aaaab2"/>
+        <rect x="88" y="111.2" width="3" height="1.6" rx="0.5" fill="#606068" stroke="#888898" stroke-width="0.28"/>
+        <circle cx="90.5" cy="112" r="0.9" fill="#aaaaae" stroke="#cccccc" stroke-width="0.22"/>
+        <line x1="90.5" y1="112" x2="-43" y2="111" stroke="#787880" stroke-width="1.0" stroke-linecap="round"/>
+        <circle cx="22"  cy="111" r="1.8" fill="#565660" stroke="#888898" stroke-width="0.42"/>
+        <circle cx="22"  cy="111" r="0.72" fill="#aaaaae"/>
+        <circle cx="-43" cy="111" r="2.0" fill="#565660" stroke="#888898" stroke-width="0.45"/>
+        <circle cx="-43" cy="111" r="0.8" fill="#aaaaae"/>
+        <rect x="56" y="119.2" width="6" height="2.8" rx="0.65" fill="rgba(22,22,38,0.92)" stroke="#4a4a58" stroke-width="0.3"/>
+        <circle cx="57.5" cy="120.6" r="0.27" fill="rgba(255,255,180,0.9)"/>
+        <circle cx="59.0" cy="120.6" r="0.27" fill="rgba(255,255,180,0.9)"/>
+        <circle cx="60.5" cy="120.6" r="0.27" fill="rgba(255,255,180,0.9)"/>
+        <circle cx="62.0" cy="120.6" r="0.27" fill="rgba(255,255,180,0.9)"/>
+        <text x="67" y="103.2" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="2.1" fill="#ffffff" font-weight="bold">FRONT MOTOR</text>
       </g>
 
-      <!-- ─── FRONT WIPER LINKAGE BAR — y=111 ─── -->
-      <g id="comp-front-linkage" filter="url(#intGlow)">
-        <!-- Label (below bar) -->
+      <!-- FLUID LINES -->
+      <path class="fluid-line" d="M -11.5,114 C 0,113 5,102 21.6,85.9"
+            fill="none" stroke="rgba(79,195,247,0.50)" stroke-width="0.65" stroke-dasharray="2.5,1.5" stroke-linecap="round"/>
+      <path class="fluid-line" d="M -11.5,114 C 5,112 10,100 46.6,85.9"
+            fill="none" stroke="rgba(79,195,247,0.50)" stroke-width="0.65" stroke-dasharray="2.5,1.5" stroke-linecap="round"/>
+      <path class="fluid-line" d="M -21.5,75 C -20,55 -5,40 33.9,27.4"
+            fill="none" stroke="rgba(79,195,247,0.42)" stroke-width="0.55" stroke-dasharray="2.2,1.8" stroke-linecap="round"/>
+      <circle cx="21.6" cy="85.9" r="1.5" fill="none" stroke="rgba(79,195,247,0.65)" stroke-width="0.45"/>
+      <circle cx="46.6" cy="85.9" r="1.5" fill="none" stroke="rgba(79,195,247,0.65)" stroke-width="0.45"/>
+      <circle cx="33.9" cy="27.4" r="1.3" fill="none" stroke="rgba(79,195,247,0.60)" stroke-width="0.42"/>
 
-        <!-- Main bar -->
-        <line x1="22.0" y1="111.0" x2="47.0" y2="111.0" class="int-linkage front-linkage-comp"/>
-        <!-- Left pivot -->
-        <circle cx="22.0" cy="111.0" r="2.3" class="int-pivot front-linkage-comp"/>
-        <circle cx="22.0" cy="111.0" r="0.9" fill="rgba(141,198,63,0.55)"/>
-        <!-- Right pivot (motor output) -->
-        <circle cx="47.0" cy="111.0" r="2.3" class="int-pivot front-linkage-comp"/>
-        <circle cx="47.0" cy="111.0" r="0.9" fill="rgba(141,198,63,0.55)"/>
-        <!-- Center articulation node -->
-        <circle cx="34.5" cy="111.0" r="1.5" fill="rgba(141,198,63,0.16)" stroke="rgba(141,198,63,0.50)" stroke-width="0.45"/>
-        <!-- Connecting rod left half -->
-        <line x1="22.0" y1="111.0" x2="34.5" y2="111.0" stroke="rgba(141,198,63,0.50)" stroke-width="0.55" stroke-linecap="round" fill="none"/>
-        <!-- Connecting rod right half -->
-        <line x1="34.5" y1="111.0" x2="47.0" y2="111.0" stroke="rgba(141,198,63,0.50)" stroke-width="0.55" stroke-linecap="round" fill="none"/>
+      <!-- BCM MODULE — texte BCM déjà vert, mais on garde, on ne touche pas -->
+      <g id="comp-bcm" filter="url(#intGlow)">
+        <rect x="28" y="90" width="18" height="11" rx="1.5" fill="rgba(6,14,28,0.92)" stroke="rgba(141,198,63,0.78)" stroke-width="0.6"/>
+        <rect x="29" y="91" width="16" height="9" rx="0.8" fill="rgba(0,24,12,0.75)"/>
+        <rect x="31.5" y="92.5" width="4.5" height="4" rx="0.5" fill="rgba(6,18,10,0.90)" stroke="rgba(141,198,63,0.58)" stroke-width="0.32"/>
+        <text x="37.5" y="97" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="2.1" fill="rgba(141,198,63,0.92)" font-weight="bold">BCM</text>
+        <circle cx="30.5" cy="98.5" r="0.65" fill="rgba(141,198,63,1.0)"/>
+        <circle cx="32.2" cy="98.5" r="0.65" fill="rgba(79,195,247,1.0)"/>
+        <circle cx="33.9" cy="98.5" r="0.65" fill="rgba(220,180,40,1.0)"/>
       </g>
 
-      <!-- ─── WIPERS (existing, on top) ─── -->
+      <!-- BCM signal lines -->
+      <path class="bcm-sig bcm-sig-front" d="M 37,90 C 42,88 52,105 55,107"/>
+      <path class="bcm-sig bcm-sig-rear"  d="M 34,90 C 32,70 20,40 10,19"/>
+
+      <!-- WIPERS -->
       <g id="wiper-fl" class="wiper-arm">
         <line x1="22" y1="111" x2="19.5" y2="88.5" stroke="#111111" stroke-width="1.1" stroke-linecap="round"/>
         <line x1="18.2" y1="89.5" x2="23" y2="87.5" stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
@@ -824,25 +702,22 @@ html, body {
         <line x1="30" y1="26.2" x2="38" y2="25.8" stroke="#222222" stroke-width="0.6" stroke-linecap="round" opacity="0.95"/>
       </g>
 
-    </svg><!-- end SVG -->
+    </svg>
 
     <button class="lock-btn" id="lock-btn" onclick="toggleLock()">
       <svg id="lock-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" id="lock-shackle"/>
       </svg>
       <span id="lock-text">UNLOCK</span>
     </button>
-  </div><!-- end car-stage -->
-</div><!-- end main-layout -->
+  </div>
+</div>
 
 <!-- WIPE & WASH PANEL -->
 <div class="ww-panel">
-  <div class="ww-title">
-    <span>💧</span><span>WIPE &amp; WASH SYSTEM</span><span>🌧</span>
-  </div>
+  <div class="ww-title"><span>💧</span><span>WIPE &amp; WASH SYSTEM</span><span>🌧</span></div>
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;">
-
-    <!-- RAIN SIMULATION -->
     <div class="ww-section" style="grid-column:1/-1;flex-direction:row;align-items:center;gap:10px;padding:8px 14px;">
       <span style="font-family:'Share Tech Mono',monospace;font-size:8.5px;letter-spacing:0.3em;color:var(--wash-blue);text-transform:uppercase;white-space:nowrap;">🌧 RAIN</span>
       <button class="wmode-btn" id="rain-off-btn"   onclick="setRain('off')"    style="flex:1;">OFF</button>
@@ -851,8 +726,6 @@ html, body {
       <button class="wmode-btn" id="rain-heavy-btn" onclick="setRain('heavy')"  style="flex:1;">HEAVY</button>
       <div class="wiper-speed-indicator" id="rain-ind" style="white-space:nowrap;min-width:70px;">● NO RAIN</div>
     </div>
-
-    <!-- FRONT WIPER -->
     <div class="ww-section">
       <div class="ww-sec-label">FRONT WIPERS</div>
       <div class="wmode-row">
@@ -863,53 +736,36 @@ html, body {
       </div>
       <div class="wiper-speed-indicator" id="front-wiper-ind">● STANDBY</div>
     </div>
-
-    <!-- FRONT WASH -->
     <div class="ww-section">
       <div class="ww-sec-label">FRONT WASH</div>
-      <button class="wash-btn" id="front-wash-btn"
-        onmousedown="startWash('front')" onmouseup="stopWash('front')"
-        ontouchstart="startWash('front')" ontouchend="stopWash('front')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 2 C8 8 4 12 4 16 a8 8 0 0 0 16 0 C20 12 16 8 12 2z"/>
-          <path d="M8 18 C8 20 10 21 12 21" stroke-width="1.5"/>
-        </svg>
+      <button class="wash-btn" id="front-wash-btn" onmousedown="startWash('front')" onmouseup="stopWash('front')" ontouchstart="startWash('front')" ontouchend="stopWash('front')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 C8 8 4 12 4 16 a8 8 0 0 0 16 0 C20 12 16 8 12 2z"/><path d="M8 18 C8 20 10 21 12 21" stroke-width="1.5"/></svg>
         WASH
       </button>
       <div class="wiper-speed-indicator" id="front-wash-ind">● READY</div>
     </div>
-
-    <!-- REAR WIPER -->
     <div class="ww-section">
       <div class="ww-sec-label">REAR WIPER</div>
       <div class="wmode-row">
-        <button class="wmode-btn rear-btn active" data-rear="off" onclick="setRearWiper('off')">OFF</button>
-        <button class="wmode-btn rear-btn"        data-rear="int" onclick="setRearWiper('int')">INT</button>
-        <button class="wmode-btn rear-btn"        data-rear="on"  onclick="setRearWiper('on')">ON</button>
+        <button class="wmode-btn active" data-rear="off" onclick="setRearWiper('off')">OFF</button>
+        <button class="wmode-btn"        data-rear="int" onclick="setRearWiper('int')">INT</button>
+        <button class="wmode-btn"        data-rear="on"  onclick="setRearWiper('on')">ON</button>
       </div>
       <div class="wiper-speed-indicator" id="rear-wiper-ind">● STANDBY</div>
     </div>
-
-    <!-- REAR WASH -->
     <div class="ww-section">
       <div class="ww-sec-label">REAR WASH</div>
-      <button class="wash-btn" id="rear-wash-btn"
-        onmousedown="startWash('rear')" onmouseup="stopWash('rear')"
-        ontouchstart="startWash('rear')" ontouchend="stopWash('rear')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 2 C8 8 4 12 4 16 a8 8 0 0 0 16 0 C20 12 16 8 12 2z"/>
-          <path d="M8 18 C8 20 10 21 12 21" stroke-width="1.5"/>
-        </svg>
+      <button class="wash-btn" id="rear-wash-btn" onmousedown="startWash('rear')" onmouseup="stopWash('rear')" ontouchstart="startWash('rear')" ontouchend="stopWash('rear')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 C8 8 4 12 4 16 a8 8 0 0 0 16 0 C20 12 16 8 12 2z"/><path d="M8 18 C8 20 10 21 12 21" stroke-width="1.5"/></svg>
         WASH
       </button>
       <div class="wiper-speed-indicator" id="rear-wash-ind">● READY</div>
     </div>
-
   </div>
 </div>
 
-<!-- VEHICLE SIMULATION PANEL -->
-<div class="ww-panel" id="vehicle-sim-panel" style="margin-top:14px;max-width:580px;">
+<!-- VEHICLE SIM PANEL -->
+<div class="ww-panel" style="margin-top:14px;max-width:580px;">
   <div class="ww-title"><span>🚗</span><span>VEHICLE SIMULATION</span><span>⚡</span></div>
   <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;margin-bottom:10px;">
     <div class="ww-section" style="gap:7px;">
@@ -944,7 +800,7 @@ html, body {
     </div>
     <div class="ww-section" style="align-items:center;">
       <div class="ww-sec-label">WASHER PUMP</div>
-      <div style="width:60px;height:60px;margin:0 auto;position:relative;display:flex;align-items:center;justify-content:center;">
+      <div style="width:60px;height:60px;margin:0 auto;display:flex;align-items:center;justify-content:center;">
         <svg width="60" height="60" viewBox="0 0 60 60">
           <circle cx="30" cy="30" r="26" fill="none" stroke="rgba(79,195,247,0.2)" stroke-width="3"/>
           <circle id="pump-ring" cx="30" cy="30" r="26" fill="none" stroke="#4fc3f7" stroke-width="3"
@@ -960,80 +816,18 @@ html, body {
 </div>
 
 <script>
-/* ====================================================
-   VEHICLE SIMULATION
-   ==================================================== */
-let ignState='off', gear='P', speed=0, rpm=0;
-let accelInt=null, brakeInt=null, engineNode=null, pumpNode=null, pumpInterval=null;
-let audioCtx2=null;
-
+/* ── VEHICLE SIMULATION ── */
+let ignState='off',gear='P',speed=0,rpm=0,accelInt=null,brakeInt=null;
+let engineNode=null,pumpNode=null,pumpInterval=null,audioCtx2=null;
 function getAC2(){if(!audioCtx2)audioCtx2=new(window.AudioContext||window.webkitAudioContext)();return audioCtx2;}
-
-function startEngine(){
-  stopEngine();
-  try{
-    const ctx=getAC2(),osc=ctx.createOscillator(),osc2=ctx.createOscillator(),gain=ctx.createGain(),dist=ctx.createWaveShaper();
-    const curve=new Float32Array(256);
-    for(let i=0;i<256;i++){const x=(i*2/256)-1;curve[i]=x<0?-Math.pow(-x,0.6):Math.pow(x,0.6);}
-    dist.curve=curve; osc.type='sawtooth'; osc.frequency.value=55; osc2.type='square'; osc2.frequency.value=110; gain.gain.value=0.06;
-    osc.connect(dist);osc2.connect(dist);dist.connect(gain);gain.connect(ctx.destination);osc.start();osc2.start();
-    engineNode={osc,osc2,gain,ctx};
-    document.getElementById('car').classList.add('engine-run');
-  }catch(e){}
-}
+function startEngine(){stopEngine();try{const ctx=getAC2(),osc=ctx.createOscillator(),osc2=ctx.createOscillator(),gain=ctx.createGain(),dist=ctx.createWaveShaper();const curve=new Float32Array(256);for(let i=0;i<256;i++){const x=(i*2/256)-1;curve[i]=x<0?-Math.pow(-x,0.6):Math.pow(x,0.6);}dist.curve=curve;osc.type='sawtooth';osc.frequency.value=55;osc2.type='square';osc2.frequency.value=110;gain.gain.value=0.06;osc.connect(dist);osc2.connect(dist);dist.connect(gain);gain.connect(ctx.destination);osc.start();osc2.start();engineNode={osc,osc2,gain,ctx};document.getElementById('car').classList.add('engine-run');}catch(e){}}
 function stopEngine(){if(engineNode){try{engineNode.osc.stop();engineNode.osc2.stop();}catch(e){}engineNode=null;}document.getElementById('car').classList.remove('engine-run');}
 function updateEngineSound(){if(!engineNode)return;const f=45+(rpm/8000)*160;engineNode.osc.frequency.setTargetAtTime(f,engineNode.ctx.currentTime,0.08);engineNode.osc2.frequency.setTargetAtTime(f*2,engineNode.ctx.currentTime,0.08);engineNode.gain.gain.setTargetAtTime(0.04+(rpm/8000)*0.08,engineNode.ctx.currentTime,0.08);}
-
-function startPump(){
-  if(pumpNode)return;
-  try{
-    const ctx=getAC2(),bufSize=ctx.sampleRate*0.5,buf=ctx.createBuffer(1,bufSize,ctx.sampleRate),d=buf.getChannelData(0);
-    for(let i=0;i<bufSize;i++)d[i]=(Math.random()*2-1)*0.08;
-    const src=ctx.createBufferSource();src.buffer=buf;src.loop=true;
-    const flt=ctx.createBiquadFilter();flt.type='bandpass';flt.frequency.value=2000;flt.Q.value=0.8;
-    const g=ctx.createGain();g.gain.value=0.45;
-    src.connect(flt);flt.connect(g);g.connect(ctx.destination);src.start();pumpNode={src,g};
-  }catch(e){}
-  let prog=0;
-  const ring=document.getElementById('pump-ring'),icon=document.getElementById('pump-icon');
-  if(icon)icon.style.animation='washPulse 0.4s infinite';
-  if(pumpInterval)clearInterval(pumpInterval);
-  pumpInterval=setInterval(()=>{
-    prog=(prog+10)%164;
-    if(ring)ring.style.strokeDashoffset=(163-prog).toString();
-    const ind=document.getElementById('pump-ind');
-    if(ind){ind.textContent='● PUMPING';ind.className='wiper-speed-indicator washing';}
-  },40);
-}
-function stopPump(){
-  if(pumpNode){try{pumpNode.src.stop();}catch(e){}pumpNode=null;}
-  if(pumpInterval){clearInterval(pumpInterval);pumpInterval=null;}
-  const ring=document.getElementById('pump-ring');if(ring)ring.style.strokeDashoffset='163';
-  const icon=document.getElementById('pump-icon');if(icon)icon.style.animation='';
-  const ind=document.getElementById('pump-ind');if(ind){ind.textContent='● IDLE';ind.className='wiper-speed-indicator';}
-}
-
+function startPump(){if(pumpNode)return;try{const ctx=getAC2(),bufSize=ctx.sampleRate*0.5,buf=ctx.createBuffer(1,bufSize,ctx.sampleRate),d=buf.getChannelData(0);for(let i=0;i<bufSize;i++)d[i]=(Math.random()*2-1)*0.08;const src=ctx.createBufferSource();src.buffer=buf;src.loop=true;const flt=ctx.createBiquadFilter();flt.type='bandpass';flt.frequency.value=2000;flt.Q.value=0.8;const g=ctx.createGain();g.gain.value=0.45;src.connect(flt);flt.connect(g);g.connect(ctx.destination);src.start();pumpNode={src,g};}catch(e){}let prog=0;const ring=document.getElementById('pump-ring'),icon=document.getElementById('pump-icon');if(icon)icon.style.animation='washPulse 0.4s infinite';if(pumpInterval)clearInterval(pumpInterval);pumpInterval=setInterval(()=>{prog=(prog+10)%164;if(ring)ring.style.strokeDashoffset=(163-prog).toString();const ind=document.getElementById('pump-ind');if(ind){ind.textContent='● PUMPING';ind.className='wiper-speed-indicator washing';}},40);}
+function stopPump(){if(pumpNode){try{pumpNode.src.stop();}catch(e){}pumpNode=null;}if(pumpInterval){clearInterval(pumpInterval);pumpInterval=null;}const ring=document.getElementById('pump-ring');if(ring)ring.style.strokeDashoffset='163';const icon=document.getElementById('pump-icon');if(icon)icon.style.animation='';const ind=document.getElementById('pump-ind');if(ind){ind.textContent='● IDLE';ind.className='wiper-speed-indicator';}}
 function beepIgn(freq,dur,delay=0){setTimeout(()=>{try{const ctx=getAC2(),o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.type='sine';o.frequency.value=freq;g.gain.setValueAtTime(0.10,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+dur);o.start(ctx.currentTime);o.stop(ctx.currentTime+dur);}catch(e){}},delay);}
-
-function setIgnition(state){
-  ignState=state;
-  ['btn-off','btn-acc','btn-on'].forEach(id=>document.getElementById(id).classList.remove('active'));
-  const ind=document.getElementById('ign-ind');
-  if(state==='off'){document.getElementById('btn-off').classList.add('active');ind.textContent='● OFF';ind.className='wiper-speed-indicator';stopEngine();speed=0;rpm=0;updateGauges();beepIgn(330,0.18);document.getElementById('car').classList.remove('reverse-active');}
-  else if(state==='acc'){document.getElementById('btn-acc').classList.add('active');ind.textContent='● ACC';ind.className='wiper-speed-indicator running';stopEngine();rpm=0;updateGauges();beepIgn(500,0.09);beepIgn(660,0.12,110);}
-  else if(state==='on'){document.getElementById('btn-on').classList.add('active');ind.textContent='● ENGINE ON';ind.className='wiper-speed-indicator running';startEngine();rpm=800;updateGauges();beepIgn(440,0.08);beepIgn(660,0.14,130);beepIgn(880,0.18,280);}
-}
-function setGear(g){
-  gear=g;
-  ['btn-park','btn-reverse','btn-neutral','btn-drive'].forEach(id=>document.getElementById(id).classList.remove('active'));
-  const map={P:'btn-park',R:'btn-reverse',N:'btn-neutral',D:'btn-drive'};
-  document.getElementById(map[g]).classList.add('active');
-  document.getElementById('gear-ind').textContent=g;
-  const car=document.getElementById('car');
-  if(g==='R'){car.classList.add('reverse-active');beepIgn(880,0.08);let bc=0;const iv=setInterval(()=>{if(gear!=='R'||bc>5){clearInterval(iv);return;}beepIgn(1200,0.07);bc++;},400);}
-  else{car.classList.remove('reverse-active');}
-  if(g==='P'||g==='N'){speed=0;updateGauges();}
-}
+function setIgnition(state){ignState=state;['btn-off','btn-acc','btn-on'].forEach(id=>document.getElementById(id).classList.remove('active'));const ind=document.getElementById('ign-ind');if(state==='off'){document.getElementById('btn-off').classList.add('active');ind.textContent='● OFF';ind.className='wiper-speed-indicator';stopEngine();speed=0;rpm=0;updateGauges();beepIgn(330,0.18);document.getElementById('car').classList.remove('reverse-active');}else if(state==='acc'){document.getElementById('btn-acc').classList.add('active');ind.textContent='● ACC';ind.className='wiper-speed-indicator running';stopEngine();rpm=0;updateGauges();beepIgn(500,0.09);beepIgn(660,0.12,110);}else if(state==='on'){document.getElementById('btn-on').classList.add('active');ind.textContent='● ENGINE ON';ind.className='wiper-speed-indicator running';startEngine();rpm=800;updateGauges();beepIgn(440,0.08);beepIgn(660,0.14,130);beepIgn(880,0.18,280);}}
+function setGear(g){gear=g;['btn-park','btn-reverse','btn-neutral','btn-drive'].forEach(id=>document.getElementById(id).classList.remove('active'));const map={P:'btn-park',R:'btn-reverse',N:'btn-neutral',D:'btn-drive'};document.getElementById(map[g]).classList.add('active');document.getElementById('gear-ind').textContent=g;const car=document.getElementById('car');if(g==='R'){car.classList.add('reverse-active');beepIgn(880,0.08);let bc=0;const iv=setInterval(()=>{if(gear!=='R'||bc>5){clearInterval(iv);return;}beepIgn(1200,0.07);bc++;},400);}else{car.classList.remove('reverse-active');}if(g==='P'||g==='N'){speed=0;updateGauges();}}
 function startAccel(){if(ignState!=='on')return;if(accelInt)return;accelInt=setInterval(()=>{if(gear==='D')speed=Math.min(200,speed+2.5);else if(gear==='R')speed=Math.min(40,speed+1.2);rpm=Math.min(7500,800+(speed/200)*6700+Math.random()*150);updateGauges();updateEngineSound();},60);}
 function stopAccel(){clearInterval(accelInt);accelInt=null;}
 function startBrake(){if(brakeInt)return;brakeInt=setInterval(()=>{speed=Math.max(0,speed-4);rpm=Math.max(ignState==='on'?800:0,rpm-300);updateGauges();updateEngineSound();},60);}
@@ -1044,53 +838,47 @@ function drawRPM(){const canvas=document.getElementById('rpmCanvas');if(!canvas)
 </script>
 
 <script>
-/* ====================================================
-   DOOR & LOCK
-   ==================================================== */
-const doorState={};let isLocked=true;
-toggleDoor=(event)=>{const door=event.target.getAttribute("data-door")||event.currentTarget.getAttribute("data-door");if(!door)return;try{const s=new Audio("sound/car-door-open-1.wav");s.volume=0.5;s.play();}catch(e){}const el=document.getElementById(door);if(el)el.classList.toggle(door+"-toggle");doorState[door]=!doorState[door];};
-function toggleLock(){isLocked=!isLocked;try{const s=new Audio("sound/car-lock-sound-effect.mp3");s.volume=0.6;s.play();}catch(e){}const btn=document.getElementById("lock-btn"),txt=document.getElementById("lock-text");if(isLocked){btn.classList.remove("unlocked");txt.textContent="UNLOCK";}else{btn.classList.add("unlocked");txt.textContent="LOCK";}}
-function openAll(){["g136","g130","g32696","g32682","path32797"].forEach(door=>{if(!doorState[door]){const el=document.getElementById(door);if(el)el.classList.add(door+"-toggle");doorState[door]=true;}});try{const s=new Audio("sound/car-door-open-1.wav");s.volume=0.4;s.play();}catch(e){}}
-function closeAll(){["g136","g130","g32696","g32682","path32797"].forEach(door=>{if(doorState[door]){const el=document.getElementById(door);if(el)el.classList.remove(door+"-toggle");doorState[door]=false;}});try{const s=new Audio("sound/car-lock-sound-effect.mp3");s.volume=0.4;s.play();}catch(e){}}
+/* ── DOOR & LOCK ── */
+let isLocked=true;
+toggleDoor=(event)=>{
+  const door=event.target.getAttribute("data-door")||event.currentTarget.getAttribute("data-door");
+  if(!door)return;
+  const el=document.getElementById(door);
+  if(el)el.classList.toggle(door+"-toggle");
+};
+function toggleLock(){
+  isLocked=!isLocked;
+  const btn=document.getElementById("lock-btn"),txt=document.getElementById("lock-text"),shackle=document.getElementById("lock-shackle");
+  if(isLocked){btn.classList.remove("unlocked");txt.textContent="UNLOCK";if(shackle)shackle.setAttribute("d","M7 11V7a5 5 0 0 1 10 0v4");}
+  else{btn.classList.add("unlocked");txt.textContent="LOCK";if(shackle)shackle.setAttribute("d","M7 11V7a5 5 0 0 1 9.9-1");}
+}
 </script>
 
 <script>
-/* ====================================================
-   WIPE & WASH  +  INTERNAL VISUAL UPDATE
-   ==================================================== */
-let frontWiperMode='off', rearWiperMode='off';
-let frontWashActive=false, rearWashActive=false;
-let washAutoStopTimer=null, rearIntTimer=null;
+/* ── WIPE & WASH ── */
+let frontWiperMode='off',rearWiperMode='off',frontWashActive=false,rearWashActive=false;
+let washAutoStopTimer=null,rearIntTimer=null,audioCtx=null;
 const carEl=document.getElementById('car');
+function getAudioCtx(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx;}
 
-/* ---- INTERNAL COMPONENT VISUAL UPDATE ---- */
 function updateInternalVisuals(){
-  // Front motor + linkage
-  carEl.classList.toggle('front-motor-active', frontWiperMode!=='off' || frontWashActive);
-  // Rear motor
-  carEl.classList.toggle('rear-motor-active', rearWiperMode!=='off' || rearWashActive);
-  // Pump
-  carEl.classList.toggle('pump-active', frontWashActive || rearWashActive);
-  // Fluid lines — front
-  carEl.classList.toggle('pump-front-active', frontWashActive);
-  // Fluid lines — rear
-  carEl.classList.toggle('pump-rear-active', rearWashActive);
+  carEl.classList.toggle('front-motor-active',frontWiperMode!=='off'||frontWashActive);
+  carEl.classList.toggle('rear-motor-active',rearWiperMode!=='off'||rearWashActive);
+  carEl.classList.toggle('pump-front-active',frontWashActive);
+  carEl.classList.toggle('pump-rear-active',rearWashActive);
 }
 
-/* ---- FRONT WIPER ---- */
 function setFrontWiper(mode){
   frontWiperMode=mode;
   document.querySelectorAll('[data-front]').forEach(b=>b.classList.remove('active'));
   document.querySelector(`[data-front="${mode}"]`).classList.add('active');
   carEl.classList.remove('wiper-slow','wiper-fast','wiper-auto');
-  const fl=document.getElementById('wiper-fl'),fr=document.getElementById('wiper-fr');
-  const ind=document.getElementById('front-wiper-ind');
+  const fl=document.getElementById('wiper-fl'),fr=document.getElementById('wiper-fr'),ind=document.getElementById('front-wiper-ind');
   if(mode==='off'){fl.classList.remove('visible');fr.classList.remove('visible');ind.className='wiper-speed-indicator';ind.textContent='● STANDBY';playWiperBeep(false);}
   else{fl.classList.add('visible');fr.classList.add('visible');carEl.classList.add('wiper-'+mode);ind.className='wiper-speed-indicator running';const labels={slow:'◐ SLOW — 2.6s/cycle',fast:'◑ FAST — 0.85s/cycle',auto:'◒ AUTO — SPEED ADAPTIVE'};ind.textContent=labels[mode];playWiperBeep(true);}
   updateInternalVisuals();
 }
 
-/* ---- REAR WIPER ---- */
 function setRearWiper(mode){
   rearWiperMode=mode;
   document.querySelectorAll('[data-rear]').forEach(b=>b.classList.remove('active'));
@@ -1105,71 +893,23 @@ function setRearWiper(mode){
 }
 function doIntermittentRear(){const rw=document.getElementById('wiper-rear');carEl.classList.remove('wiper-rear-int');void rw.offsetWidth;carEl.classList.add('wiper-rear-int');}
 
-/* ---- WASH ---- */
-function _startWashCore(side){
-  if(side==='front'){
-    frontWashActive=true;
-    document.getElementById('front-wash-btn').classList.add('active-wash');
-    document.getElementById('front-wash-ind').className='wiper-speed-indicator washing';
-    document.getElementById('front-wash-ind').textContent='💧 SPRAYING...';
-    if(frontWiperMode==='off')setFrontWiper('slow');
-    animateSpray('front'); playSpraySound();
-  }else{
-    rearWashActive=true;
-    document.getElementById('rear-wash-btn').classList.add('active-wash');
-    document.getElementById('rear-wash-ind').className='wiper-speed-indicator washing';
-    document.getElementById('rear-wash-ind').textContent='💧 SPRAYING...';
-    if(rearWiperMode==='off')setRearWiper('on');
-    animateSpray('rear'); playSpraySound();
-  }
-  updateInternalVisuals();
-}
-function _stopWashCore(side){
-  if(side==='front'){
-    frontWashActive=false;
-    document.getElementById('front-wash-btn').classList.remove('active-wash');
-    document.getElementById('front-wash-ind').className='wiper-speed-indicator';
-    document.getElementById('front-wash-ind').textContent='● READY';
-    stopSpray('front');
-    if(frontWiperMode!=='off'){if(washAutoStopTimer)clearTimeout(washAutoStopTimer);washAutoStopTimer=setTimeout(()=>{if(!frontWashActive)setFrontWiper('off');},3000);}
-  }else{
-    rearWashActive=false;
-    document.getElementById('rear-wash-btn').classList.remove('active-wash');
-    document.getElementById('rear-wash-ind').className='wiper-speed-indicator';
-    document.getElementById('rear-wash-ind').textContent='● READY';
-    stopSpray('rear');
-    setTimeout(()=>{if(!rearWashActive)setRearWiper('off');},3000);
-  }
-  updateInternalVisuals();
-}
-window.startWash=function(side){startPump();_startWashCore(side);};
-window.stopWash =function(side){stopPump(); _stopWashCore(side);};
+function startWash(side){startPump();if(side==='front'){frontWashActive=true;document.getElementById('front-wash-btn').classList.add('active-wash');document.getElementById('front-wash-ind').className='wiper-speed-indicator washing';document.getElementById('front-wash-ind').textContent='💧 SPRAYING...';if(frontWiperMode==='off')setFrontWiper('slow');animateSpray('front');playSpraySound();}else{rearWashActive=true;document.getElementById('rear-wash-btn').classList.add('active-wash');document.getElementById('rear-wash-ind').className='wiper-speed-indicator washing';document.getElementById('rear-wash-ind').textContent='💧 SPRAYING...';if(rearWiperMode==='off')setRearWiper('on');animateSpray('rear');playSpraySound();}updateInternalVisuals();}
+function stopWash(side){stopPump();if(side==='front'){frontWashActive=false;document.getElementById('front-wash-btn').classList.remove('active-wash');document.getElementById('front-wash-ind').className='wiper-speed-indicator';document.getElementById('front-wash-ind').textContent='● READY';stopSpray('front');if(frontWiperMode!=='off'){if(washAutoStopTimer)clearTimeout(washAutoStopTimer);washAutoStopTimer=setTimeout(()=>{if(!frontWashActive)setFrontWiper('off');},3000);}}else{rearWashActive=false;document.getElementById('rear-wash-btn').classList.remove('active-wash');document.getElementById('rear-wash-ind').className='wiper-speed-indicator';document.getElementById('rear-wash-ind').textContent='● READY';stopSpray('rear');setTimeout(()=>{if(!rearWashActive)setRearWiper('off');},3000);}updateInternalVisuals();}
 
-/* ---- SPRAY PHYSICS ---- */
-const DROP_CONFIGS={
-  front:{nozzles:[{x:21.6,y:85.9},{x:46.6,y:85.9}],dir:{vx:[-0.5,0.5],vy:[1.6,3.0]},gravity:0.11,groupId:'spray-front',bounds:{xMin:14,xMax:55,yMin:85,yMax:112}},
-  rear:{nozzles:[{x:33.9,y:49.4}],dir:{vx:[-0.6,0.6],vy:[-2.8,-1.6]},gravity:0.09,groupId:'spray-rear',bounds:{xMin:14,xMax:55,yMin:20,yMax:50}}
-};
-const particles={front:[],rear:[]};
-let animRunning={front:false,rear:false};
-let rafIds={front:null,rear:null};
+const DROP_CONFIGS={front:{nozzles:[{x:21.6,y:85.9},{x:46.6,y:85.9}],dir:{vx:[-0.5,0.5],vy:[1.6,3.0]},gravity:0.11,groupId:'spray-front',bounds:{xMin:14,xMax:55,yMin:85,yMax:112}},rear:{nozzles:[{x:33.9,y:49.4}],dir:{vx:[-0.6,0.6],vy:[-2.8,-1.6]},gravity:0.09,groupId:'spray-rear',bounds:{xMin:14,xMax:55,yMin:20,yMax:50}}};
+const particles={front:[],rear:[]};let animRunning={front:false,rear:false},rafIds={front:null,rear:null};
 function spawnDrop(nozzle,cfg){const vxR=cfg.dir.vx,vyR=cfg.dir.vy;return{x:nozzle.x+(Math.random()-0.5)*1.4,y:nozzle.y,vx:vxR[0]+Math.random()*(vxR[1]-vxR[0]),vy:vyR[0]+Math.random()*(vyR[1]-vyR[0]),life:1.0,decay:0.020+Math.random()*0.016,r:0.30+Math.random()*0.60,trail:[],trailTimer:0,splat:false,splatR:0};}
 function animateSpray(side){const cfg=DROP_CONFIGS[side],grp=document.getElementById(cfg.groupId);grp.setAttribute('opacity','1');animRunning[side]=true;particles[side]=[];let tick=0;function frame(){if(!animRunning[side])return;tick++;if(tick%2===0){cfg.nozzles.forEach(n=>{const count=side==='front'?3:2;for(let i=0;i<count;i++){if(particles[side].length<90)particles[side].push(spawnDrop(n,cfg));}});}particles[side].forEach(p=>{if(p.splat){p.splatR+=0.08;p.life-=0.055;}else{p.trailTimer++;if(p.trailTimer%2===0){p.trail.push({x:p.x,y:p.y});if(p.trail.length>6)p.trail.shift();}p.x+=p.vx;p.y+=p.vy;p.vy+=cfg.gravity;p.vx*=0.975;p.life-=p.decay;const b=cfg.bounds;if(p.x<b.xMin||p.x>b.xMax||p.y>b.yMax||p.y<b.yMin){p.splat=true;p.splatR=p.r*0.5;p.life=0.85;p.x=Math.max(b.xMin+0.5,Math.min(b.xMax-0.5,p.x));p.y=Math.max(b.yMin+0.5,Math.min(b.yMax-0.5,p.y));}}});particles[side]=particles[side].filter(p=>p.life>0.01);renderDrops(side,grp);rafIds[side]=requestAnimationFrame(frame);}if(rafIds[side])cancelAnimationFrame(rafIds[side]);rafIds[side]=requestAnimationFrame(frame);}
-function renderDrops(side,grp){let svg='';particles[side].forEach(p=>{const op=Math.max(0,Math.min(1,p.life));if(p.splat){const r1=p.splatR,r2=p.splatR*0.55;svg+=`<ellipse cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" rx="${Math.min(r1,3.5).toFixed(2)}" ry="${Math.min(r2,1.6).toFixed(2)}" fill="none" stroke="rgba(100,185,255,${(op*0.65).toFixed(2)})" stroke-width="0.22"/>`;svg+=`<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${(p.r*0.32).toFixed(2)}" fill="rgba(200,235,255,${(op*0.70).toFixed(2)})"/>`;}else{if(p.trail.length>=2){for(let i=1;i<p.trail.length;i++){const tp=p.trail[i-1],tc=p.trail[i],tOp=(i/p.trail.length)*op*0.45,tw=(p.r*0.45*i/p.trail.length).toFixed(2);svg+=`<line x1="${tp.x.toFixed(2)}" y1="${tp.y.toFixed(2)}" x2="${tc.x.toFixed(2)}" y2="${tc.y.toFixed(2)}" stroke="rgba(90,180,255,${tOp.toFixed(2)})" stroke-width="${tw}" stroke-linecap="round"/>`;}}const speed=Math.sqrt(p.vx*p.vx+p.vy*p.vy),ang=Math.atan2(p.vy,p.vx)*180/Math.PI,rx=(p.r*(1+speed*0.15)).toFixed(2),ry=(p.r*0.62).toFixed(2);svg+=`<ellipse cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" rx="${rx}" ry="${ry}" transform="rotate(${ang.toFixed(1)},${p.x.toFixed(2)},${p.y.toFixed(2)})" fill="rgba(100,190,255,${(op*0.75).toFixed(2)})"/>`;svg+=`<circle cx="${(p.x-p.r*0.3).toFixed(2)}" cy="${(p.y-p.r*0.3).toFixed(2)}" r="${(p.r*0.16).toFixed(2)}" fill="rgba(255,255,255,${op.toFixed(2)})"/>`;}});grp.innerHTML=svg;}
+function renderDrops(side,grp){let svg='';particles[side].forEach(p=>{const op=Math.max(0,Math.min(1,p.life));if(p.splat){const r1=p.splatR,r2=p.splatR*0.55;svg+=`<ellipse cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" rx="${Math.min(r1,3.5).toFixed(2)}" ry="${Math.min(r2,1.6).toFixed(2)}" fill="none" stroke="rgba(100,185,255,${(op*0.65).toFixed(2)})" stroke-width="0.22"/>`;svg+=`<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${(p.r*0.32).toFixed(2)}" fill="rgba(200,235,255,${(op*0.70).toFixed(2)})"/>`;}else{if(p.trail.length>=2){for(let i=1;i<p.trail.length;i++){const tp=p.trail[i-1],tc=p.trail[i],tOp=(i/p.trail.length)*op*0.45,tw=(p.r*0.45*i/p.trail.length).toFixed(2);svg+=`<line x1="${tp.x.toFixed(2)}" y1="${tp.y.toFixed(2)}" x2="${tc.x.toFixed(2)}" y2="${tc.y.toFixed(2)}" stroke="rgba(90,180,255,${tOp.toFixed(2)})" stroke-width="${tw}" stroke-linecap="round"/>`;}}const spd=Math.sqrt(p.vx*p.vx+p.vy*p.vy),ang=Math.atan2(p.vy,p.vx)*180/Math.PI,rx=(p.r*(1+spd*0.15)).toFixed(2),ry=(p.r*0.62).toFixed(2);svg+=`<ellipse cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" rx="${rx}" ry="${ry}" transform="rotate(${ang.toFixed(1)},${p.x.toFixed(2)},${p.y.toFixed(2)})" fill="rgba(100,190,255,${(op*0.75).toFixed(2)})"/>`;svg+=`<circle cx="${(p.x-p.r*0.3).toFixed(2)}" cy="${(p.y-p.r*0.3).toFixed(2)}" r="${(p.r*0.16).toFixed(2)}" fill="rgba(255,255,255,${op.toFixed(2)})"/>`;}});grp.innerHTML=svg;}
 function stopSpray(side){animRunning[side]=false;if(rafIds[side]){cancelAnimationFrame(rafIds[side]);rafIds[side]=null;}const grp=document.getElementById(DROP_CONFIGS[side].groupId);let ff=0;function fadeOut(){ff++;particles[side].forEach(p=>{p.life-=0.07;});particles[side]=particles[side].filter(p=>p.life>0.01);renderDrops(side,grp);if(particles[side].length>0&&ff<35)requestAnimationFrame(fadeOut);else{grp.innerHTML='';grp.setAttribute('opacity','0');particles[side]=[];}}requestAnimationFrame(fadeOut);}
 
-/* ---- AUDIO ---- */
-let audioCtx=null;
-function getAudioCtx(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx;}
 function playWiperBeep(isOn){try{const ctx=getAudioCtx(),osc=ctx.createOscillator(),gain=ctx.createGain();osc.connect(gain);gain.connect(ctx.destination);osc.type='sine';osc.frequency.value=isOn?880:660;gain.gain.setValueAtTime(0.08,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.12);osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.12);}catch(e){}}
 function playSpraySound(){try{const ctx=getAudioCtx(),bufferSize=ctx.sampleRate*0.3,buffer=ctx.createBuffer(1,bufferSize,ctx.sampleRate),data=buffer.getChannelData(0);for(let i=0;i<bufferSize;i++)data[i]=(Math.random()*2-1)*0.15;const src=ctx.createBufferSource();src.buffer=buffer;const filter=ctx.createBiquadFilter();filter.type='bandpass';filter.frequency.value=3500;filter.Q.value=0.5;const gain=ctx.createGain();gain.gain.setValueAtTime(0.6,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.3);src.connect(filter);filter.connect(gain);gain.connect(ctx.destination);src.start(ctx.currentTime);src.stop(ctx.currentTime+0.3);}catch(e){}}
 document.addEventListener('touchstart',()=>{try{getAudioCtx().resume();}catch(e){}},{once:true});
 </script>
 
 <script>
-/* ====================================================
-   RAIN SIMULATION
-   ==================================================== */
+/* ── RAIN ── */
 let rainMode='off',rainRAF=null,rainDrops=[],rainAudioNode=null;
 const RAIN_CFG={off:{count:0,speed:[4,8],len:[6,14],opacity:[0.3,0.6],wind:0.6},light:{count:40,speed:[3,6],len:[5,12],opacity:[0.2,0.5],wind:0.5},medium:{count:100,speed:[5,10],len:[8,18],opacity:[0.3,0.65],wind:1.0},heavy:{count:220,speed:[8,16],len:[10,24],opacity:[0.4,0.80],wind:1.8}};
 function spawnRainDrop(canvas,cfg){return{x:Math.random()*canvas.width,y:Math.random()*canvas.height-canvas.height,speed:cfg.speed[0]+Math.random()*(cfg.speed[1]-cfg.speed[0]),len:cfg.len[0]+Math.random()*(cfg.len[1]-cfg.len[0]),opacity:cfg.opacity[0]+Math.random()*(cfg.opacity[1]-cfg.opacity[0]),wind:cfg.wind};}
@@ -1179,9 +919,6 @@ function setRain(mode){rainMode=mode;['rain-off-btn','rain-light-btn','rain-med-
 function stopRainAnim(){if(rainRAF){cancelAnimationFrame(rainRAF);rainRAF=null;}rainDrops=[];const canvas=document.getElementById('rainCanvas');if(canvas)canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);}
 function startRainAnim(mode){stopRainAnim();const canvas=document.getElementById('rainCanvas');if(!canvas)return;const stage=canvas.parentElement;canvas.width=stage.offsetWidth||580;canvas.height=stage.offsetHeight||570;const cfg=RAIN_CFG[mode];for(let i=0;i<cfg.count;i++){const drop=spawnRainDrop(canvas,cfg);drop.y=Math.random()*canvas.height;rainDrops.push(drop);}function frame(){const ctx2d=canvas.getContext('2d');ctx2d.clearRect(0,0,canvas.width,canvas.height);rainDrops.forEach(p=>{ctx2d.beginPath();ctx2d.moveTo(p.x,p.y);const ex=p.x+p.wind*(p.len/p.speed),ey=p.y+p.len;ctx2d.lineTo(ex,ey);const grd=ctx2d.createLinearGradient(p.x,p.y,ex,ey);grd.addColorStop(0,`rgba(180,220,255,0)`);grd.addColorStop(1,`rgba(180,220,255,${p.opacity})`);ctx2d.strokeStyle=grd;ctx2d.lineWidth=0.8+Math.random()*0.5;ctx2d.lineCap='round';ctx2d.stroke();if(p.y>canvas.height*0.88){ctx2d.beginPath();ctx2d.ellipse(p.x,p.y,1.8+Math.random(),0.6,0,0,Math.PI*2);ctx2d.fillStyle=`rgba(180,220,255,${p.opacity*0.5})`;ctx2d.fill();}p.x+=p.wind;p.y+=p.speed;if(p.y>canvas.height+20||p.x>canvas.width+20)Object.assign(p,spawnRainDrop(canvas,cfg));});while(rainDrops.length<cfg.count)rainDrops.push(spawnRainDrop(canvas,cfg));if(rainDrops.length>cfg.count+10)rainDrops.splice(cfg.count);rainRAF=requestAnimationFrame(frame);}rainRAF=requestAnimationFrame(frame);}
 
-/* ====================================================
-   INIT
-   ==================================================== */
 (function initAll(){
   const bOff=document.getElementById('btn-off');if(bOff)bOff.classList.add('active');
   const bPark=document.getElementById('btn-park');if(bPark)bPark.classList.add('active');

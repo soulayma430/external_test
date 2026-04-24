@@ -443,8 +443,12 @@ class MDFExporter:
             current.append(_f(r.get("current", 0)))
             rest.append(1 if str(r.get("rest_contact", "")).upper() == "PARKED" else 0)
             fault.append(_b(r.get("fault", 0)))
-            crs_op.append(_wiper_int(str(r.get("crs_wiper_op", "OFF"))))
-            ignition.append(_ign_int(str(r.get("ignition", "OFF"))))
+            # crs_wiper_op : live dict ne contient pas toujours cette clé → fallback sur "state"
+            crs_raw = str(r.get("crs_wiper_op", "") or r.get("state", "OFF")).strip()
+            crs_op.append(_wiper_int(crs_raw if crs_raw else "OFF"))
+            # ignition : live dict contient "ON"/"OFF"/"ACC" (string), pas un int
+            ign_raw = str(r.get("ignition", "OFF") or "OFF").strip().upper()
+            ignition.append(_ign_int(ign_raw))
             vspeed.append(_f(r.get("vehicle_speed", 0)))
             rain.append(_f(r.get("rain_intensity", 0)))
             blade_cycles.append(_i(r.get("front_blade_cycles", 0)))
@@ -512,8 +516,8 @@ class MDFExporter:
 
     def _build_lin(self, rows: list, Signal, source) -> list:
         """
-        Canaux LIN : PID, type trame, wiper_op, front_motor_on, rest_contact_raw.
-        Timestamps absolus (t_kernel si disponible, sinon timestamp string).
+        Canaux LIN : PID, type trame, wiper_op, front_motor_on, rest_contact_raw,
+        alive counter, checksum (cs_int), bcm_state et raw frame hex.
         """
         if not rows:
             return []
@@ -526,6 +530,10 @@ class MDFExporter:
         wiper_op  : list[int]   = []
         front_on  : list[int]   = []
         rest_raw  : list[int]   = []
+        alive     : list[int]   = []
+        cs_int    : list[int]   = []
+        bcm_state : list[str]   = []
+        raw_hex   : list[str]   = []
 
         for r in rows:
             t = _parse_ts(r.get("timestamp", ""))
@@ -537,10 +545,32 @@ class MDFExporter:
             except (ValueError, TypeError):
                 pid.append(0)
 
-            lin_type.append(str(r.get("lin_type", r.get("op", ""))).strip() or "?")
-            wiper_op.append(_wiper_int(str(r.get("wiper_op", "OFF"))))
+            lin_type.append(str(r.get("lin_type", "")).strip() or "?")
+            # live dict LIN utilise "op" (int enum), "wiper_op" souvent vide
+            op_raw = r.get("op", "") or r.get("wiper_op", "") or "OFF"
+            # "op" peut être un int directement (enum wiper_op)
+            try:
+                op_int = int(op_raw)
+                wiper_op.append(op_int)
+            except (ValueError, TypeError):
+                wiper_op.append(_wiper_int(str(op_raw)))
             front_on.append(_b(r.get("front_motor_on", 0)))
             rest_raw.append(_b(r.get("rest_contact_raw", 0)))
+
+            # Alive counter (uint8 0-15 tournant)
+            try:
+                alive.append(int(r.get("alive", 0) or 0) & 0xFF)
+            except (ValueError, TypeError):
+                alive.append(0)
+
+            # Checksum / cs_int
+            try:
+                cs_int.append(int(r.get("cs_int", 0) or 0) & 0xFF)
+            except (ValueError, TypeError):
+                cs_int.append(0)
+
+            bcm_state.append(str(r.get("bcm_state", "OFF") or "OFF").strip())
+            raw_hex.append(str(r.get("raw", "") or "").strip())
 
         ta = np.array(ts, dtype=np.float64)
         kw = {"source": source}
@@ -567,6 +597,22 @@ class MDFExporter:
             Signal(samples=np.array(rest_raw, dtype=np.uint8), timestamps=ta,
                    name="lin_rest_contact_raw", unit="bool",
                    comment="Rest contact raw bit from LIN CRS_Status", **kw),
+
+            Signal(samples=np.array(alive, dtype=np.uint8), timestamps=ta,
+                   name="lin_alive", unit="",
+                   comment="LIN alive counter (0-15 rolling)", **kw),
+
+            Signal(samples=np.array(cs_int, dtype=np.uint8), timestamps=ta,
+                   name="lin_cs_int", unit="",
+                   comment="LIN frame checksum integer", **kw),
+
+            Signal(samples=_to_bytes_array(bcm_state), timestamps=ta,
+                   name="lin_bcm_state", unit="",
+                   comment="BCM wiper state text", encoding="utf-8", **kw),
+
+            Signal(samples=_to_bytes_array(raw_hex), timestamps=ta,
+                   name="lin_raw", unit="",
+                   comment="Raw LIN frame bytes (hex string)", encoding="utf-8", **kw),
         ]
 
     # ─────────────────────────────────────────────────────────────────────

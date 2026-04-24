@@ -149,6 +149,27 @@ class SimClient:
             return False
         return self._send({"test_cmd": "reset_b2101"})
 
+    def reset_corrupt_crc(self) -> bool:
+        """
+        Remet _corrupt_crc_count=0 côté simulateur bcmcan (TC_FSR_010 cleanup).
+        Utilise une connexion TCP directe (sim_client) plutôt que motor_w.queue_send
+        pour éviter que count=0 survive à une déconnexion TCP et arrive après le
+        count=8 d'un run suivant — ce qui produisait 0 trames corrompues → TIMEOUT.
+        """
+        if not self.is_connected():
+            return False
+        return self._send({"test_cmd": "corrupt_crc_0x201", "count": 0})
+
+    def set_motor_driver_fault(self, value: bool) -> bool:
+        """
+        Injecte ou retire un défaut driver moteur B2102 côté simulateur bcmcan.
+        value=True  → arme B2102 (WC Motor Driver Fault)
+        value=False → retire le signal (DTC reste actif jusqu'au ClearDTC UDS)
+        """
+        if not self.is_connected():
+            return False
+        return self._send({"test_cmd": "set_motor_driver_fault", "value": value})
+
     # ── Nouveaux test_cmd pour T50 et T_B2009_CAN ────────────────────────────
 
     def start_blade_cycling(self, period_ms: float = 1500.0) -> bool:
@@ -206,17 +227,25 @@ class SimClient:
         host, port = self._host, self._port
         try:
             with socket.create_connection((host, port), timeout=2.0) as s:
+                # Envoyer immédiatement après connexion.
+                # bcmcan envoie d'abord {"front":{...}} puis attend les commandes
+                # avec timeout 2s → suffisant pour recevoir notre commande.
                 s.sendall((json.dumps(payload) + "\n").encode("utf-8"))
-                # Lire l'ACK optionnel (non-bloquant)
+                # Lire l'ACK optionnel
                 s.settimeout(0.5)
                 try:
-                    raw = s.recv(256).decode("utf-8", errors="replace").strip()
+                    raw = s.recv(512).decode("utf-8", errors="replace").strip()
                     if raw:
-                        try:
-                            ack = json.loads(raw.split("\n")[0])
-                            print(f"[SIM-CLIENT] ACK reçu: {ack}")
-                        except json.JSONDecodeError:
-                            pass
+                        for line in raw.split("\n"):
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                ack = json.loads(line)
+                                if "type" in ack or "front" not in ack:
+                                    print(f"[SIM-CLIENT] ACK reçu: {ack}")
+                            except json.JSONDecodeError:
+                                pass
                 except socket.timeout:
                     pass  # ACK optionnel
             return True

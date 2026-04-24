@@ -132,6 +132,53 @@ _XRAY_API_JS = """
   .door-panel
   { display: none !important; }
 
+  /* ── Masquer trunk et logo BMW ── */
+  #path32798, #path32797,
+  .xray-trunk,
+  .path32797-toggle {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+
+  /* ── Masquer le logo BMW (kidney grille + cercle badge) ── */
+  /* Les rects du grille réniforme + cercles + paths bleus/blancs du badge */
+  rect[x="89"], rect[x="96.4"],
+  circle[cx="96.3"],
+  path[d^="m 96.3,78"],
+  path[d^="m 96.3,83"],
+  path[d^="m 93.8,80.5"],
+  path[d^="m 98.8,80.5"] {
+    display: none !important;
+  }
+
+  /* ── Portes colorées en noir ── */
+  .xray-door path, .xray-door rect {
+    fill: rgba(10, 10, 10, 0.55) !important;
+    stroke: #1a1a1a !important;
+  }
+  .xray-door > path:first-child {
+    fill: rgba(15, 15, 15, 0.70) !important;
+    stroke: #111111 !important;
+    stroke-width: 2.0 !important;
+    filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
+  }
+  .xray-door > path:nth-child(2) {
+    fill: rgba(5, 5, 5, 0.40) !important;
+    stroke: rgba(40, 40, 40, 0.80) !important;
+  }
+
+  /* ── Animation d'entrée : slide du haut vers le bas avec cercle ── */
+  @keyframes carSlideDown {
+    0%   { opacity: 0;   transform: translateY(-120%) scale(0.90); }
+    55%  { opacity: 1;   transform: translateY(6%)    scale(1.01); }
+    75%  { transform: translateY(-2%) scale(0.995); }
+    100% { opacity: 1;   transform: translateY(0%)    scale(1.0);  }
+  }
+  .car-stage {
+    animation: carSlideDown 0.90s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  }
+
   body {
     padding-top: 4px !important;
     background: #FFFFFF !important;
@@ -187,8 +234,8 @@ _XRAY_API_JS = """
 <script>
 /* ── Auto-scale : voiture centrée qui remplit toute la hauteur ── */
 (function () {
-  var CAR_H = 580;
-  var CAR_W = 580;
+  var CAR_H = 400;
+  var CAR_W = 400;
   function scaleCarToFit () {
     var stage = document.querySelector('.car-stage');
     if (!stage) return;
@@ -318,6 +365,37 @@ window.addEventListener('load', function () {
   };
 
   console.log('[CarXRayWidget] controlAPI ready — controldesk-xray');
+
+  /* ── Suppression trunk + logo BMW au chargement ── */
+  (function hideTrunkAndBadge() {
+    // Trunk paths
+    ['path32798', 'path32797'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    // BMW kidney grille + badge : on cible les éléments SVG par parcours DOM
+    // Le bloc badge est juste après le commentaire "BMW KIDNEY GRILLE"
+    // On parcourt tous les rect/circle/path du SVG et on cache ceux qui forment le logo
+    var svg = document.querySelector('svg');
+    if (!svg) return;
+    // kidney rects (x≈89 et x≈96.4), badge circles (cx≈96.3), badge paths
+    var allEls = svg.querySelectorAll('rect, circle, path');
+    allEls.forEach(function(el) {
+      var x   = parseFloat(el.getAttribute('x')   || el.getAttribute('cx') || 0);
+      var y   = parseFloat(el.getAttribute('y')   || el.getAttribute('cy') || 0);
+      var d   = el.getAttribute('d') || '';
+      // Kidney grille rects
+      if (el.tagName === 'rect' && ((x >= 88 && x <= 90) || (x >= 95 && x <= 98)) && y >= 74 && y <= 78)
+        el.style.display = 'none';
+      // Badge circles cx≈96.3 cy≈80.5
+      if (el.tagName === 'circle' && x >= 95 && x <= 98 && y >= 79 && y <= 82)
+        el.style.display = 'none';
+      // Badge coloured quadrant paths (start with "m 96.3" or "m 93.8" or "m 98.8")
+      if (el.tagName === 'path' && (d.startsWith('m 96.3,7') || d.startsWith('m 96.3,8') ||
+          d.startsWith('m 93.8') || d.startsWith('m 98.8')))
+        el.style.display = 'none';
+    });
+  })();
 });
 </script>
 """

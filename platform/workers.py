@@ -246,6 +246,17 @@ class MotorVehicleWorker(QObject):
                 sock_tx.connect((host_tx, PORT_MOTOR))
                 sock_tx.settimeout(0.05)
 
+                # Purger les test_cmd résiduels accumulés pendant la déconnexion.
+                # Ces commandes one-shot (corrupt_crc_0x201 count=0, restore_can_alive…)
+                # ne doivent pas survivre à une reconnexion : elles appartiennent à un
+                # run précédent et écraseraient les commandes du run courant si elles
+                # arrivaient après (ex: count=0 après count=8 → 0 trames corrompues).
+                with self._send_lock:
+                    self._send_queue = [
+                        m for m in self._send_queue
+                        if "test_cmd" not in m
+                    ]
+
                 buf_tx = ""
                 while self.running:
                     # ── Lecture réponses bcmcan (ex: can_fault T11) ────

@@ -165,7 +165,10 @@ INSTRUMENT_CATALOG = [
     ("rear_motor",    "Rear Motor",      "MOTOR",  A_TEAL,    "Moteur arriere"),
     ("rear_current",  "Rear Current",    "MOTOR",  A_TEAL,    "Courant arriere (A)"),
     ("rest_contact",  "Rest Contact",    "MOTOR",  A_AMBER,   "Position lame"),
-    ("sys_status",    "System Status",   "SYSTEM", KPIT_GREEN,"Synthese systeme"),
+    ("sys_status",       "System Status",      "SYSTEM", KPIT_GREEN, "Synthese systeme"),
+    ("pump_current_curve",  "Pump Current Curve",  "PUMP",   A_TEAL,    "Courbe courant pompe"),
+    ("motor_front_curve",   "Motor Front Curve",   "MOTOR",  A_GREEN,   "Courbe courant moteur avant"),
+    ("rest_contact_edge",   "Rest Contact Edges",  "MOTOR",  A_AMBER,   "Fronts montant/descendant contact"),
 ]
 _BY_ID = {r[0]: r for r in INSTRUMENT_CATALOG}
 
@@ -180,6 +183,7 @@ _GROUP_BG    = {"PUMP": "#0D1E2E", "MOTOR": "#0D1E0D", "SYSTEM": "#1E1A0A"}
 class SignalHub(QObject):
     motor_data = Signal(dict)
     pump_data  = Signal(dict)
+    lin_data   = Signal(dict)   # événements LIN : rest_contact_raw, front_blade_cycles …
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -190,6 +194,9 @@ class SignalHub(QObject):
     def on_pump_data(self, data: dict) -> None:
         self.pump_data.emit(data)
 
+    def on_lin_event(self, data: dict) -> None:
+        self.lin_data.emit(data)
+
 
 # ═══════════════════════════════════════════════════════════
 #  INSTRUMENT FACTORY + CONNECT
@@ -198,6 +205,7 @@ def _build_widget(iid: str) -> Optional[QWidget]:
     from widgets_instruments import MotorWidget, PumpWidget, ArcGaugeWidget
     from widgets_motor_pump_enhanced import (
         RestContactWidget, SystemStatusWidget, TimeoutFSRWidget,
+        CurrentCurveWidget, RestContactEdgeWidget,
     )
     if iid == "pump_widget":    return PumpWidget()
     if iid == "pump_current":   return ArcGaugeWidget(max_val=2.0,  unit="A")
@@ -208,7 +216,10 @@ def _build_widget(iid: str) -> Optional[QWidget]:
     if iid == "rear_motor":     return MotorWidget("REAR")
     if iid == "rear_current":   return ArcGaugeWidget(max_val=1.5,  unit="A")
     if iid == "rest_contact":   return RestContactWidget()
-    if iid == "sys_status":     return SystemStatusWidget()
+    if iid == "sys_status":          return SystemStatusWidget()
+    if iid == "pump_current_curve":  return CurrentCurveWidget("PUMP",         max_val=2.0)
+    if iid == "motor_front_curve":   return CurrentCurveWidget("MOTOR_FRONT",  max_val=1.5)
+    if iid == "rest_contact_edge":   return RestContactEdgeWidget()
     return None
 
 
@@ -216,6 +227,7 @@ def _connect_widget(iid: str, widget: QWidget, hub: SignalHub) -> None:
     from widgets_instruments import MotorWidget, PumpWidget, ArcGaugeWidget
     from widgets_motor_pump_enhanced import (
         RestContactWidget, SystemStatusWidget, TimeoutFSRWidget,
+        CurrentCurveWidget, RestContactEdgeWidget,
     )
     import json as _j
 
@@ -295,6 +307,52 @@ def _connect_widget(iid: str, widget: QWidget, hub: SignalHub) -> None:
             widget.set_values(fs, rs, sp, f"{cur:.3f} A", fault,
                               "FAULT FSR_003" if fault else "System nominal")
         hub.motor_data.connect(_f)
+    elif iid == "pump_current_curve" and isinstance(widget, CurrentCurveWidget):
+        def _f(data):
+            widget.set_value(float(data.get("current", data.get("pump_current", 0))),
+                             bool(data.get("fault", False)))
+        hub.pump_data.connect(_f)
+    elif iid == "motor_front_curve" and isinstance(widget, CurrentCurveWidget):
+        def _f(data):
+            if isinstance(data.get("front"), str):
+                widget.set_value(float(data.get("current", 0)) * 0.6,
+                                 bool(data.get("fault", False)))
+            else:
+                import json as _j
+                def _d(v):
+                    if isinstance(v, dict): return v
+                    try: return _j.loads(v) if isinstance(v, str) else {}
+                    except: return {}
+                f = _d(data.get("front", {}))
+                widget.set_value(float(f.get("motor_current", 0)),
+                                 bool(f.get("fault_status", False)))
+        hub.motor_data.connect(_f)
+    elif iid == "rest_contact_edge" and isinstance(widget, RestContactEdgeWidget):
+        def _f_motor(data):
+            # Priorité : rest_contact_raw à la racine du TCP broadcast BCM
+            # raw=True  → lame EN MOUVEMENT (GPIO HIGH) → parked=False
+            # raw=False → lame AU REPOS (GPIO LOW)      → parked=True
+            if "rest_contact_raw" in data:
+                widget.set_state(not bool(data["rest_contact_raw"]))
+                return
+            # Fallback format "aplati"
+            if isinstance(data.get("front"), str):
+                widget.set_state(data.get("rest", "") == "PARKED")
+            else:
+                import json as _j
+                def _d(v):
+                    if isinstance(v, dict): return v
+                    try: return _j.loads(v) if isinstance(v, str) else {}
+                    except: return {}
+                # rest_contact=1 dans dict TCP = lame EN MOUVEMENT → parked=False
+                widget.set_state(not bool(_d(data.get("front", {})).get("rest_contact", 0)))
+        hub.motor_data.connect(_f_motor)
+
+        def _f_lin(data):
+            # Mise à jour depuis événement LIN (rest_contact_raw GPIO26 direct)
+            if "rest_contact_raw" in data:
+                widget.set_state(not bool(data["rest_contact_raw"]))
+        hub.lin_data.connect(_f_lin)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -698,16 +756,47 @@ class CircularDropCanvas(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
 
-        # Grille optionnelle
+        # Grille optionnelle — gris neutre doux (zone canvas complète)
         if self._grid:
             for x in range(0, W, _SNAP):
-                c = QColor(141, 198, 63, 25 if x % (8 * _SNAP) == 0 else 10)
-                p.setPen(QPen(c, 1))
+                alpha = 55 if x % (8 * _SNAP) == 0 else 22
+                p.setPen(QPen(QColor(160, 160, 160, alpha), 1))
                 p.drawLine(x, 0, x, H)
             for y in range(0, H, _SNAP):
-                c = QColor(141, 198, 63, 25 if y % (8 * _SNAP) == 0 else 10)
-                p.setPen(QPen(c, 1))
+                alpha = 55 if y % (8 * _SNAP) == 0 else 22
+                p.setPen(QPen(QColor(160, 160, 160, alpha), 1))
                 p.drawLine(0, y, W, y)
+
+        # ── Grille dans le cercle de la voiture ────────────────────────
+        # Calcul position/rayon du cercle (idem _reposition_car)
+        car_cx = (W - self.CAR_W) // 2 + self.CAR_W // 2
+        car_cy = (H - self.CAR_H) // 2 + self.CAR_H // 2
+        r = self._car_radius()
+        car_ox = max(0, (W - self.CAR_W) // 2)
+        car_oy = max(0, (H - self.CAR_H) // 2)
+
+        if self._grid:
+            # Clip le dessin dans le cercle exact de la voiture
+            clip_path = QPainterPath()
+            clip_path.addEllipse(QRectF(car_cx - r, car_cy - r, r * 2, r * 2))
+            p.save()
+            p.setClipPath(clip_path)
+
+            for x in range(car_ox, car_ox + self.CAR_W + _SNAP, _SNAP):
+                alpha = 70 if x % (8 * _SNAP) == 0 else 30
+                p.setPen(QPen(QColor(160, 160, 160, alpha), 1))
+                p.drawLine(x, car_oy, x, car_oy + self.CAR_H)
+            for y in range(car_oy, car_oy + self.CAR_H + _SNAP, _SNAP):
+                alpha = 70 if y % (8 * _SNAP) == 0 else 30
+                p.setPen(QPen(QColor(160, 160, 160, alpha), 1))
+                p.drawLine(car_ox, y, car_ox + self.CAR_W, y)
+
+            p.restore()
+
+        # Bordure du cercle voiture — contour discret
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(160, 160, 160, 60), 1))
+        p.drawEllipse(QRectF(car_cx - r, car_cy - r, r * 2, r * 2))
 
 
 # ═══════════════════════════════════════════════════════════

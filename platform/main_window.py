@@ -1,4 +1,3 @@
-
 """
 WipeWash — Fenêtre principale
 MainWindow (3 onglets : Motor/Pompe | LIN/CRS | CAN/Vehicle) + NetworkScanDialog.
@@ -51,6 +50,7 @@ from fault_injection_panel import FaultInjectionPanel
 from auto_test_panel  import AutoTestPanel
 from test_runner      import TestRunner
 from test_params_panel import TestParamsPanel
+from xcp_panel         import XCPPanel
 from car_html_widget  import CarHTMLWidget, CarXRayWidget
 from rte_client       import RTEClient
 from sim_client       import SimClient
@@ -236,7 +236,7 @@ class MainWindow(QMainWindow):
             wiper_setter=self._lin_worker.set_wiper_op,
             lin_sender=self._lin_worker.queue_send,
         )
-        self._can_panel    = CANBusPanel()
+        self._can_panel    = CANBusPanel(sim_getter=lambda: self._sim_client)
 
         # ── Fault Injection Panel (standalone — pompe directe + défauts H-Bridge) ──
         self._fi_panel = FaultInjectionPanel(
@@ -344,6 +344,10 @@ class MainWindow(QMainWindow):
         self._test_params_panel = TestParamsPanel()
         self._tabs.addTab(self._test_params_panel, "Params Tests")
 
+        # ── Page 4c : XCP Calibration ────────────────────────
+        self._xcp_panel = XCPPanel()
+        self._tabs.addTab(self._xcp_panel, "⚡ XCP Calibration")
+
         # ── Page 5 : Fault Injection ──────────────────────────
         self._tabs.addTab(self._fi_panel, "Fault Injection")
 
@@ -380,6 +384,18 @@ class MainWindow(QMainWindow):
         sb.setStyleSheet(
             f"background:{W_TOOLBAR};color:{W_TEXT_DIM};border-top:1px solid {W_BORDER};")
         self.setStatusBar(sb); self._qsb = sb
+
+        # ── Widget trigger permanent (visible depuis tous les onglets) ─────────
+        self._sb_trigger = QLabel("  ◉ TRIGGER : inactif  ")
+        self._sb_trigger.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
+        self._sb_trigger.setStyleSheet(
+            f"color:{W_TEXT_DIM};background:transparent;padding:0 8px;"
+            f"font-family:{FONT_MONO};font-size:9pt;")
+        self._sb_trig_blink_state = False
+        self._sb_trig_blink = QTimer(self)
+        self._sb_trig_blink.setInterval(400)
+        self._sb_trig_blink.timeout.connect(self._on_sb_trig_blink)
+        self._qsb.addPermanentWidget(self._sb_trigger)
 
     def _build_car_controls(self) -> QWidget:
         """Widget sous la voiture : Ignition+Reverse | SpeedKnob | RainKnob.
@@ -667,10 +683,10 @@ class MainWindow(QMainWindow):
             sep.setStyleSheet(f"background:{W_BORDER};max-width:1px;"); tb.addWidget(sep)
 
         tb.addSeparator()
-        btn_scan = _cd_btn("Scan", A_TEAL, h=28, w=120)
+        btn_scan = _cd_btn("Scan", A_TEAL, h=25, w=120)
         btn_scan.clicked.connect(self._open_scan); tb.addWidget(btn_scan)
 
-        btn_bus_cfg = _cd_btn("Bus Config", A_ORANGE, h=28, w=120)
+        btn_bus_cfg = _cd_btn("Bus Config", A_ORANGE, h=25, w=120)
         btn_bus_cfg.setToolTip("Charger un fichier LDF ou DBC différent")
         btn_bus_cfg.clicked.connect(self._open_bus_config)
         tb.addWidget(btn_bus_cfg)
@@ -820,6 +836,7 @@ class MainWindow(QMainWindow):
         self._motor_worker.sim_host_found.connect(self._on_sim_host_found)
         self._lin_worker.lin_received.connect(self._on_lin_event)
         self._lin_worker.lin_received.connect(self._datasave_panel.on_lin_event)       # ← DataSave
+        self._lin_worker.lin_received.connect(self._signal_hub.on_lin_event)           # ← SignalHub (rest_contact_raw GPIO26)
         self._lin_worker.status_changed.connect(self._on_lin_status)
         self._pump_signal.data_received.connect(self._pump_panel.update_display)
         self._pump_signal.data_received.connect(self._fi_panel.on_pump_data)
@@ -836,14 +853,21 @@ class MainWindow(QMainWindow):
             Qt.ConnectionType.DirectConnection
         )
 
+        # ── Signaux trigger → StatusBar (notification depuis tous les onglets) ─
+        self._data_replay_panel.trigger_fired.connect(self._on_trigger_fired)
+        self._data_replay_panel.trigger_cleared.connect(self._on_trigger_cleared)
+
         # ── Signaux virtuels ScenarioReplay → widgets (sans ECU physique) ──
         eng = self._scenario_panel._engine
         eng.virtual_motor_data.connect(self._motor_panel.on_motor_data)
         eng.virtual_motor_data.connect(self._on_motor_data_ws)
         eng.virtual_motor_data.connect(self._on_motor_data_mp)
+        eng.virtual_motor_data.connect(self._signal_hub.on_motor_data)   # ← drag&drop Motor/Pump
         eng.virtual_lin_event.connect(self._on_lin_event)
+        eng.virtual_lin_event.connect(self._signal_hub.on_lin_event)     # ← drag&drop rest_contact
         eng.virtual_pump_data.connect(self._pump_panel.update_display)
         eng.virtual_pump_data.connect(self._on_pump_data_mp)
+        eng.virtual_pump_data.connect(self._signal_hub.on_pump_data)     # ← drag&drop Pump
 
     def _on_motor_data_ws(self, data: dict) -> None:
         """
@@ -960,6 +984,8 @@ class MainWindow(QMainWindow):
                     self._fi_panel.on_connected_bcm(host)
                 else:
                     self._fi_panel.on_disconnected_bcm()
+            if hasattr(self, '_xcp_panel'):
+                self._xcp_panel.set_host(host)
             if connected:
                 self._qsb.showMessage(f"[Redis] Connecte sur {host}:6379")
         elif not ok:
@@ -1064,6 +1090,7 @@ class MainWindow(QMainWindow):
         self._lin_thread.started.connect(self._lin_worker.run)
         self._lin_worker.lin_received.connect(self._on_lin_event)
         self._lin_worker.lin_received.connect(self._datasave_panel.on_lin_event)       # ← DataSave
+        self._lin_worker.lin_received.connect(self._signal_hub.on_lin_event)           # ← SignalHub (rest_contact_raw GPIO26)
         self._lin_worker.status_changed.connect(self._on_lin_status)
         self._crslin_panel._lin_sender = self._lin_worker.queue_send   # ← CRS fault injection
         self._lin_thread.start()
@@ -1089,3 +1116,38 @@ class MainWindow(QMainWindow):
         self._lin_worker.stop();   self._lin_thread.quit();   self._lin_thread.wait(2000)
         self._can_worker.stop();   self._can_thread.quit();   self._can_thread.wait(2000)
         e.accept()
+
+    # ══════════════════════════════════════════════════════════
+    #  SLOTS — TRIGGER STATUSBAR
+    # ══════════════════════════════════════════════════════════
+    def _on_trigger_fired(self, msg: str) -> None:
+        """Déclenché par DataReplayPanel quand un overcurrent démarre l'enregistrement."""
+        self._sb_trigger.setText(f"  🔴 REC TRIGGER — {msg}  ")
+        self._sb_trigger.setStyleSheet(
+            f"color:#FF4444;background:#3A0000;padding:0 8px;"
+            f"border-left:2px solid #CC0000;"
+            f"font-family:{FONT_MONO};font-size:9pt;font-weight:bold;")
+        self._sb_trig_blink_state = False
+        self._sb_trig_blink.start()
+
+    def _on_trigger_cleared(self) -> None:
+        """Déclenché quand l'alarme est acquittée dans Data/Replay."""
+        self._sb_trig_blink.stop()
+        self._sb_trig_blink_state = False
+        self._sb_trigger.setText("  ◉ TRIGGER : acquitté  ")
+        self._sb_trigger.setStyleSheet(
+            f"color:{W_TEXT_DIM};background:transparent;padding:0 8px;"
+            f"font-family:{FONT_MONO};font-size:9pt;")
+
+    def _on_sb_trig_blink(self) -> None:
+        """Clignotement du widget trigger dans la StatusBar (400 ms)."""
+        self._sb_trig_blink_state = not self._sb_trig_blink_state
+        if self._sb_trig_blink_state:
+            self._sb_trigger.setStyleSheet(
+                f"color:#FFFFFF;background:#CC0000;padding:0 8px;"
+                f"font-family:{FONT_MONO};font-size:9pt;font-weight:bold;")
+        else:
+            self._sb_trigger.setStyleSheet(
+                f"color:#FF4444;background:#3A0000;padding:0 8px;"
+                f"border-left:2px solid #CC0000;"
+                f"font-family:{FONT_MONO};font-size:9pt;font-weight:bold;")

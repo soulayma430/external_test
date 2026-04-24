@@ -1,4 +1,3 @@
-
 """
 WipeWash — Panneaux dock
 MotorDashPanel, PumpPanel, VehicleRainPanel (+ IgnitionToggle),
@@ -9,7 +8,120 @@ import json
 import datetime
 import time
 import threading
+import os
 from collections import deque
+
+# ── Chargement DBC / LDF ──────────────────────────────────────────────────
+# Les fichiers .dbc et .ldf sont dans le même dossier que panels.py.
+# dbc_loader / ldf_loader sont copiés depuis rpibcm26 (même parseur).
+# En cas d'échec silencieux, _DBC_CFG et _LDF_CFG restent None et le
+# décodage se replie sur la logique manuelle existante.
+
+_DBC_CFG  = None
+_LDF_CFG  = None
+_HERE     = os.path.dirname(os.path.abspath(__file__))
+
+try:
+    from dbc_loader import load_dbc, unpack_frame as _dbc_unpack
+    _DBC_CFG = load_dbc(os.path.join(_HERE, "wiperwash.dbc"))
+except Exception as _e:
+    print(f"[panels] DBC non chargé : {_e}")
+
+try:
+    from ldf_loader import load_ldf
+    _LDF_CFG = load_ldf(os.path.join(_HERE, "wiperwash.ldf"))
+except Exception as _e:
+    print(f"[panels] LDF non chargé : {_e}")
+
+def _dbc_signals_for(msg_id: int) -> list[str]:
+    """Retourne la liste des noms de signaux pour un message CAN."""
+    if _DBC_CFG is None:
+        return []
+    msg = _DBC_CFG["messages"].get(msg_id)
+    return list(msg.signals.keys()) if msg else []
+
+def _ldf_signals_for(frame_id: str) -> list[str]:
+    """Retourne la liste des signaux LIN pour un frame name."""
+    if _LDF_CFG is None:
+        return []
+    frames = _LDF_CFG.get("frames", {})
+    fr = frames.get(frame_id, {})
+    return list(fr.get("signals", {}).keys())
+
+def _decode_can_physical(ev: dict) -> str:
+    """
+    Décode les signaux physiques d'une trame CAN via le DBC.
+    Retourne une chaîne  Signal=valeur unité  pour chaque signal.
+    Si DBC absent ou trame inconnue, retourne chaîne vide (fallback manuel).
+    """
+    if _DBC_CFG is None:
+        return ""
+    cid  = ev.get("can_id_int", 0)
+    msg  = _DBC_CFG["messages"].get(cid)
+    if msg is None:
+        return ""
+    raw_hex = ev.get("data", "")
+    try:
+        data_bytes = bytes(int(h, 16) for h in raw_hex.split())
+    except Exception:
+        return ""
+    try:
+        vals = _dbc_unpack(msg, data_bytes)
+    except Exception:
+        return ""
+    parts = []
+    for sig_name, phys in vals.items():
+        sig = msg.signals.get(sig_name)
+        unit = sig.unit if sig else ""
+        # Afficher valeur entière si pas de décimale utile
+        if isinstance(phys, float) and phys == int(phys):
+            phys = int(phys)
+        # Résoudre les VAL_ (enum)
+        val_str = str(phys)
+        if sig and sig.values and isinstance(phys, (int, float)):
+            val_str = sig.values.get(int(phys), val_str)
+        parts.append(f"{sig_name}={val_str}{(' ' + unit) if unit else ''}")
+    return "  ".join(parts)
+
+def _decode_lin_physical(ev: dict) -> str:
+    """
+    Décode les signaux physiques d'une trame LIN via le LDF.
+    """
+    if _LDF_CFG is None:
+        return ""
+    raw = ev.get("raw", "")
+    pid = ev.get("pid", "")
+    frames = _LDF_CFG.get("frames", {})
+    # Chercher le frame par PID
+    target = None
+    for fname, fdef in frames.items():
+        if str(fdef.get("id", "")).lower() == str(pid).lower():
+            target = fdef; break
+    if target is None:
+        return ""
+    try:
+        data_bytes = bytes(int(h, 16) for h in raw.split())
+    except Exception:
+        return ""
+    signals = target.get("signals", {})
+    parts = []
+    for sig_name, sdef in signals.items():
+        try:
+            start = sdef.get("start_bit", 0)
+            length = sdef.get("length", 8)
+            # Extraction simple little-endian
+            raw_int = int.from_bytes(data_bytes, "little")
+            mask = (1 << length) - 1
+            raw_val = (raw_int >> start) & mask
+            factor  = sdef.get("factor", 1.0)
+            offset  = sdef.get("offset", 0.0)
+            phys    = raw_val * factor + offset
+            unit    = sdef.get("unit", "")
+            if phys == int(phys): phys = int(phys)
+            parts.append(f"{sig_name}={phys}{(' ' + unit) if unit else ''}")
+        except Exception:
+            pass
+    return "  ".join(parts)
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFrame, QLabel,
@@ -816,16 +928,30 @@ class VehicleRainPanel(QWidget):
 #  CRS / LIN PANEL
 # ═══════════════════════════════════════════════════════════
 class LINOscilloscope(QWidget):
-    WINDOW = 15.0
+    WINDOW = 5.0
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._evts: deque = deque()
+        self._paused = False
+        self._pause_time = 0.0
         self.setMinimumHeight(120)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._t = QTimer(); self._t.timeout.connect(self.update); self._t.start(100)  # Optimisation: 100ms (au lieu de 40ms)
 
+    def set_window(self, seconds: float) -> None:
+        self.WINDOW = seconds
+
+    def set_paused(self, paused: bool) -> None:
+        if paused and not self._paused:
+            self._pause_time = time.time()
+        self._paused = paused
+        if not paused:
+            self._pause_time = 0.0
+
     def add_event(self, typ: str, label: str = "") -> None:
+        if self._paused:
+            return
         t   = time.time()
         amp = 1.0 if typ == "TX" else 0.65
         col = LIN_TX_C if typ == "TX" else LIN_RX_C
@@ -906,7 +1032,8 @@ class LINOscilloscope(QWidget):
             ly += 13
         p.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
         p.setPen(QPen(QColor(A_GREEN)))
-        p.drawText(W - MR - 28, MT, 28, 12, Qt.AlignmentFlag.AlignCenter, "* LIVE")
+        p.drawText(W - MR - 28, MT, 28, 12, Qt.AlignmentFlag.AlignCenter,
+                   "PAUSE" if self._paused else "LIVE")
 
 
 class LINTableWidget(QTableWidget):
@@ -1335,19 +1462,63 @@ class CRSLINPanel(QWidget):
         for attr, lbl_txt, co in [("_cnt_tx", "TX", LIN_TX_C),
                                    ("_cnt_rx", "RX", LIN_RX_C),
                                    ("_cnt_tot", "TOTAL", A_TEAL2)]:
-            v = _lbl("0", 15, True, co, True); setattr(self, attr, v)
+            v = _lbl("0", 5, True, co, True); setattr(self, attr, v)
             col = QVBoxLayout(); col.setSpacing(1)
             col.addWidget(_lbl(lbl_txt, 9, False, W_TEXT_DIM)); col.addWidget(v)
             rh.addLayout(col)
         hdr_pan.body().addLayout(rh); lay.addWidget(hdr_pan)
 
-        osc_pan = InstrumentPanel("LIN Bus Signal — Rolling 30s Window", LIN_TX_C)
+        osc_pan = InstrumentPanel("LIN Bus Signal — Rolling Window", LIN_TX_C)
         self._osc = LINOscilloscope()
         osc_pan.body().setContentsMargins(0, 4, 0, 4)
+
+        # ── Barre de contrôle oscilloscope LIN ───────────────
+        ctrl = QHBoxLayout(); ctrl.setSpacing(6)
+        # Sélecteur de fenêtre temporelle
+        ctrl.addWidget(_lbl("Window:", 9, False, W_TEXT_DIM))
+        self._lin_win_combo = QComboBox()
+        self._lin_win_combo.addItems(["5 s", "30 s", "60 s"])
+        self._lin_win_combo.setFixedWidth(70); self._lin_win_combo.setFixedHeight(22)
+        self._lin_win_combo.setStyleSheet(
+            f"QComboBox{{background:{W_PANEL};color:{W_TEXT};"
+            f"border:1px solid {W_BORDER};border-radius:2px;"
+            f"padding:1px 4px;font-size:9pt;font-family:{FONT_MONO};}}"
+            f"QComboBox::drop-down{{border:none;width:14px;}}"
+            f"QComboBox QAbstractItemView{{background:{W_PANEL2};color:{W_TEXT};"
+            f"border:1px solid {W_BORDER};selection-background-color:{W_PANEL3};}}")
+        self._lin_win_combo.currentTextChanged.connect(
+            lambda t: self._osc.set_window(float(t.split()[0])))
+        ctrl.addWidget(self._lin_win_combo)
+        ctrl.addSpacing(8)
+        # Bouton Pause/Resume
+        self._lin_pause_btn = _cd_btn("Pause", "#555555", h=22, w=80)
+        self._lin_pause_btn.setCheckable(True)
+        def _toggle_lin_pause(checked):
+            self._osc.set_paused(checked)
+            self._lin_pause_btn.setText("Resume" if checked else "Pause")
+        self._lin_pause_btn.toggled.connect(_toggle_lin_pause)
+        ctrl.addWidget(self._lin_pause_btn)
+        ctrl.addStretch()
+        # Stats live TX/RX rate
+        self._lin_rate_lbl = _lbl("Rate: — fr/s", 9, False, W_TEXT_DIM, True)
+        ctrl.addWidget(self._lin_rate_lbl)
+        osc_pan.body().addLayout(ctrl)
         osc_pan.body().addWidget(self._osc)
         lay.addWidget(osc_pan, 1)
         self._ltx = 0; self._lrx = 0
+        # Timer taux LIN
+        self._lin_rate_timer = QTimer(); self._lin_rate_timer.timeout.connect(self._update_lin_rate)
+        self._lin_rate_timer.start(2000)
+        self._lin_rate_prev = 0; self._lin_rate_t0 = time.time()
         return w
+
+    def _update_lin_rate(self) -> None:
+        total = self._ltx + self._lrx
+        dt = time.time() - self._lin_rate_t0
+        if dt > 0:
+            rate = (total - self._lin_rate_prev) / dt
+            self._lin_rate_lbl.setText(f"Rate: {rate:.1f} fr/s")
+        self._lin_rate_prev = total; self._lin_rate_t0 = time.time()
 
     # ── LIN Frame Table ───────────────────────────────────────
     def _build_table(self) -> QWidget:
@@ -1360,27 +1531,46 @@ class CRSLINPanel(QWidget):
         tl = QHBoxLayout(tb); tl.setContentsMargins(10, 0, 10, 0); tl.setSpacing(8)
         tl.addWidget(_lbl("Filter:", 10, False, W_TEXT_DIM))
 
-        self._combo = QComboBox()
-        self._combo.addItems(["All Frames", "TX", "RX_HDR"])
-        self._combo.setFixedWidth(110); self._combo.setFixedHeight(24)
-        self._combo.setStyleSheet(
+        _lin_combo_style = (
             f"QComboBox{{background:{W_PANEL};color:{W_TEXT};"
             f"border:1px solid {W_BORDER};border-radius:2px;"
             f"padding:1px 6px;font-size:10pt;font-family:{FONT_MONO};}}"
             f"QComboBox::drop-down{{border:none;width:16px;}}"
             f"QComboBox QAbstractItemView{{background:{W_PANEL2};color:{W_TEXT};"
-            f"border:1px solid {W_BORDER};selection-background-color:{W_PANEL3};}}")
+            f"border:1px solid {W_BORDER};selection-background-color:{W_PANEL3};}}"
+        )
+
+        self._combo = QComboBox()
+        self._combo.addItems(["All Frames", "TX", "RX_HDR"])
+        self._combo.setFixedWidth(110); self._combo.setFixedHeight(24)
+        self._combo.setStyleSheet(_lin_combo_style)
         self._combo.currentTextChanged.connect(self._filter_tbl)
+
+        # Filtre par signal LDF
+        tl.addWidget(_lbl("Signal:", 10, False, W_TEXT_DIM))
+        self._lin_sig_combo = QComboBox()
+        self._lin_sig_combo.addItem("All Signals")
+        # Peupler avec signaux LDF connus du frame 0x16
+        for sig in _ldf_signals_for("LeftStickWiperRequester"):
+            self._lin_sig_combo.addItem(sig)
+        self._lin_sig_combo.setFixedWidth(150); self._lin_sig_combo.setFixedHeight(24)
+        self._lin_sig_combo.setStyleSheet(_lin_combo_style)
+        self._lin_sig_combo.currentTextChanged.connect(self._filter_tbl)
 
         cb = QCheckBox("Auto-scroll"); cb.setChecked(True)
         cb.setStyleSheet(f"color:{W_TEXT};background:transparent;font-size:10pt;")
         cb.toggled.connect(lambda v: self._tbl.set_auto(v) if hasattr(self, "_tbl") else None)
 
-        btn_clr = _cd_btn("Clear", "#888888", h=24, w=60)
+        btn_clr = _cd_btn("Clear", "#888888", h=24, w=80)
         btn_clr.clicked.connect(lambda: self._tbl.clear_all())
 
-        tl.addWidget(self._combo); tl.addWidget(cb); tl.addWidget(btn_clr); tl.addStretch()
-        tl.addWidget(_lbl("Double-click -> full frame decode", 10, False, W_TEXT_DIM, True))
+        btn_exp = _cd_btn("CSV", "#1A6E4A", h=24, w=80)
+        btn_exp.clicked.connect(self._export_lin_csv)
+
+        tl.addWidget(self._combo); tl.addWidget(self._lin_sig_combo)
+        tl.addWidget(cb); tl.addWidget(btn_clr)
+        tl.addWidget(btn_exp); tl.addStretch()
+        tl.addWidget(_lbl("", 10, False, W_TEXT_DIM, True))
         lay.addWidget(tb)
 
         self._tbl = LINTableWidget(); lay.addWidget(self._tbl, 1)
@@ -1388,14 +1578,50 @@ class CRSLINPanel(QWidget):
         bot = QFrame(); bot.setFixedHeight(22)
         bot.setStyleSheet(
             f"QFrame{{background:{W_TOOLBAR};border-top:1px solid {W_BORDER};}}")
-        bl = QHBoxLayout(bot); bl.setContentsMargins(10, 0, 10, 0)
+        bl = QHBoxLayout(bot); bl.setContentsMargins(10, 0, 10, 0); bl.setSpacing(12)
         self.lbl_cnt = _lbl("0 frames", 10, False, W_TEXT_DIM, True)
-        bl.addWidget(self.lbl_cnt); bl.addStretch()
-        bl.addWidget(_lbl("Double-click = full decode", 9, False, W_TEXT_DIM, True))
+        bl.addWidget(self.lbl_cnt)
+        bl.addWidget(_lbl("|", 9, False, W_BORDER, True))
+        self._lin_tbl_tx_lbl = _lbl("TX: 0", 9, False, LIN_TX_C, True)
+        self._lin_tbl_rx_lbl = _lbl("RX: 0", 9, False, LIN_RX_C, True)
+        bl.addWidget(self._lin_tbl_tx_lbl); bl.addWidget(self._lin_tbl_rx_lbl)
+        bl.addStretch()
+        bl.addWidget(_lbl("", 9, False, W_TEXT_DIM, True))
         lay.addWidget(bot)
 
         self._all_evts: deque = deque(maxlen=MAX_ROWS)
+        self._tbl_tx_cnt = 0; self._tbl_rx_cnt = 0
         return w
+
+    def _export_lin_csv(self) -> None:
+        import csv, os
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.expanduser(f"~/lin_export_{ts}.csv")
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["#", "Time", "Direction", "PID",
+                             "Byte0/Op", "Byte1/Alive", "Checksum", "Op Name", "Raw"])
+                for ev in self._all_evts:
+                    d = ev.get("type", "")
+                    ts_s = datetime.datetime.fromtimestamp(
+                        ev.get("time", time.time())).strftime("%H:%M:%S.%f")[:-3]
+                    op = ev.get("op", 0)
+                    row = ["", ts_s,
+                           "TX slave->BCM" if d == "TX" else "RX_HDR BCM->slave",
+                           "0xD6",
+                           f"0x{op:02X} {WOP.get(op,{}).get('name','?')}" if d == "TX" else "—",
+                           f"0x{ev.get('alive',0):02X}" if d == "TX" else "—",
+                           f"0x{ev.get('cs_int',0):02X}" if d == "TX" else "—",
+                           WOP.get(op, {}).get("name", "?") if d == "TX" else "LIN HEADER",
+                           ev.get("raw", "")]
+                    w.writerow(row)
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Export LIN CSV",
+                                    f"✓ Fichier exporté :\n{path}")
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Export LIN CSV", f"Erreur export :\n{e}")
 
     # ── API publique ──────────────────────────────────────────
     def add_lin_event(self, ev: dict) -> None:
@@ -1403,29 +1629,47 @@ class CRSLINPanel(QWidget):
         if t == "TX":
             op = ev.get("op", 0)
             self._osc.add_event("TX", WOP.get(op, {}).get("name", "?"))
-            self._ltx += 1
+            self._ltx += 1; self._tbl_tx_cnt += 1
         elif t == "RX_HDR":
             self._osc.add_event("RX", "HDR")
-            self._lrx += 1
+            self._lrx += 1; self._tbl_rx_cnt += 1
         self._cnt_tx.setText(str(self._ltx))
         self._cnt_rx.setText(str(self._lrx))
         self._cnt_tot.setText(str(self._ltx + self._lrx))
+        self._lin_tbl_tx_lbl.setText(f"TX: {self._tbl_tx_cnt}")
+        self._lin_tbl_rx_lbl.setText(f"RX: {self._tbl_rx_cnt}")
         self._all_evts.append(ev)
         if len(self._all_evts) > MAX_ROWS:
             pass  # deque(maxlen=MAX_ROWS) auto-trims
-        flt = self._combo.currentText()
-        if flt in ("All Frames", "") or flt == t:
+        flt     = self._combo.currentText()
+        sig_flt = self._lin_sig_combo.currentText() if hasattr(self, "_lin_sig_combo") else "All Signals"
+        if (flt in ("All Frames", "") or flt == t) and self._lin_frame_matches_sig(ev, sig_flt):
             self._tbl.add_event(ev)
         self.lbl_cnt.setText(f"{len(self._all_evts)} frames")
 
+    @staticmethod
+    def _lin_frame_matches_sig(ev: dict, sig_flt: str) -> bool:
+        if sig_flt in ("All Signals", ""):
+            return True
+        # Chercher le signal dans op_name ou dans les champs connus
+        op = ev.get("op", 0)
+        op_name = WOP.get(op, {}).get("name", "") if isinstance(op, int) else str(op)
+        if sig_flt.lower() in op_name.lower():
+            return True
+        # Chercher dans le raw LDF décodé si disponible
+        phys = _decode_lin_physical(ev)
+        return sig_flt in phys
+
     def _filter_tbl(self) -> None:
-        flt = self._combo.currentText()
+        flt     = self._combo.currentText()
+        sig_flt = self._lin_sig_combo.currentText() if hasattr(self, "_lin_sig_combo") else "All Signals"
         prev_auto = self._tbl._auto
         self._tbl._auto = False
         self._tbl.setUpdatesEnabled(False)
         self._tbl.clear_all()
         for ev in self._all_evts:
-            if flt in ("All Frames", "") or flt == ev.get("type", ""):
+            if (flt in ("All Frames", "") or flt == ev.get("type", "")) and \
+               self._lin_frame_matches_sig(ev, sig_flt):
                 self._tbl.add_event(ev)
         self._tbl._auto = prev_auto
         self._tbl.setUpdatesEnabled(True)
@@ -1449,11 +1693,20 @@ class CANOscilloscope(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._evts: deque = deque()    # (time, can_id_int, color, amp)
+        self._paused = False
         self.setMinimumHeight(150)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._t = QTimer(); self._t.timeout.connect(self.update); self._t.start(100)  # Optimisation: 100ms (au lieu de 40ms)
 
+    def set_window(self, seconds: float) -> None:
+        self.WINDOW = seconds
+
+    def set_paused(self, paused: bool) -> None:
+        self._paused = paused
+
     def add_event(self, can_id_int: int) -> None:
+        if self._paused:
+            return
         t = time.time()
         # trouver le canal correspondant
         for cid, _, color, amp, _ in _CAN_CHANNELS:
@@ -1535,7 +1788,8 @@ class CANOscilloscope(QWidget):
         # Légende LIVE
         p.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
         p.setPen(QPen(QColor(A_GREEN)))
-        p.drawText(W - MR - 34, MT, 34, 12, Qt.AlignmentFlag.AlignCenter, "* LIVE")
+        p.drawText(W - MR - 34, MT, 34, 12, Qt.AlignmentFlag.AlignCenter,
+                   "⏸ PAUSE" if self._paused else "* LIVE")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1577,7 +1831,16 @@ class CANTableWidget(QTableWidget):
 
     @staticmethod
     def _decode_frame(ev: dict) -> str:
-        """Retourne une chaîne décodée selon le CAN ID."""
+        """
+        Retourne une chaîne décodée selon le CAN ID.
+        Priorité : décodage DBC physique si disponible, sinon décodage manuel.
+        """
+        # Tentative décodage DBC (valeurs physiques + facteurs + VAL_)
+        phys = _decode_can_physical(ev)
+        if phys:
+            return phys
+
+        # Fallback décodage manuel (fields pré-décodés par bcmcan)
         cid = ev.get("can_id_int", 0)
         f   = ev.get("fields", {})
         if cid == 0x200:
@@ -1715,10 +1978,12 @@ class CANBusPanel(QWidget):
     # Signal émis quand 0x200 reçu → main_window connecte à can_worker.send_0x202
     ack_needed = Signal(int, int, int)   # ack_status, error_code, alive
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, sim_getter=None, parent=None) -> None:
         super().__init__(parent)
+        self._sim_getter = sim_getter   # lambda → SimClient ou None
         self._wc_fault = False   # False=ACK mode, True=NACK mode (fault injecté)
         self._car_html  = None   # CarHTMLWidget injecté depuis main_window
+        self._motor_driver_fault = False   # état courant du bouton B2102
         self.setStyleSheet(f"background:{W_BG};")
         vl = QVBoxLayout(self); vl.setContentsMargins(0, 0, 0, 0); vl.setSpacing(0)
 
@@ -1848,6 +2113,23 @@ class CANBusPanel(QWidget):
         sta_row.addWidget(self._led_fault); sta_row.addWidget(self.lbl_fault); sta_row.addStretch()
         pan_sta.body().addLayout(sta_row)
 
+        # ── Bouton injection défaut driver moteur (B2102) ─────────────
+        pan_sta.body().addWidget(_hsep())
+        pan_sta.body().addWidget(_lbl("Motor Driver Fault", 9, True, W_TEXT_DIM))
+        self._btn_motor_fault = QPushButton("INJECT B2102")
+        self._btn_motor_fault.setCheckable(True)
+        self._btn_motor_fault.setChecked(False)
+        self._btn_motor_fault.setStyleSheet(
+            f"QPushButton{{background:#444;color:{W_TEXT_DIM};"
+            f"border:1px solid #666;border-radius:3px;"
+            f"padding:3px 8px;font-size:9pt;font-weight:bold;}}"
+            f"QPushButton:checked{{background:{A_RED};color:#FFF;"
+            f"border:2px solid #8B0000;border-radius:3px;"
+            f"padding:3px 8px;font-size:9pt;font-weight:bold;}}"
+        )
+        self._btn_motor_fault.toggled.connect(self._on_motor_driver_fault_toggled)
+        pan_sta.body().addWidget(self._btn_motor_fault)
+
         stats_row = QHBoxLayout(); stats_row.setSpacing(12)
         for k, t2, co in [("sta_alive", "Alive", CAN_STA_C),
                            ("sta_crc",   "CRC",   W_TEXT_DIM)]:
@@ -1862,6 +2144,15 @@ class CANBusPanel(QWidget):
         # La colonne droite prend stretch=3 (étroite)
         lay.addWidget(right_col, 3)
         return w
+
+    def _on_motor_driver_fault_toggled(self, checked: bool) -> None:
+        """Injecte ou retire le défaut driver moteur B2102 côté simulateur."""
+        self._motor_driver_fault = checked
+        sim = self._sim_getter() if self._sim_getter else None
+        if sim and sim.is_connected():
+            sim.set_motor_driver_fault(checked)
+        self._btn_motor_fault.setText(
+            "FAULT ACTIVE  (B2102)" if checked else "INJECT B2102")
 
     def _set_ack_mode(self, fault: bool) -> None:
         """Bascule entre mode ACK (no fault) et NACK (fault)."""
@@ -1903,12 +2194,54 @@ class CANBusPanel(QWidget):
 
         hdr_pan.body().addLayout(rh); lay.addWidget(hdr_pan)
 
-        osc_pan = InstrumentPanel("CAN Bus Signal — Rolling 30s Window", CAN_VEH_C)
+        osc_pan = InstrumentPanel("CAN Bus Signal — Rolling Window", CAN_VEH_C)
         self._osc = CANOscilloscope()
         osc_pan.body().setContentsMargins(0, 4, 0, 4)
+
+        # ── Barre de contrôle oscilloscope CAN ───────────────
+        can_ctrl = QHBoxLayout(); can_ctrl.setSpacing(6)
+        can_ctrl.addWidget(_lbl("Window:", 9, False, W_TEXT_DIM))
+        self._can_win_combo = QComboBox()
+        self._can_win_combo.addItems(["5 s", "30 s", "60 s"])
+        self._can_win_combo.setCurrentIndex(1)   # défaut 30s
+        self._can_win_combo.setFixedWidth(70); self._can_win_combo.setFixedHeight(22)
+        self._can_win_combo.setStyleSheet(
+            f"QComboBox{{background:{W_PANEL};color:{W_TEXT};"
+            f"border:1px solid {W_BORDER};border-radius:2px;"
+            f"padding:1px 4px;font-size:9pt;font-family:{FONT_MONO};}}"
+            f"QComboBox::drop-down{{border:none;width:14px;}}"
+            f"QComboBox QAbstractItemView{{background:{W_PANEL2};color:{W_TEXT};"
+            f"border:1px solid {W_BORDER};selection-background-color:{W_PANEL3};}}")
+        self._can_win_combo.currentTextChanged.connect(
+            lambda t: self._osc.set_window(float(t.split()[0])))
+        can_ctrl.addWidget(self._can_win_combo)
+        can_ctrl.addSpacing(8)
+        self._can_pause_btn = _cd_btn("Pause", "#555555", h=22, w=80)
+        self._can_pause_btn.setCheckable(True)
+        def _toggle_can_pause(checked):
+            self._osc.set_paused(checked)
+            self._can_pause_btn.setText("Resume" if checked else "Pause")
+        self._can_pause_btn.toggled.connect(_toggle_can_pause)
+        can_ctrl.addWidget(self._can_pause_btn)
+        can_ctrl.addStretch()
+        self._can_rate_lbl = _lbl("Rate: — fr/s", 9, False, W_TEXT_DIM, True)
+        can_ctrl.addWidget(self._can_rate_lbl)
+        osc_pan.body().addLayout(can_ctrl)
         osc_pan.body().addWidget(self._osc)
         lay.addWidget(osc_pan, 1)
+        # Timer taux CAN
+        self._can_rate_timer = QTimer(); self._can_rate_timer.timeout.connect(self._update_can_rate)
+        self._can_rate_timer.start(2000)
+        self._can_rate_prev_total = 0; self._can_rate_t0 = time.time()
         return w
+
+    def _update_can_rate(self) -> None:
+        total = sum(self._cnt.values())
+        dt = time.time() - self._can_rate_t0
+        if dt > 0:
+            rate = (total - self._can_rate_prev_total) / dt
+            self._can_rate_lbl.setText(f"Rate: {rate:.1f} fr/s")
+        self._can_rate_prev_total = total; self._can_rate_t0 = time.time()
 
     # ── Onglet 3 — CAN Frame Table ───────────────────────────
     def _build_table(self) -> QWidget:
@@ -1920,47 +2253,116 @@ class CANBusPanel(QWidget):
         tl = QHBoxLayout(tb); tl.setContentsMargins(10, 0, 10, 0); tl.setSpacing(8)
         tl.addWidget(_lbl("Filter:", 10, False, W_TEXT_DIM))
 
-        self._can_combo = QComboBox()
-        self._can_combo.addItems(["All Frames", "RX 0x200", "TX 0x201", "TX 0x202", "TX 0x300", "TX 0x301"])
-        self._can_combo.setFixedWidth(130); self._can_combo.setFixedHeight(24)
-        self._can_combo.setStyleSheet(
+        _combo_style = (
             f"QComboBox{{background:{W_PANEL};color:{W_TEXT};"
             f"border:1px solid {W_BORDER};border-radius:2px;"
             f"padding:1px 6px;font-size:10pt;font-family:{FONT_MONO};}}"
             f"QComboBox::drop-down{{border:none;width:16px;}}"
             f"QComboBox QAbstractItemView{{background:{W_PANEL2};color:{W_TEXT};"
-            f"border:1px solid {W_BORDER};selection-background-color:{W_PANEL3};}}")
+            f"border:1px solid {W_BORDER};selection-background-color:{W_PANEL3};}}"
+        )
+
+        # Filtre par message (ID)
+        self._can_combo = QComboBox()
+        self._can_combo.addItems(["All Frames", "RX 0x200", "TX 0x201", "TX 0x202", "TX 0x300", "TX 0x301"])
+        self._can_combo.setFixedWidth(110); self._can_combo.setFixedHeight(24)
+        self._can_combo.setStyleSheet(_combo_style)
         self._can_combo.currentTextChanged.connect(self._filter_can_tbl)
+
+        # Filtre par signal DBC — peuplé dynamiquement selon le message sélectionné
+        tl.addWidget(_lbl("Signal:", 10, False, W_TEXT_DIM))
+        self._can_sig_combo = QComboBox()
+        self._can_sig_combo.addItem("All Signals")
+        self._can_sig_combo.setFixedWidth(150); self._can_sig_combo.setFixedHeight(24)
+        self._can_sig_combo.setStyleSheet(_combo_style)
+        self._can_sig_combo.currentTextChanged.connect(self._filter_can_tbl)
+
+        # Quand le filtre message change → mettre à jour les signaux disponibles
+        def _on_msg_filter(txt):
+            self._can_sig_combo.blockSignals(True)
+            self._can_sig_combo.clear()
+            self._can_sig_combo.addItem("All Signals")
+            # Extraire le CAN ID du texte du combo (ex: "RX 0x200" → 0x200)
+            import re
+            m = re.search(r'0x([0-9A-Fa-f]+)', txt)
+            if m and _DBC_CFG:
+                cid = int(m.group(1), 16)
+                for sig in _dbc_signals_for(cid):
+                    self._can_sig_combo.addItem(sig)
+            self._can_sig_combo.blockSignals(False)
+            self._filter_can_tbl()
+        self._can_combo.currentTextChanged.connect(_on_msg_filter)
 
         cb = QCheckBox("Auto-scroll"); cb.setChecked(True)
         cb.setStyleSheet(f"color:{W_TEXT};background:transparent;font-size:10pt;")
         cb.toggled.connect(lambda v: self._can_tbl.set_auto(v) if hasattr(self, "_can_tbl") else None)
 
-        btn_clr = _cd_btn("Clear", "#888888", h=24, w=60)
+        btn_clr = _cd_btn("Clear", "#888888", h=24, w=80)
         btn_clr.clicked.connect(lambda: self._can_tbl.clear_all())
 
-        tl.addWidget(self._can_combo); tl.addWidget(cb); tl.addWidget(btn_clr); tl.addStretch()
-        tl.addWidget(_lbl("Double-click → full frame decode", 10, False, W_TEXT_DIM, True))
+        btn_exp_can = _cd_btn("CSV", "#1A4E8E", h=24, w=80)
+        btn_exp_can.clicked.connect(self._export_can_csv)
+
+        tl.addWidget(self._can_combo); tl.addWidget(self._can_sig_combo)
+        tl.addWidget(cb); tl.addWidget(btn_clr)
+        tl.addWidget(btn_exp_can); tl.addStretch()
+        tl.addWidget(_lbl("", 10, False, W_TEXT_DIM, True))
         lay.addWidget(tb)
 
         self._can_tbl = CANTableWidget(); lay.addWidget(self._can_tbl, 1)
 
         bot = QFrame(); bot.setFixedHeight(22)
         bot.setStyleSheet(f"QFrame{{background:{W_TOOLBAR};border-top:1px solid {W_BORDER};}}")
-        bl = QHBoxLayout(bot); bl.setContentsMargins(10, 0, 10, 0)
+        bl = QHBoxLayout(bot); bl.setContentsMargins(10, 0, 10, 0); bl.setSpacing(6)
         self.lbl_can_cnt = _lbl("0 frames", 10, False, W_TEXT_DIM, True)
-        bl.addWidget(self.lbl_can_cnt); bl.addStretch()
-        # légende couleurs
+        bl.addWidget(self.lbl_can_cnt)
+        bl.addWidget(_lbl("|", 9, False, W_BORDER, True))
+        # Compteurs par canal dans le footer
+        self._can_tbl_cnt_lbls = {}
         for cid, label, color, _, _ in _CAN_CHANNELS:
-            dot = QLabel("●"); dot.setFont(QFont(FONT_MONO, 10))
+            short = f"0x{cid:03X}"
+            dot = QLabel("●"); dot.setFont(QFont(FONT_MONO, 9))
             dot.setStyleSheet(f"color:{color};background:transparent;")
             bl.addWidget(dot)
-            bl.addWidget(_lbl(label, 9, False, W_TEXT_DIM, True))
-            bl.addSpacing(8)
+            lbl_c = _lbl(f"{short}:0", 9, False, W_TEXT_DIM, True)
+            self._can_tbl_cnt_lbls[cid] = lbl_c
+            bl.addWidget(lbl_c)
+            bl.addSpacing(4)
+        bl.addStretch()
         lay.addWidget(bot)
 
         self._all_can_evts: deque = deque(maxlen=MAX_ROWS)
+        self._can_tbl_per_id = {cid: 0 for cid, *_ in _CAN_CHANNELS}
         return w
+
+    def _export_can_csv(self) -> None:
+        import csv, os
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.expanduser(f"~/can_export_{ts}.csv")
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["#", "Time", "Dir", "CAN ID", "DLC",
+                             "Data (hex)", "Description", "Decoded"])
+                for i, ev in enumerate(self._all_can_evts):
+                    ts_s = datetime.datetime.fromtimestamp(
+                        ev.get("time", time.time())).strftime("%H:%M:%S.%f")[:-3]
+                    d = ev.get("type", "")
+                    w.writerow([
+                        i + 1, ts_s,
+                        "← RX" if d == "RX" else "→ TX",
+                        ev.get("can_id", "?"),
+                        ev.get("dlc", 8),
+                        ev.get("data", ""),
+                        ev.get("desc", ""),
+                        CANTableWidget._decode_frame(ev),
+                    ])
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Export CAN CSV",
+                                    f"✓ Fichier exporté :\n{path}")
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Export CAN CSV", f"Erreur export :\n{e}")
 
     # ── API publique ──────────────────────────────────────────
     def add_can_event(self, ev: dict) -> None:
@@ -2005,37 +2407,52 @@ class CANBusPanel(QWidget):
         if len(self._all_can_evts) > MAX_ROWS:
             pass  # deque(maxlen=MAX_ROWS) auto-trims
 
-        flt = self._can_combo.currentText()
-        if self._frame_matches_filter(ev, flt):
+        # Compteur par canal dans le footer de la table
+        if cid in self._can_tbl_per_id:
+            self._can_tbl_per_id[cid] += 1
+            if cid in self._can_tbl_cnt_lbls:
+                self._can_tbl_cnt_lbls[cid].setText(
+                    f"0x{cid:03X}:{self._can_tbl_per_id[cid]}")
+
+        flt     = self._can_combo.currentText()
+        sig_flt = self._can_sig_combo.currentText() if hasattr(self, "_can_sig_combo") else "All Signals"
+        if self._frame_matches_filter(ev, flt, sig_flt):
             self._can_tbl.add_event(ev)
         self.lbl_can_cnt.setText(f"{len(self._all_can_evts)} frames")
 
     @staticmethod
-    def _frame_matches_filter(ev: dict, flt: str) -> bool:
-        if flt == "All Frames":
-            return True
-        cid = ev.get("can_id_int", 0)
-        typ = ev.get("type", "")
-        mapping = {
-            "RX 0x200": (0x200, "RX"),
-            "TX 0x201": (0x201, "TX"),
-            "TX 0x202": (0x202, "TX"),
-            "TX 0x300": (0x300, "TX"),
-            "TX 0x301": (0x301, "TX"),
-        }
-        if flt in mapping:
-            fc, ft = mapping[flt]
-            return cid == fc and typ == ft
+    def _frame_matches_filter(ev: dict, flt: str, sig_flt: str = "All Signals") -> bool:
+        # Filtre par message
+        if flt != "All Frames":
+            cid = ev.get("can_id_int", 0)
+            typ = ev.get("type", "")
+            mapping = {
+                "RX 0x200": (0x200, "RX"),
+                "TX 0x201": (0x201, "TX"),
+                "TX 0x202": (0x202, "TX"),
+                "TX 0x300": (0x300, "TX"),
+                "TX 0x301": (0x301, "TX"),
+            }
+            if flt in mapping:
+                fc, ft = mapping[flt]
+                if not (cid == fc and typ == ft):
+                    return False
+        # Filtre par signal — vérifie que le signal est présent dans les fields
+        if sig_flt and sig_flt != "All Signals":
+            fields = ev.get("fields", {})
+            if sig_flt not in fields:
+                return False
         return True
 
     def _filter_can_tbl(self) -> None:
-        flt = self._can_combo.currentText()
+        flt     = self._can_combo.currentText()
+        sig_flt = self._can_sig_combo.currentText() if hasattr(self, "_can_sig_combo") else "All Signals"
         prev_auto = self._can_tbl._auto
         self._can_tbl._auto = False
         self._can_tbl.setUpdatesEnabled(False)
         self._can_tbl.clear_all()
         for ev in self._all_can_evts:
-            if self._frame_matches_filter(ev, flt):
+            if self._frame_matches_filter(ev, flt, sig_flt):
                 self._can_tbl.add_event(ev)
         self._can_tbl._auto = prev_auto
         self._can_tbl.setUpdatesEnabled(True)

@@ -118,7 +118,7 @@ class TestRunner(QObject):
                        "TC_CAN_003","TC_GEN_001","TC_SPD_001","TC_AUTO_004",
                        "TC_FSR_008","TC_FSR_010","TC_COM_001","TC_B2103",
                        "LIN_INVALID_CMD_001","T_RAIN_AUTO_SENSOR_ERROR",
-                       "T_B2009_CAN","T50b","T_IGN_OFF_WIPER_IGNORED","T_B2009_CASA"):
+                       "T_CAS_B_SPEED1_REVERSE","T_B2009_CAN","T50b","T_B2009_CASA"):
             last = getattr(self, "_last_tid", "")
             delay = 8000 if last == "T22" else \
                     3000 if last == "TC_FSR_010" else \
@@ -160,6 +160,15 @@ class TestRunner(QObject):
         if tid == "T10":
             self.log_msg.emit("  → stop_lin_tx")
             self._lin_w.queue_send({"test_cmd": "stop_lin_tx"})
+        elif tid in ("T03", "T04", "T05"):
+            # 0x200 est émis cycliquement dès que wc_available=True (CAS B).
+            # Pas besoin de stimulus wiper.
+            self.log_msg.emit(f"  → {tid} : wc_available=True (CAS B)")
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available", True)
+                self._rte_client.set_cmd("ignition_status", 1)
+            self._motor_w.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
         elif tid == "T11":
             self.log_msg.emit("  → stop_can_tx")
             # wc_available=True obligatoire : sans CAS B actif, le BCM n'observe
@@ -397,6 +406,17 @@ class TestRunner(QObject):
 
         elif tid == "TC_FSR_010":
             self.log_msg.emit("  → TC_FSR_010 : CRC corrompu sur 0x201 (émission autonome)")
+            # Incrémenter _rc_gen EN PREMIER : invalide tout _fsr010_cleanup résiduel
+            # d'un run précédent encore en attente (délai 3500ms) qui poserait
+            # wc_available=False / crs_wiper_op=0 pendant notre setup → BCM sort de SPEED1
+            # avant que la corruption soit activée → 0 trames corrompues émises.
+            self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+            # reset_b2101 : remet _t_last_0x200=now et suspend le check B2101 pendant 3s.
+            # Sans ça, si _t_last_0x200 date du test précédent (TC_CAN_003) et est
+            # périmé de >2s au moment du setup (1400ms), B2101 se déclenche pendant
+            # le délai avant corruption et invalide le test avant même la 1ère trame CRC KO.
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_b2101()
             if self._rte_client:
                 self._rte_client.set_cmd("wc_timeout_active", False)
                 self._rte_client.set_cmd("wc_crc_fault",      False)
@@ -419,7 +439,13 @@ class TestRunner(QObject):
                         self._rte_client.set_cmd("crs_wiper_op",  2)
                     def _fsr010_corrupt():
                         if hasattr(test, "reset_t0"): test.reset_t0()
-                        self._motor_w.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 20})
+                        # Garantir count=0 avant count=8 via sim_client (direct, pas de queue)
+                        # Ceinture + bretelles : reset_corrupt_crc dans _post_test suffit,
+                        # mais ce reset supplémentaire élimine tout résidu d'un run précédent
+                        # qui aurait survécu malgré tout (ex: sim_client indisponible au post_test).
+                        if self._sim_client and self._sim_client.is_connected():
+                            self._sim_client.reset_corrupt_crc()
+                        self._motor_w.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 8})
                         # Autoriser _check_rte() à observer seulement maintenant
                         if hasattr(test, "_stimulus_sent"):
                             test._stimulus_sent = True
@@ -439,37 +465,30 @@ class TestRunner(QObject):
             # du BREAK a chaque trame LIN recue, accumule 5 mesures, puis
             # envoie lin_baud_measured via TCP. Le LIN schedule tourne deja.
 
-        # ── TC_LIN_CS : Checksum LIN 0x16 invalide (v2 — ordre corrigé) ──
+        # ── TC_LIN_CS : 5 trames checksum KO → timeout B2004 ────────────
         elif tid == "TC_LIN_CS":
-            self.log_msg.emit("  → TC_LIN_CS : corruption checksum AVANT commande SPEED1")
-            # ── Préconditions ──────────────────────────────────────────────
-            # 1. BCM en OFF, ignition=ON, crs_wiper_op=0
-            # 2. lin_checksum_fault=False (effacer résidu éventuel)
-            # 3. Activer corruption crslin EN PREMIER
-            # 4. Puis envoyer cmd=SPEED1 → crslin émet WOP=2 AVEC checksum corrompu
-            #    Le BCM reçoit la trame, détecte rx_cs != calc_cs → rejette
-            #    → lin_checksum_fault=True SANS modifier crs_wiper_op
-            # ── Ordre temporel ─────────────────────────────────────────────
-            # t=0   : reset lin_checksum_fault + crs_wiper_op=0
-            # t=200 : corrupt_lin_checksum → corruption active dans crslin
-            #         _stimulus_sent=True + reset_t0() → chrono démarre
-            # t=300 : LIN cmd="SPEED1" → trame corrompue envoyée au BCM
-            # Durée observation : MAX_OBS_MS=1200ms < LIN_TIMEOUT(2000ms)
+            self.log_msg.emit("  → TC_LIN_CS : corrupt checksum ON + SPEED1 → 5 trames KO → B2004")
+            # Séquence :
+            # t=0   : reset lin_checksum_fault + lin_timeout_active
+            # t=200 : corrupt_lin_checksum actif + reset_t0() + cmd=SPEED1
+            #         → crslin émet WOP=2 AVEC checksum corrompu en continu
+            #         → BCM rejette chaque trame (t_last_lin0x16 non mis à jour)
+            #         → après LIN_TIMEOUT (2s = ~5 trames × 400ms) → B2004
+            # La corruption reste active jusqu'au _post_test (restore_lin_checksum)
             if self._rte_client:
                 self._rte_client.set_cmd("lin_checksum_fault", False)
                 self._rte_client.set_cmd("crs_wiper_op",       0)
                 self._rte_client.set_cmd("lin_timeout_active", False)
 
             def _tc_lin_cs_activate():
-                # Étape 1 : activer corruption côté simulateur
                 self._lin_w.queue_send({"test_cmd": "corrupt_lin_checksum"})
-                # Étape 2 : armer l'observation dans l'objet test
                 if hasattr(test, "_stimulus_sent"):
                     test._stimulus_sent = True
                 if hasattr(test, "reset_t0"):
                     test.reset_t0()
-                # Étape 3 : envoyer SPEED1 — crslin va émettre WOP=2
-                # avec checksum XOR 0xFF → BCM doit rejeter
+                # cmd=SPEED1 : crslin émet WOP=2 corrompu en continu
+                # La corruption reste active → toutes les trames sont KO
+                # → t_last_lin0x16 jamais mis à jour → timeout après 2s
                 QTimer.singleShot(100, lambda: self._lin_w.queue_send({"cmd": "SPEED1"}))
 
             QTimer.singleShot(200, _tc_lin_cs_activate)
@@ -979,16 +998,48 @@ class TestRunner(QObject):
                 self._motor_w.queue_send({"rain_intensity": 255, "sensor_status": "ERROR"})
             QTimer.singleShot(1200, _inject_sensor_error)
 
+        elif tid == "T_CAS_B_SPEED1_REVERSE":
+            self.log_msg.emit("  → T_CAS_B_SPEED1_REVERSE : CAS B + SPEED1 LIN→CAN 0x200 + Reverse CAN 0x300")
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",         True)
+                self._rte_client.set_cmd("lin_op_locked",        False)  # LIN doit pouvoir écrire crs_wiper_op
+                self._rte_client.set_cmd("rear_wiper_available", True)
+                self._rte_client.set_cmd("crs_wiper_op",         0)
+                self._rte_client.set_cmd("ignition_status",      1)
+                self._rte_client.set_cmd("reverse_gear",         False)
+            self._motor_w.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+
+            def _casb_speed1_start():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # blade_cycling : évite B2009 en CAS B (blade=0 permanent → STUCK)
+                if self._sim_client and self._sim_client.is_connected():
+                    self._sim_client.start_blade_cycling(period_ms=1500)
+                # SPEED1 via LIN uniquement → _lin_poll_frame écrit crs_wiper_op=2
+                # → BCM entre SPEED1 → envoie CAN 0x200 mode=SPEED1 au WC
+                # PAS de set_cmd("crs_wiper_op", 2) : le stimulus doit venir du bus LIN
+                self._lin_w.queue_send({"cmd": "SPEED1"})
+                # Reverse via CAN 0x300 uniquement (motor_w → bcmcan → trame 0x300)
+                # PAS de set_cmd("reverse_gear", True) : la valeur doit venir du bus CAN
+                def _activate_reverse():
+                    self._motor_w.queue_send(
+                        {"ignition_status": "ON", "reverse_gear": 1, "vehicle_speed": 0})
+                QTimer.singleShot(500, _activate_reverse)
+
+            QTimer.singleShot(400, _casb_speed1_start)
+
         elif tid == "T_B2009_CAN":
-            self.log_msg.emit("  → T_B2009_CAN : CAS B + blade figée → B2009 (GPIO rest_contact=False naturel)")
             if self._rte_client:
                 self._rte_client.set_cmd("wc_available",   True)
                 self._rte_client.set_cmd("lin_op_locked",  True)
                 self._rte_client.set_cmd("crs_wiper_op",   0)
                 self._rte_client.set_cmd("ignition_status", 1)
-                # BladePosition figée à 50% → lame bloquée mécaniquement
-                # → rest_contact reste False naturellement (lame ne revient pas au repos)
-                # → GPIO hardware lu directement, aucune simulation rest_contact nécessaire
+                # rest_contact_sim_active=True + rest_contact_sim=False :
+                # lame figée AU REPOS (aucun cycle) → NE555 hardware ignoré
+                # La garde BCM laisse passer B2009 quand sim=False (lame bloquée)
+                self._rte_client.set_cmd("rest_contact_sim_active", True)
+                self._rte_client.set_cmd("rest_contact_sim", False)
                 # B2009 INACTIVE avant le test pour affichage complet
                 QTimer.singleShot(200, lambda: self._rte_client and
                     self._rte_client.set_cmd("dtc_inactivate", "B2009"))
@@ -998,6 +1049,11 @@ class TestRunner(QObject):
             def _t_b2009_start():
                 if hasattr(test, "reset_t0"):
                     test.reset_t0()
+                # Re-asserter ignition=1 juste avant le stimulus : défense contre
+                # la race condition CAN 0x300 (bcmcan peut encore émettre ign=0
+                # depuis un test précédent et écraser ignition_status dans le BCM).
+                if self._rte_client:
+                    self._rte_client.set_cmd("ignition_status", 1)
                 # BladePosition figée à 50% (>0 → front_motor_running=True en CAS B)
                 if self._sim_client and self._sim_client.is_connected():
                     self._sim_client.freeze_blade_position(50.0)
@@ -1040,26 +1096,6 @@ class TestRunner(QObject):
             # 700ms : SPEED1 stabilisé → injection overcurrent
             QTimer.singleShot(700, _t50b_inject)
 
-        elif tid == "T_IGN_OFF_WIPER_IGNORED":
-            self.log_msg.emit("  → T_IGN_OFF_WIPER_IGNORED : ignition=OFF + LIN SPEED1 → ignorée")
-            if self._rte_client:
-                # Mettre ignition=OFF avant le stimulus
-                self._rte_client.set_cmd("ignition_status", 0)
-                self._rte_client.set_cmd("crs_wiper_op",    0)
-                self._rte_client.set_cmd("wc_available",    False)
-            # Sync simulateur : ignition OFF
-            self._motor_w.queue_send(
-                {"ignition_status": "OFF", "reverse_gear": 0, "vehicle_speed": 0})
-
-            def _ign_off_inject():
-                if hasattr(test, "reset_t0"):
-                    test.reset_t0()
-                # Envoyer WiperOp=SPEED1 via LIN — doit être ignoré par le BCM
-                self._lin_w.queue_send({"cmd": "SPEED1"})
-                if self._rte_client:
-                    self._rte_client.set_cmd("crs_wiper_op", 2)
-            # 300ms : laisser ignition=0 se propager dans le BCM
-            QTimer.singleShot(300, _ign_off_inject)
 
         elif tid == "T_B2009_CASA":
             self.log_msg.emit("  → T_B2009_CASA : CAS A SPEED1 sans rest_contact → B2009")
@@ -1067,9 +1103,10 @@ class TestRunner(QObject):
                 self._rte_client.set_cmd("wc_available",   False)
                 self._rte_client.set_cmd("crs_wiper_op",   0)
                 self._rte_client.set_cmd("ignition_status", 1)
-                # PAS de rest_contact_sim_active : la garde BCM bloquerait B2009
-                # GPIO hardware lu directement → False permanent → B2009 après 3s
-                self._rte_client.set_cmd("rest_contact_sim_active", False)
+                # rest_contact_sim_active=True + rest_contact_sim=False :
+                # lame figée AU REPOS → NE555 hardware ignoré → aucun cycle
+                # La garde BCM laisse passer B2009 quand sim=False (lame bloquée)
+                self._rte_client.set_cmd("rest_contact_sim_active", True)
                 self._rte_client.set_cmd("rest_contact_sim", False)
                 # B2009 INACTIVE avant test pour affichage complet
                 QTimer.singleShot(200, lambda: self._rte_client and
@@ -1104,6 +1141,10 @@ class TestRunner(QObject):
             if self._rte_client:
                 QTimer.singleShot(300, lambda: self._rte_client and
                     self._rte_client.set_cmd("lin_timeout_active", False))
+        elif tid in ("T03", "T04", "T05"):
+            self.log_msg.emit(f"  → {tid} post : wc_available=False (retour CAS A)")
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available", False)
         elif tid == "T11":
             self.log_msg.emit("  → start_can_tx")
             self._motor_w.queue_send({"test_cmd": "start_can_tx"})
@@ -1205,12 +1246,11 @@ class TestRunner(QObject):
                     self._rte_client.set_cmd("wc_timeout_active", False)
                     self._lin_w.queue_send({"cmd": "OFF"})
                     self._rte_client.set_cmd("crs_wiper_op", 0)
-                    self._rte_client.set_cmd("bcm_error_reset", True)
             # Toujours sync simulateur : ignition ON pour éviter boucle OFF→SPEED1
             self._motor_w.queue_send(
                 {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
         elif tid == "T38b":
-            self.log_msg.emit("  → T38b cleanup : motor_current=0 EN PREMIER, puis bcm_error_reset")
+            self.log_msg.emit("  → T38b cleanup : motor_current=0 EN PREMIER")
             if self._rte_client:
                 self._rte_client.set_cmd("motor_current_a", 0.0)
             self._lin_w.queue_send({"cmd": "OFF"})
@@ -1218,25 +1258,29 @@ class TestRunner(QObject):
                 if self._rte_client:
                     self._rte_client.set_cmd("crs_wiper_op", 0)
                     self._rte_client.set_cmd("rear_motor_error", False)
-                    self._rte_client.set_cmd("bcm_error_reset", True)
             QTimer.singleShot(150, _t38b_reset)
             self._motor_w.queue_send(
                 {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
         elif tid == "T38c":
             self.log_msg.emit("  → T38c cleanup : pump_current=0 EN PREMIER, puis reset erreur pompe")
             if self._rte_client:
-                # Invalider les cycles rest_contact
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 self._rte_client.set_cmd("pump_current_a", 0.0)
-                self._rte_client.set_cmd("rest_contact_sim_active", False)
-                self._rte_client.set_cmd("rest_contact_sim", False)
+                # Garder rest_contact_sim=True jusqu'à ERROR→OFF :
+                # remettre False immédiatement crée une race → _check_rest_contact_stuck
+                # voit front_motor_on=True + GPIO False avant que _enter_error(pump_only)
+                # n'ait posé _rest_contact_b2009_active=True → B2009 parasite.
+                self._rte_client.set_cmd("rest_contact_sim", True)
             self._lin_w.queue_send({"cmd": "OFF"})
             def _t38c_reset():
                 if self._rte_client:
                     self._rte_client.set_cmd("pump_error", False)
                     self._rte_client.set_cmd("crs_wiper_op", 0)
-                    self._rte_client.set_cmd("bcm_error_reset", True)
-            QTimer.singleShot(150, _t38c_reset)
+                    # Désactiver rest_contact_sim après ERROR→OFF confirmé
+                    # (400ms >> cycle T-WSM 200ms → BCM est en OFF)
+                    self._rte_client.set_cmd("rest_contact_sim_active", False)
+                    self._rte_client.set_cmd("rest_contact_sim", False)
+            QTimer.singleShot(400, _t38c_reset)
             self._motor_w.queue_send(
                 {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
         elif tid == "LIN_INVALID_CMD_001":
@@ -1255,6 +1299,25 @@ class TestRunner(QObject):
                 self._rte_client.set_cmd("rest_contact_sim", False)
             self._lin_w.queue_send({"cmd": "OFF"})
             self._motor_w.queue_send({"rain_intensity": 0, "sensor_status": "OK"})
+        elif tid == "T_CAS_B_SPEED1_REVERSE":
+            self.log_msg.emit("  → T_CAS_B_SPEED1_REVERSE cleanup : stop reverse + blade_cycling + OFF")
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.stop_blade_cycling()
+                self._sim_client.reset_b2101()
+            self._lin_w.queue_send({"cmd": "OFF"})
+            if self._rte_client:
+                self._rte_client.set_cmd("reverse_gear",         False)
+                self._rte_client.set_cmd("crs_wiper_op",         0)
+                self._rte_client.set_cmd("lin_op_locked",        False)
+                self._rte_client.set_cmd("wc_available",         False)
+                self._rte_client.set_cmd("rear_wiper_available", True)
+                QTimer.singleShot(400, lambda: self._rte_client and (
+                    self._rte_client.set_cmd("wc_timeout_active",  False) or
+                    self._rte_client.set_cmd("lin_timeout_active", False)
+                ))
+            self._motor_w.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+
         elif tid == "T_B2009_CAN":
             self.log_msg.emit("  → T_B2009_CAN cleanup : unfreeze blade + reset B2009 + OFF")
             if self._sim_client and self._sim_client.is_connected():
@@ -1262,11 +1325,12 @@ class TestRunner(QObject):
                 self._sim_client.reset_b2101()
             self._lin_w.queue_send({"cmd": "OFF"})
             if self._rte_client:
+                self._rte_client.set_cmd("rest_contact_sim_active", False)
+                self._rte_client.set_cmd("rest_contact_sim",        False)
                 self._rte_client.set_cmd("crs_wiper_op",  0)
                 self._rte_client.set_cmd("lin_op_locked", False)
                 self._rte_client.set_cmd("wiper_fault", False)
                 self._rte_client.set_cmd("_rest_contact_b2009_active", False)
-                self._rte_client.set_cmd("bcm_error_reset", True)
                 self._rte_client.set_cmd("wc_available", False)
                 QTimer.singleShot(400, lambda: self._rte_client and (
                     self._rte_client.set_cmd("wc_timeout_active",  False) or
@@ -1275,7 +1339,7 @@ class TestRunner(QObject):
             self._motor_w.queue_send(
                 {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
         elif tid == "T50b":
-            self.log_msg.emit("  → T50b cleanup : reset_motor_current + bcm_error_reset + OFF")
+            self.log_msg.emit("  → T50b cleanup : reset_motor_current + OFF")
             if self._sim_client and self._sim_client.is_connected():
                 self._sim_client.reset_motor_current()
                 self._sim_client.reset_b2101()
@@ -1285,7 +1349,6 @@ class TestRunner(QObject):
                 self._rte_client.set_cmd("crs_wiper_op",     0)
                 self._rte_client.set_cmd("lin_op_locked",    False)
                 self._rte_client.set_cmd("front_motor_error", False)
-                self._rte_client.set_cmd("bcm_error_reset",  True)
                 self._rte_client.set_cmd("wc_available",     False)
                 # B2001 remis INACTIVE pour affichage complet au prochain run
                 QTimer.singleShot(300, lambda: self._rte_client and
@@ -1296,22 +1359,16 @@ class TestRunner(QObject):
                 ))
             self._motor_w.queue_send(
                 {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
-        elif tid == "T_IGN_OFF_WIPER_IGNORED":
-            self.log_msg.emit("  → T_IGN_OFF_WIPER_IGNORED cleanup : ignition=ON + OFF")
-            self._lin_w.queue_send({"cmd": "OFF"})
-            if self._rte_client:
-                self._rte_client.set_cmd("ignition_status", 1)
-                self._rte_client.set_cmd("crs_wiper_op",    0)
-            self._motor_w.queue_send(
-                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+
         elif tid == "T_B2009_CASA":
-            self.log_msg.emit("  → T_B2009_CASA cleanup : reset B2009 + bcm_error_reset + OFF")
+            self.log_msg.emit("  → T_B2009_CASA cleanup : reset B2009 + OFF")
             self._lin_w.queue_send({"cmd": "OFF"})
             if self._rte_client:
+                self._rte_client.set_cmd("rest_contact_sim_active", False)
+                self._rte_client.set_cmd("rest_contact_sim",        False)
                 self._rte_client.set_cmd("crs_wiper_op",               0)
                 self._rte_client.set_cmd("wiper_fault",                 False)
                 self._rte_client.set_cmd("_rest_contact_b2009_active",  False)
-                self._rte_client.set_cmd("bcm_error_reset",             True)
                 self._rte_client.set_cmd("ignition_status",             1)
             self._motor_w.queue_send(
                 {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
@@ -1327,11 +1384,23 @@ class TestRunner(QObject):
             QTimer.singleShot(800, lambda: None)
         elif tid == "T39":
             self.log_msg.emit("  → start_lin_tx + OFF")
+            # 1. Remettre crslin en mode OFF en premier (avant start_lin_tx) :
+            #    ainsi la première trame 0x16 émise après le rétablissement
+            #    transporte WOP_OFF et le BCM ne redémarre pas en SPEED1.
+            self._lin_w.queue_send({"cmd": "OFF"})
+            # 2. Rétablir le LIN
             self._lin_w.queue_send({"test_cmd": "start_lin_tx"})
             if self._rte_client:
                 self._rte_client.set_cmd("crs_wiper_op", 0)
-            else:
-                self._lin_w.queue_send({"cmd": "OFF"})
+            # 3. Remettre lin_timeout_active=False APRÈS que le LIN ait produit
+            #    au moins 1 trame valide (≥ 600ms = 1.5× période LIN 400ms).
+            #    Si on le remet immédiatement, _check_lin_timeout (5ms) voit
+            #    t_last_lin0x16 encore périmé → re-déclenche B2004 → double timeout.
+            if self._rte_client:
+                QTimer.singleShot(600, lambda: self._rte_client and (
+                    self._rte_client.set_cmd("lin_timeout_active", False) or
+                    self._rte_client.set_cmd("crs_wiper_op", 0)
+                ))
         elif tid == "T43":
             # Cleanup T43 : invalider génération + garder sim=True jusqu'à state=OFF
             self._rc_gen = getattr(self, "_rc_gen", 0) + 1
@@ -1379,7 +1448,6 @@ class TestRunner(QObject):
             # Cleanup : annuler simulation CRS_InternalFault
             self._lin_w.queue_send({"test_cmd": "restore_lin_normal"})
             if self._rte_client:
-                self._rte_client.set_cmd("bcm_error_reset", True)
                 QTimer.singleShot(200, lambda: self._rte_client and
                     self._rte_client.set_cmd("crs_fault_active", False))
         elif tid == "TC_CAN_003":
@@ -1408,13 +1476,11 @@ class TestRunner(QObject):
                         self._rte_client.set_cmd("rain_sensor_installed", False)
                     if tid == "TC_FSR_008":
                         self._rte_client.set_cmd("watchdog_test_trigger", False)
-                        self._rte_client.set_cmd("bcm_error_reset", True)
                     if tid == "TC_SPD_001":
                         # Désactiver simulation rest_contact + invalider génération
                         self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                         self._rte_client.set_cmd("rest_contact_sim", False)
                         self._rte_client.set_cmd("rest_contact_sim_active", False)
-                        self._rte_client.set_cmd("bcm_error_reset", True)
                 self._motor_w.queue_send(
                     {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
                 self._lin_w.queue_send({"cmd": "OFF"})
@@ -1426,15 +1492,26 @@ class TestRunner(QObject):
 
         elif tid == "TC_FSR_010":
             self._lin_w.queue_send({"cmd": "OFF"})
-            # Incrémenter génération pour invalider ce QTimer si TC_CAN_003 démarre
-            # avant les 2000ms — sans ça, _fsr010_cleanup pose lin_op_locked=False
-            # pendant que TC_CAN_003 est déjà actif avec lin_op_locked=True.
+            # Arrêt immédiat de la corruption via sim_client (connexion TCP directe).
+            # NE PAS passer par motor_w.queue_send : si motor_w est déconnecté,
+            # count=0 resterait dans la queue et arriverait après le count=8 du
+            # run suivant → 0 trames corrompues → TIMEOUT.
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_corrupt_crc()
+            else:
+                # Fallback : motor_w si sim_client indisponible
+                self._motor_w.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 0})
+            # Incrémenter génération pour invalider les commandes Redis du singleShot
+            # si un autre test démarre avant les 3500ms.
             self._rc_gen = getattr(self, "_rc_gen", 0) + 1
             _gen_fsr010 = self._rc_gen
             def _fsr010_cleanup(g=_gen_fsr010):
                 if self._rc_gen != g:
                     return   # test suivant déjà démarré, ne pas interférer
-                self._motor_w.queue_send({"test_cmd": "corrupt_crc_0x201", "count": 0})
+                # Reset B2101 côté simulateur (déclenché si les trames corrompues
+                # ont causé un timeout CAN WC > 2s avant la fin du test)
+                if self._sim_client and self._sim_client.is_connected():
+                    self._sim_client.reset_b2101()
                 if self._rte_client:
                     self._rte_client.set_cmd("wc_available",    False)
                     self._rte_client.set_cmd("wc_crc_fault",    False)
@@ -1444,26 +1521,30 @@ class TestRunner(QObject):
                     # aurait été interrompu avant son propre cleanup
                     self._rte_client.set_cmd("alive_tx_frozen", False)
                 self._lin_w.queue_send({"cmd": "OFF"})
-            QTimer.singleShot(3500, _fsr010_cleanup)  # 3500ms : garantit arrêt complet trames CRC corrompues avant T50
+            QTimer.singleShot(3500, _fsr010_cleanup)  # 3500ms : Redis uniquement
 
         elif tid == "TC_COM_001":
             pass   # mesure passive BREAK — rien à nettoyer
 
-        # ── TC_LIN_CS cleanup (v2) ────────────────────────────────────────
+        # ── TC_LIN_CS cleanup ─────────────────────────────────────────────
         elif tid == "TC_LIN_CS":
             # Ordre impératif :
-            # 1. Restaurer checksum normal EN PREMIER (sinon la trame OFF
-            #    suivante sera aussi corrompue et le BCM ignorera cmd=OFF)
-            self._lin_w.queue_send({"test_cmd": "restore_lin_checksum"})
-            # 2. Envoyer OFF après restauration (100 ms pour que crslin
-            #    traite restore_lin_checksum avant la prochaine trame)
-            QTimer.singleShot(100, lambda: self._lin_w.queue_send({"cmd": "OFF"}))
-            # 3. Effacer les flags Redis
+            # 1. cmd=OFF EN PREMIER : crslin passe wiper_op=OFF en interne
+            #    → la prochaine trame après restore sera WOP_OFF (pas SPEED1)
+            self._lin_w.queue_send({"cmd": "OFF"})
+            # 2. Restaurer checksum normal après 100ms
+            QTimer.singleShot(100, lambda: self._lin_w.queue_send(
+                {"test_cmd": "restore_lin_checksum"}))
+            # 3. lin_timeout_active=False seulement APRÈS que le LIN ait produit
+            #    une trame valide (≥ 600ms) — sinon _check_lin_timeout re-déclenche
+            #    B2004 immédiatement car t_last_lin0x16 est encore périmé.
             if self._rte_client:
-                self._rte_client.set_cmd("crs_wiper_op",       0)
-                self._rte_client.set_cmd("lin_timeout_active", False)
-                QTimer.singleShot(200, lambda: self._rte_client and
-                    self._rte_client.set_cmd("lin_checksum_fault", False))
+                self._rte_client.set_cmd("crs_wiper_op", 0)
+                QTimer.singleShot(600, lambda: self._rte_client and (
+                    self._rte_client.set_cmd("lin_timeout_active", False) or
+                    self._rte_client.set_cmd("lin_checksum_fault",  False) or
+                    self._rte_client.set_cmd("crs_wiper_op",        0)
+                ))
 
 
         # ── T44 cleanup ───────────────────────────────────────────────────
@@ -1503,8 +1584,7 @@ class TestRunner(QObject):
         # ── T51 cleanup ───────────────────────────────────────────────────
         elif tid == "T51":
             # 1. Débloquer le rest_contact (repassera à False = repos)
-            # 2. Réinitialiser BCM via bcm_error_reset (était en ERROR)
-            # 3. Désactiver simulation rest_contact
+            # 2. Désactiver simulation rest_contact
             self._lin_w.queue_send({"cmd": "OFF"})
             if self._rte_client:
                 self._rte_client.set_cmd("crs_wiper_op",            0)
@@ -1514,7 +1594,6 @@ class TestRunner(QObject):
                 def _t51_cleanup():
                     if self._rte_client:
                         self._rte_client.set_cmd("rest_contact_sim_active", False)
-                        self._rte_client.set_cmd("bcm_error_reset",         True)
                         self._rte_client.set_cmd("ignition_status",         1)
                 QTimer.singleShot(300, _t51_cleanup)
             self._motor_w.queue_send(
