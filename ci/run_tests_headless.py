@@ -1162,17 +1162,37 @@ class HeadlessTestRunner:
             #              2) remettre motor_current_a / pump_current_a à 0
             #              3) laisser 1.2s pour que l'auto-healing finisse proprement.
             _tid = test.ID
-            if _tid in ("T38", "T38b", "T38c"):
+            if _tid == "T38c":
+                # FIX T38c : l'auto-heal voit pump_current=0 et ramène le BCM en
+                # WASH_FRONT (prev_state) si le LIN diffuse encore FRONT_WASH.
+                # Séquence correcte :
+                #   1. LIN OFF en premier  → plus de commande FRONT_WASH
+                #   2. rest_contact_sim OFF → plus de cycles lame résiduels
+                #   3. 200ms pour que crslin prenne en compte le OFF
+                #   4. pump_current_a=0 seulement ensuite → auto-heal démarre
+                #      → BCM revient en OFF (LIN est OFF → pas de relance WASH_FRONT)
+                self._log("  → T38c post : LIN OFF d'abord, puis courant=0 (→ auto-heal → OFF stable)")
+                lw = self._lin_w
+                if lw:
+                    lw.queue_send({"cmd": "OFF"})
+                if rc:
+                    rc.set_cmd("rest_contact_sim", False)
+                    rc.set_cmd("rest_contact_sim_active", False)
+                    rc.set_cmd("crs_wiper_op", 0)
+                time.sleep(0.2)   # laisser crslin traiter cmd=OFF
+                if rc:
+                    rc.set_cmd("pump_current_a", 0.0)   # déclenche auto-heal
+                    rc.set_cmd("motor_current_a", 0.0)
+                    rc.set_cmd("wc_timeout_active", False)
+                time.sleep(1.2)   # attendre fin auto-heal (HEAL_DELAY=1s) → OFF
+
+            elif _tid in ("T38", "T38b"):
                 self._log(f"  → {_tid} post : LIN OFF + courant=0 (évite boucle SPEED1 après auto-heal ERROR)")
                 lw = self._lin_w
                 if lw:
                     lw.queue_send({"cmd": "OFF"})
                 if rc:
                     rc.set_cmd("motor_current_a", 0.0)
-                    if _tid == "T38c":
-                        rc.set_cmd("pump_current_a", 0.0)
-                        rc.set_cmd("rest_contact_sim", False)
-                        rc.set_cmd("rest_contact_sim_active", False)
                     if _tid == "T38b":
                         rc.set_cmd("rear_motor_error", False)
                     rc.set_cmd("wc_timeout_active", False)
