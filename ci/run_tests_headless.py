@@ -393,7 +393,7 @@ class HeadlessTestRunner:
             "T43","T45","TC_LIN_002","TC_LIN_004","TC_LIN_005",
             "TC_CAN_003","TC_GEN_001","TC_SPD_001","TC_AUTO_004",
             "TC_FSR_008","TC_FSR_010","TC_COM_001","TC_B2103",
-            "LIN_INVALID_CMD_001","T_RAIN_AUTO_SENSOR_ERROR","T_B2009_CAN","T50b",
+            "LIN_INVALID_CMD_001","T_RAIN_AUTO_SENSOR_ERROR","T_B2009_CAN",
         }
         if tid not in NEEDS_DELAY:
             return 0
@@ -677,48 +677,32 @@ class HeadlessTestRunner:
                 daemon=True).start()
 
         elif tid == "T50":
-            self._log("  → T50 : Cas B wc_available=True + LIN SPEED1 → CAN 0x200, pas RL2=LOW")
-            # IMPORTANT : PAS de rest_contact_sim pour T50.
-            # test_runner.py le précise explicitement : rest_contact_sim_active=True
-            # avec rest_contact_sim=False (lame au repos) AVANT SPEED1 bloquerait
-            # _check_rest_contact_stuck() et empêcherait state=SPEED1 d'être atteint.
-            # Préconditions : wc_available=True (Cas B), lin_op_locked=True, ignition=ON.
+            self._log("  → T50 : Cas B wc_available=True + SPEED1 via CAN")
             if rc:
-                rc.set_cmd("wc_available",   True)
-                rc.set_cmd("lin_op_locked",  True)
-                rc.set_cmd("crs_wiper_op",   0)
+                rc.set_cmd("wc_available",  True)
+                rc.set_cmd("lin_op_locked", True)
+                rc.set_cmd("crs_wiper_op",  0)
                 rc.set_cmd("ignition_status", 1)
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", False)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                def _t50_cycles():
+                    for cycle in range(6):
+                        time.sleep(0.6 + cycle * 1.5 - (0.6 if cycle > 0 else 0))
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", True)
+                        time.sleep(1.35)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                threading.Thread(target=_t50_cycles, daemon=True).start()
             mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
             time.sleep(0.4)
             if hasattr(test, "reset_t0"): test.reset_t0()
-            lw.queue_send({"cmd": "SPEED1"})
-            if rc: rc.set_cmd("crs_wiper_op", 2)
-
-        elif tid == "T50b":
-            self._log("  → T50b : CAS B SPEED1 + inject_motor_current → B2001")
-            # Préconditions : wc_available=True (Cas B), lin_op_locked=True, ignition=ON.
-            # B2001 inactivé avant injection pour affichage complet.
-            if rc:
-                rc.set_cmd("wc_available",   True)
-                rc.set_cmd("lin_op_locked",  True)
-                rc.set_cmd("crs_wiper_op",   0)
-                rc.set_cmd("ignition_status", 1)
-                # B2001 INACTIVE avant injection pour affichage complet
-                time.sleep(0.2)
-                rc.set_cmd("dtc_inactivate", "B2001")
-            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
-            # 400ms : wc_available propagé + BCM prêt
-            time.sleep(0.4)
-            # LIN SPEED1 → BCM ST_SPEED1 → CAN 0x200 → WC répond 0x201 speed=1
-            lw.queue_send({"cmd": "SPEED1"})
-            if rc: rc.set_cmd("crs_wiper_op", 2)
-            # 300ms supplémentaires : SPEED1 stabilisé avant injection overcurrent
-            time.sleep(0.3)
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            # Injecter MotorCurrent=0.95A dans trame 0x201 (> OVERCURRENT_THRESH=0.8A)
-            # BCM : _can_process_0x201 → motor_current_a=0.95 → _check_overcurrent → B2001
             if self._sim_client and self._sim_client.is_connected():
-                self._sim_client.inject_motor_current(0.95)
+                self._sim_client.send({"test_cmd": "start_blade_cycling", "period_ms": 1500})
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc: rc.set_cmd("crs_wiper_op", 2)
 
         elif tid == "T51":
             self._log("  → T51 : rest_contact bloqué EN MOUVEMENT → FSR_006")
@@ -1178,17 +1162,37 @@ class HeadlessTestRunner:
             #              2) remettre motor_current_a / pump_current_a à 0
             #              3) laisser 1.2s pour que l'auto-healing finisse proprement.
             _tid = test.ID
-            if _tid in ("T38", "T38b", "T38c"):
+            if _tid == "T38c":
+                # FIX T38c : l'auto-heal voit pump_current=0 et ramène le BCM en
+                # WASH_FRONT (prev_state) si le LIN diffuse encore FRONT_WASH.
+                # Séquence correcte :
+                #   1. LIN OFF en premier  → plus de commande FRONT_WASH
+                #   2. rest_contact_sim OFF → plus de cycles lame résiduels
+                #   3. 200ms pour que crslin prenne en compte le OFF
+                #   4. pump_current_a=0 seulement ensuite → auto-heal démarre
+                #      → BCM revient en OFF (LIN est OFF → pas de relance WASH_FRONT)
+                self._log("  → T38c post : LIN OFF d'abord, puis courant=0 (→ auto-heal → OFF stable)")
+                lw = self._lin_w
+                if lw:
+                    lw.queue_send({"cmd": "OFF"})
+                if rc:
+                    rc.set_cmd("rest_contact_sim", False)
+                    rc.set_cmd("rest_contact_sim_active", False)
+                    rc.set_cmd("crs_wiper_op", 0)
+                time.sleep(0.2)   # laisser crslin traiter cmd=OFF
+                if rc:
+                    rc.set_cmd("pump_current_a", 0.0)   # déclenche auto-heal
+                    rc.set_cmd("motor_current_a", 0.0)
+                    rc.set_cmd("wc_timeout_active", False)
+                time.sleep(1.2)   # attendre fin auto-heal (HEAL_DELAY=1s) → OFF
+
+            elif _tid in ("T38", "T38b"):
                 self._log(f"  → {_tid} post : LIN OFF + courant=0 (évite boucle SPEED1 après auto-heal ERROR)")
                 lw = self._lin_w
                 if lw:
                     lw.queue_send({"cmd": "OFF"})
                 if rc:
                     rc.set_cmd("motor_current_a", 0.0)
-                    if _tid == "T38c":
-                        rc.set_cmd("pump_current_a", 0.0)
-                        rc.set_cmd("rest_contact_sim", False)
-                        rc.set_cmd("rest_contact_sim_active", False)
                     if _tid == "T38b":
                         rc.set_cmd("rear_motor_error", False)
                     rc.set_cmd("wc_timeout_active", False)
@@ -1220,31 +1224,6 @@ class HeadlessTestRunner:
                 if lw:
                     lw.queue_send({"cmd": "OFF"})
                 time.sleep(0.2)
-
-            elif _tid == "T50b":
-                # Cleanup T50b : stopper l'injection overcurrent, remettre BCM en OFF.
-                # reset_motor_current : remet motor_current_a=0 dans trame 0x201.
-                # reset_b2101 : suspend le check B2101 3s pour éviter un faux FAIL
-                #               sur le prochain test qui démarre le moteur.
-                self._log("  → T50b post : reset_motor_current + LIN OFF + reset B2001")
-                lw = self._lin_w
-                if self._sim_client and self._sim_client.is_connected():
-                    self._sim_client.reset_motor_current()
-                    self._sim_client.reset_b2101()
-                if lw:
-                    lw.queue_send({"cmd": "OFF"})
-                if rc:
-                    rc.set_cmd("motor_current_a",  0.0)
-                    rc.set_cmd("crs_wiper_op",     0)
-                    rc.set_cmd("lin_op_locked",    False)
-                    rc.set_cmd("front_motor_error", False)
-                    rc.set_cmd("wc_available",     False)
-                    # B2001 INACTIVE pour affichage complet au prochain run
-                    time.sleep(0.3)
-                    rc.set_cmd("dtc_inactivate", "B2001")
-                    time.sleep(0.1)
-                    rc.set_cmd("wc_timeout_active",  False)
-                    rc.set_cmd("lin_timeout_active", False)
 
             last_tid = test.ID
 
