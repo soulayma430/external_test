@@ -393,7 +393,7 @@ class HeadlessTestRunner:
             "T43","T45","TC_LIN_002","TC_LIN_004","TC_LIN_005",
             "TC_CAN_003","TC_GEN_001","TC_SPD_001","TC_AUTO_004",
             "TC_FSR_008","TC_FSR_010","TC_COM_001","TC_B2103",
-            "LIN_INVALID_CMD_001","T_RAIN_AUTO_SENSOR_ERROR","T_B2009_CAN",
+            "LIN_INVALID_CMD_001","T_RAIN_AUTO_SENSOR_ERROR","T_B2009_CAN","T50b",
         }
         if tid not in NEEDS_DELAY:
             return 0
@@ -693,6 +693,32 @@ class HeadlessTestRunner:
             if hasattr(test, "reset_t0"): test.reset_t0()
             lw.queue_send({"cmd": "SPEED1"})
             if rc: rc.set_cmd("crs_wiper_op", 2)
+
+        elif tid == "T50b":
+            self._log("  → T50b : CAS B SPEED1 + inject_motor_current → B2001")
+            # Préconditions : wc_available=True (Cas B), lin_op_locked=True, ignition=ON.
+            # B2001 inactivé avant injection pour affichage complet.
+            if rc:
+                rc.set_cmd("wc_available",   True)
+                rc.set_cmd("lin_op_locked",  True)
+                rc.set_cmd("crs_wiper_op",   0)
+                rc.set_cmd("ignition_status", 1)
+                # B2001 INACTIVE avant injection pour affichage complet
+                time.sleep(0.2)
+                rc.set_cmd("dtc_inactivate", "B2001")
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+            # 400ms : wc_available propagé + BCM prêt
+            time.sleep(0.4)
+            # LIN SPEED1 → BCM ST_SPEED1 → CAN 0x200 → WC répond 0x201 speed=1
+            lw.queue_send({"cmd": "SPEED1"})
+            if rc: rc.set_cmd("crs_wiper_op", 2)
+            # 300ms supplémentaires : SPEED1 stabilisé avant injection overcurrent
+            time.sleep(0.3)
+            if hasattr(test, "reset_t0"): test.reset_t0()
+            # Injecter MotorCurrent=0.95A dans trame 0x201 (> OVERCURRENT_THRESH=0.8A)
+            # BCM : _can_process_0x201 → motor_current_a=0.95 → _check_overcurrent → B2001
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.inject_motor_current(0.95)
 
         elif tid == "T51":
             self._log("  → T51 : rest_contact bloqué EN MOUVEMENT → FSR_006")
@@ -1194,6 +1220,31 @@ class HeadlessTestRunner:
                 if lw:
                     lw.queue_send({"cmd": "OFF"})
                 time.sleep(0.2)
+
+            elif _tid == "T50b":
+                # Cleanup T50b : stopper l'injection overcurrent, remettre BCM en OFF.
+                # reset_motor_current : remet motor_current_a=0 dans trame 0x201.
+                # reset_b2101 : suspend le check B2101 3s pour éviter un faux FAIL
+                #               sur le prochain test qui démarre le moteur.
+                self._log("  → T50b post : reset_motor_current + LIN OFF + reset B2001")
+                lw = self._lin_w
+                if self._sim_client and self._sim_client.is_connected():
+                    self._sim_client.reset_motor_current()
+                    self._sim_client.reset_b2101()
+                if lw:
+                    lw.queue_send({"cmd": "OFF"})
+                if rc:
+                    rc.set_cmd("motor_current_a",  0.0)
+                    rc.set_cmd("crs_wiper_op",     0)
+                    rc.set_cmd("lin_op_locked",    False)
+                    rc.set_cmd("front_motor_error", False)
+                    rc.set_cmd("wc_available",     False)
+                    # B2001 INACTIVE pour affichage complet au prochain run
+                    time.sleep(0.3)
+                    rc.set_cmd("dtc_inactivate", "B2001")
+                    time.sleep(0.1)
+                    rc.set_cmd("wc_timeout_active",  False)
+                    rc.set_cmd("lin_timeout_active", False)
 
             last_tid = test.ID
 
