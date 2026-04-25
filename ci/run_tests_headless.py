@@ -221,12 +221,18 @@ class HeadlessLINWorker:
                 cmds = list(self._tx_queue)
                 self._tx_queue.clear()
             for cmd in cmds:
-                try:
-                    with socket.create_connection(
-                            (self._host, self.PORT), timeout=2.0) as s:
-                        s.sendall((json.dumps(cmd) + "\n").encode())
-                except Exception:
-                    pass
+                # FIX JENKINS : timeout porté à 5s (vs 2s) + 1 retry pour absorber
+                # la latence TCP RPiSIM sous Jenkins. Perte silencieuse corrigée.
+                sent = False
+                for _attempt in range(2):
+                    try:
+                        with socket.create_connection(
+                                (self._host, self.PORT), timeout=5.0) as s:
+                            s.sendall((json.dumps(cmd) + "\n").encode())
+                        sent = True
+                        break
+                    except Exception:
+                        self._stop_ev.wait(timeout=0.1)
             self._stop_ev.wait(timeout=0.05)
 
     def queue_send(self, obj: dict):
@@ -278,12 +284,15 @@ class HeadlessMotorWorker:
                 cmds = list(self._tx_queue)
                 self._tx_queue.clear()
             for cmd in cmds:
-                try:
-                    with socket.create_connection(
-                            (self._sim_host, self.PORT_TX), timeout=2.0) as s:
-                        s.sendall((json.dumps(cmd) + "\n").encode())
-                except Exception:
-                    pass
+                # FIX JENKINS : timeout porté à 5s + 1 retry (cohérent avec LINWorker)
+                for _attempt in range(2):
+                    try:
+                        with socket.create_connection(
+                                (self._sim_host, self.PORT_TX), timeout=5.0) as s:
+                            s.sendall((json.dumps(cmd) + "\n").encode())
+                        break
+                    except Exception:
+                        self._stop_ev.wait(timeout=0.1)
             self._stop_ev.wait(timeout=0.05)
 
     def queue_send(self, obj: dict):
