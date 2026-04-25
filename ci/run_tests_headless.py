@@ -920,14 +920,22 @@ class HeadlessTestRunner:
         elif tid == "T34":
             self._log("  → T34 : Redis SET AUTO + rain=10")
             if rc:
+                # FIX JENKINS T34 (v2) : TIMEOUT causé par _had_different=False.
+                # _check_rte T34 exige de voir state≠AUTO avant AUTO+Speed1.
+                # Si le stimulus est envoyé dans _pre_test (bloquant), le BCM entre
+                # en AUTO AVANT que la supervision démarre → premier tick voit déjà
+                # AUTO+Speed1 → _initial_checked=True, _had_different=False → jamais
+                # confirmé → TIMEOUT à 8s.
+                #
+                # FIX : pré-configurer rain + sim_active MAINTENANT (avant retour
+                # _pre_test), mais envoyer lw(AUTO) + crs_wiper_op=4 dans un thread
+                # différé de 0.4s. La supervision démarre, voit state=OFF
+                # (_had_different=True), puis le thread envoie le stimulus →
+                # BCM passe en AUTO → PASS.
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 10)
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
-                time.sleep(0.30)
-                lw.queue_send({"cmd": "AUTO"})
-                rc.set_cmd("crs_wiper_op", 4)
-                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 _gen = self._rc_gen
                 if hasattr(test, "reset_t0"): test.reset_t0()
@@ -938,60 +946,13 @@ class HeadlessTestRunner:
                         time.sleep(0.15)
                 threading.Thread(target=_t34_rain_refresh, daemon=True).start()
 
-                def _t34_cycles():
-                    # Attendre state=AUTO avant de démarrer
-                    for _ in range(20):
-                        if rc.get("state") == "AUTO":
-                            break
-                        time.sleep(0.1)
+                def _t34_stimulus_and_cycles():
+                    time.sleep(0.4)   # supervision démarre + voit state=OFF
                     if getattr(self, "_rc_gen", 0) != _gen: return
-                    # FIX B2009 : période True+False réduite à 2.5s nominal.
-                    # REST_STUCK_DELAY=3s. Avec latence Jenkins ~0.3s → total ≤ 2.8s < 3s.
-                    # Après chaque False, on attend confirmation front_blade_cycles++ pour
-                    # s'assurer que le cycle est compté avant de relancer True.
-                    prev_cycles = rc.get_int("front_blade_cycles", 0)
-                    for cycle in range(3):
-                        time.sleep(0.3 if cycle == 0 else 0.2)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", True)
-                        time.sleep(1.4)   # lame EN MOUVEMENT (< 1700ms cycle BCM)
-                        if getattr(self, "_rc_gen", 0) != _gen: return
-                        rc.set_cmd("rest_contact_sim", False)  # retour repos → cycle compté
-                        # Attendre confirmation cycle (max 1s)
-                        for _ in range(10):
-                            c = rc.get_int("front_blade_cycles", 0)
-                            if c > prev_cycles:
-                                prev_cycles = c
-                                break
-                            time.sleep(0.1)
-                threading.Thread(target=_t34_cycles, daemon=True).start()
-            else:
-                lw.queue_send({"cmd": "AUTO"})
-                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
-
-        elif tid == "T35":
-            self._log("  → T35 : Redis SET AUTO + rain=25")
-            if rc:
-                rc.set_cmd("rain_sensor_installed", True)
-                rc.set_cmd("rain_intensity", 25)
-                rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", False)
-                time.sleep(0.30)
-                lw.queue_send({"cmd": "AUTO"})
-                rc.set_cmd("crs_wiper_op", 4)
-                mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
-                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
-                _gen = self._rc_gen
-                if hasattr(test, "reset_t0"): test.reset_t0()
-
-                def _t35_rain_refresh():
-                    while getattr(self, "_rc_gen", 0) == _gen:
-                        rc.set_cmd("rain_intensity", 25)
-                        time.sleep(0.15)
-                threading.Thread(target=_t35_rain_refresh, daemon=True).start()
-
-                def _t35_cycles():
-                    # Même fix que T34 : période réduite + confirmation cycle.
+                    lw.queue_send({"cmd": "AUTO"})
+                    rc.set_cmd("crs_wiper_op", 4)
+                    mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
+                    # Attendre state=AUTO avant les cycles
                     for _ in range(20):
                         if rc.get("state") == "AUTO":
                             break
@@ -1011,7 +972,55 @@ class HeadlessTestRunner:
                                 prev_cycles = c
                                 break
                             time.sleep(0.1)
-                threading.Thread(target=_t35_cycles, daemon=True).start()
+                threading.Thread(target=_t34_stimulus_and_cycles, daemon=True).start()
+            else:
+                lw.queue_send({"cmd": "AUTO"})
+                mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
+
+        elif tid == "T35":
+            self._log("  → T35 : Redis SET AUTO + rain=25")
+            if rc:
+                # FIX JENKINS T35 (v2) : même fix que T34 — stimulus AUTO différé.
+                rc.set_cmd("rain_sensor_installed", True)
+                rc.set_cmd("rain_intensity", 25)
+                rc.set_cmd("rest_contact_sim_active", True)
+                rc.set_cmd("rest_contact_sim", False)
+                self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                _gen = self._rc_gen
+                if hasattr(test, "reset_t0"): test.reset_t0()
+
+                def _t35_rain_refresh():
+                    while getattr(self, "_rc_gen", 0) == _gen:
+                        rc.set_cmd("rain_intensity", 25)
+                        time.sleep(0.15)
+                threading.Thread(target=_t35_rain_refresh, daemon=True).start()
+
+                def _t35_stimulus_and_cycles():
+                    time.sleep(0.4)
+                    if getattr(self, "_rc_gen", 0) != _gen: return
+                    lw.queue_send({"cmd": "AUTO"})
+                    rc.set_cmd("crs_wiper_op", 4)
+                    mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
+                    for _ in range(20):
+                        if rc.get("state") == "AUTO":
+                            break
+                        time.sleep(0.1)
+                    if getattr(self, "_rc_gen", 0) != _gen: return
+                    prev_cycles = rc.get_int("front_blade_cycles", 0)
+                    for cycle in range(3):
+                        time.sleep(0.3 if cycle == 0 else 0.2)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", True)
+                        time.sleep(1.4)
+                        if getattr(self, "_rc_gen", 0) != _gen: return
+                        rc.set_cmd("rest_contact_sim", False)
+                        for _ in range(10):
+                            c = rc.get_int("front_blade_cycles", 0)
+                            if c > prev_cycles:
+                                prev_cycles = c
+                                break
+                            time.sleep(0.1)
+                threading.Thread(target=_t35_stimulus_and_cycles, daemon=True).start()
             else:
                 lw.queue_send({"cmd": "AUTO"})
                 mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
@@ -1034,7 +1043,7 @@ class HeadlessTestRunner:
             _gen = self._rc_gen
 
             def _t36_deferred():
-                time.sleep(0.4)   # laisser supervision démarrer (≈ port QTimer 400ms)
+                time.sleep(0.4)   # laisser supervision démarrer
                 if getattr(self, "_rc_gen", 0) != _gen: return
                 if _rc_ref:
                     _rc_ref.set_cmd("rest_contact_sim_active", True)
@@ -1046,19 +1055,20 @@ class HeadlessTestRunner:
                         break
                     time.sleep(0.1)
                 if getattr(self, "_rc_gen", 0) != _gen: return
-                # FIX B2009 T36 : période True+False réduite à 2.5s (1.4+1.1s).
-                # REST_STUCK_DELAY=3s. Latence Jenkins ~0.3s → total ≤ 2.8s < 3s.
-                # Confirmation cycle avant de relancer True (via front_blade_cycles Redis).
+                # FIX FSR-005 T36 : watchdog pompe coupe à 5s.
+                # Période cycle réduite : True=1.1s + False=0.15s = 1.25s/cycle.
+                # 3 cycles × 1.25s + init 0.15s + confirm 3×0.2s = ~4.4s < 5s.
+                # B2009 : période totale True+False = 1.1+0.15+0.15=1.4s < 3s → OK.
                 prev_cycles = _rc_ref.get_int("front_blade_cycles", 0) if _rc_ref else 0
                 for cycle in range(3):
-                    time.sleep(0.15 if cycle == 0 else 0.2)
+                    time.sleep(0.15)
                     if getattr(self, "_rc_gen", 0) != _gen: return
                     if _rc_ref: _rc_ref.set_cmd("rest_contact_sim", True)
-                    time.sleep(1.4)
+                    time.sleep(1.1)   # cycle court mais suffisant pour True→False
                     if getattr(self, "_rc_gen", 0) != _gen: return
                     if _rc_ref: _rc_ref.set_cmd("rest_contact_sim", False)
-                    # Attendre que le cycle soit compté (max 1s)
-                    for _ in range(10):
+                    # Attendre confirmation cycle compté (max 0.5s)
+                    for _ in range(5):
                         if not _rc_ref: break
                         c = _rc_ref.get_int("front_blade_cycles", 0)
                         if c > prev_cycles:
