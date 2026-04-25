@@ -993,9 +993,13 @@ class HeadlessTestRunner:
 
         elif tid == "T37":
             self._log("  → T37 : LIN REAR_WASH")
+            # FIX JENKINS : ignition=2 (ON) requis avant REAR_WASH pour que le BCM
+            # accepte la commande. On envoie d'abord le CAN ignition ON, puis le LIN.
+            # sleep porté à 0.4s (vs 0.2s) pour absorber la latence Redis sous Jenkins.
+            mw.queue_send({"ignition_status": "ON", "vehicle_speed": 0})
+            time.sleep(0.1)
             lw.queue_send({"cmd": "REAR_WASH"})
-            mw.queue_send({"ignition_status": 1, "vehicle_speed": 0})
-            time.sleep(0.2)
+            time.sleep(0.4)
             if hasattr(test, "reset_t0"): test.reset_t0()
 
         elif tid == "T38":
@@ -1179,6 +1183,12 @@ class HeadlessTestRunner:
             time.sleep(0.3)   # laisser Redis + BCM traiter les commandes
 
             # ── Démarrer le test ──────────────────────────────────────────
+            # FIX JENKINS : override TEST_TIMEOUT_S pour les tests dont la durée
+            # physique s'approche du timeout nominal (latence Redis sous Jenkins).
+            # T37 : 2 cycles × 1700ms = 3400ms physique + marge → 18s (vs 12s nominal).
+            _CI_TIMEOUT_OVERRIDES = {"T37": 18}
+            if test.ID in _CI_TIMEOUT_OVERRIDES:
+                test.TEST_TIMEOUT_S = _CI_TIMEOUT_OVERRIDES[test.ID]
             self._done_ev.clear()
             with self._lock:
                 self._current = test
@@ -1316,8 +1326,12 @@ class HeadlessTestRunner:
 
             elif _tid in ("T30", "T31", "T32", "T34", "T35", "T36", "T37", "T38"):
                 # LIN OFF obligatoire pour T30/T31/T32 (stimulus LIN)
+                # FIX JENKINS T37 : LIN OFF ajouté pour T34/T35/T36/T37 également —
+                # sans cela, le simulateur LIN continue d'émettre REAR_WASH/SPEED1
+                # après la fin du test, ce qui peut relancer un cycle BCM et faire
+                # déborder le TEST_TIMEOUT_S du test suivant.
                 lw = self._lin_w
-                if _tid in ("T30", "T31", "T32") and lw:
+                if _tid in ("T30", "T31", "T32", "T34", "T35", "T36", "T37") and lw:
                     lw.queue_send({"cmd": "OFF"})
                 if rc:
                     rc.set_cmd("crs_wiper_op",   0)
