@@ -1002,14 +1002,25 @@ class HeadlessTestRunner:
 
         elif tid == "T37":
             self._log("  → T37 : LIN REAR_WASH")
-            # FIX JENKINS : ignition=2 (ON) requis avant REAR_WASH pour que le BCM
-            # accepte la commande. On envoie d'abord le CAN ignition ON, puis le LIN.
-            # sleep porté à 0.4s (vs 0.2s) pour absorber la latence Redis sous Jenkins.
+            # FIX JENKINS (v4) : le problème fondamental est _wait_idle dans _check_rte.
+            # _wait_idle=True → attend rear_motor_on=False (état initial propre).
+            # Si le LIN est envoyé avant que _pre_test retourne (et que la boucle de
+            # supervision démarre), le BCM peut avoir déjà fini ses 2 cycles quand
+            # _check_rte commence à poller → _wait_idle voit False, puis attend True
+            # qui ne vient jamais → TIMEOUT.
+            #
+            # Solution : envoyer REAR_WASH dans un thread différé de 0.8s APRÈS que
+            # _pre_test retourne. La supervision démarre, _check_rte voit rear_motor_on=False
+            # (_wait_idle=False), puis le thread envoie REAR_WASH → BCM démarre → _check_rte
+            # voit True (chrono démarre) puis False (résultat calculé) → PASS.
             mw.queue_send({"ignition_status": "ON", "vehicle_speed": 0})
-            time.sleep(0.1)
-            lw.queue_send({"cmd": "REAR_WASH"})
-            time.sleep(0.4)
+            time.sleep(0.2)
             if hasattr(test, "reset_t0"): test.reset_t0()
+            _lin_w_ref = lw
+            def _delayed_rear_wash():
+                time.sleep(0.8)   # attendre que la supervision soit démarrée et _wait_idle=False
+                _lin_w_ref.queue_send({"cmd": "REAR_WASH"})
+            threading.Thread(target=_delayed_rear_wash, daemon=True).start()
 
         elif tid == "T38":
             self._log("  → T38 : LIN SPEED1 + injection surcourant")
