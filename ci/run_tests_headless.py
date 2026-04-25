@@ -464,19 +464,30 @@ class HeadlessTestRunner:
 
         elif tid == "T40":
             self._log("  → T40 : TOUCH — 1 cycle puis retour OFF (no repeat)")
+            # Port fidèle de test_runner._pre_test(T40) avec correction Jenkins :
+            # La plateforme utilise QTimer.singleShot(200, _send_t40) — les commandes
+            # Redis arrivent 200ms APRÈS que la supervision Qt est déjà en train de
+            # poller. Dans le headless, _pre_test bloque avec time.sleep → la
+            # supervision ne démarre qu'après le retour de _pre_test.
+            # FIX : même pattern que T37 — envoyer les stimuli Redis dans un thread
+            # différé de 0.6s pour laisser la supervision démarrer et observer
+            # state=TOUCH avant de toggler rest_contact_sim.
             if rc:
                 rc.set_cmd("rest_contact_sim_active", False)
                 rc.set_cmd("rest_contact_sim",        False)
                 rc.set_cmd("crs_wiper_op", 0)
             lw.queue_send({"cmd": "TOUCH"})
-            time.sleep(0.2)
             if hasattr(test, "reset_t0"): test.reset_t0()
-            if rc:
-                rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", True)
-                rc.set_cmd("crs_wiper_op", 1)
-            time.sleep(1.5)
-            if rc: rc.set_cmd("rest_contact_sim", False)
+            _rc_ref = rc
+            def _t40_delayed():
+                time.sleep(0.6)   # supervision démarre + BCM entre en TOUCH
+                if _rc_ref:
+                    _rc_ref.set_cmd("rest_contact_sim_active", True)
+                    _rc_ref.set_cmd("rest_contact_sim", True)   # lame EN MOUVEMENT
+                    _rc_ref.set_cmd("crs_wiper_op", 1)
+                time.sleep(1.5)   # durée cycle (~1 balayage)
+                if _rc_ref: _rc_ref.set_cmd("rest_contact_sim", False)  # retour repos
+            threading.Thread(target=_t40_delayed, daemon=True).start()
 
         elif tid == "T43":
             self._log("  → T43 : SPEED1 + reverse_gear=True (rear intermittent)")
@@ -908,42 +919,38 @@ class HeadlessTestRunner:
         elif tid == "T34":
             self._log("  → T34 : Redis SET AUTO + rain=10")
             if rc:
-                # ROOT CAUSE : bcmcan.py sur le RPiSIM émet des trames CAN 0x301
-                # (RainSensorData) toutes les 200ms avec intensity=0 (valeur par
-                # défaut de _rain_state). Le BCM reçoit ces trames via T-CAN →
-                # _can_process_0x301() → rte.set_multi(rain_intensity=0), ce qui
-                # écrase le rain_intensity=10 positionné via Redis.
-                # mw.queue_send({"rain_intensity":10}) ne peut pas corriger cela
-                # car le port 5002 (bcmcan.py TCP) est inactif sur le banc CI.
-                #
-                # FIX CI-ONLY : boucle de rafraîchissement Redis toutes les 150ms
-                # (< 200ms = période trame 0x301) afin de réécrire rain_intensity=10
-                # après chaque écrasement par la trame CAN. Le thread s'arrête
-                # automatiquement quand _rc_gen est invalidé (fin du test).
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 10)
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
-                time.sleep(0.30)   # attendre propagation Redis → BCM (≥ 6×T-WSM)
+                time.sleep(0.30)
                 lw.queue_send({"cmd": "AUTO"})
                 rc.set_cmd("crs_wiper_op", 4)
                 mw.queue_send({"rain_intensity": 10, "sensor_status": "OK"})
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 _gen = self._rc_gen
+                if hasattr(test, "reset_t0"): test.reset_t0()
 
                 def _t34_rain_refresh():
-                    """Rafraîchit rain_intensity=10 toutes les 150ms pour contrer
-                    les trames CAN 0x301 (intensity=0) de bcmcan.py."""
                     while getattr(self, "_rc_gen", 0) == _gen:
                         rc.set_cmd("rain_intensity", 10)
                         time.sleep(0.15)
                 threading.Thread(target=_t34_rain_refresh, daemon=True).start()
 
-                time.sleep(0.2)
-                if hasattr(test, "reset_t0"): test.reset_t0()
                 def _t34_cycles():
+                    # FIX JENKINS T34 : attendre confirmation Redis state=AUTO avant
+                    # de démarrer les cycles rest_contact. Sans ça, le BCM n'est pas
+                    # encore en AUTO quand rest_contact=True arrive → B2009 STUCK CLOSED
+                    # (lame bloquée dès le démarrage) → ERROR → FAIL.
+                    # On attend max 2s que Redis confirme state=AUTO, puis on démarre
+                    # les 3 cycles avec la même temporisation que la plateforme Qt.
+                    for _ in range(20):   # max 2s (20 × 100ms)
+                        if rc.get("state") == "AUTO":
+                            break
+                        time.sleep(0.1)
+                    if getattr(self, "_rc_gen", 0) != _gen: return
                     for cycle in range(3):
-                        time.sleep(0.3 + cycle * 1.7 - (0.3 if cycle > 0 else 0))
+                        time.sleep(0.3 if cycle == 0 else 1.7)
                         if getattr(self, "_rc_gen", 0) != _gen: return
                         rc.set_cmd("rest_contact_sim", True)
                         time.sleep(1.55)
@@ -957,32 +964,34 @@ class HeadlessTestRunner:
         elif tid == "T35":
             self._log("  → T35 : Redis SET AUTO + rain=25")
             if rc:
-                # ROOT CAUSE identique à T34 : bcmcan.py émet 0x301 avec
-                # intensity=0 toutes les 200ms et écrase rain_intensity dans
-                # le RTE BCM. Même fix : rafraîchissement Redis 150ms < 200ms.
                 rc.set_cmd("rain_sensor_installed", True)
                 rc.set_cmd("rain_intensity", 25)
                 rc.set_cmd("rest_contact_sim_active", True)
                 rc.set_cmd("rest_contact_sim", False)
-                time.sleep(0.30)   # attendre propagation Redis → BCM (≥ 6×T-WSM)
+                time.sleep(0.30)
                 lw.queue_send({"cmd": "AUTO"})
                 rc.set_cmd("crs_wiper_op", 4)
                 mw.queue_send({"rain_intensity": 25, "sensor_status": "OK"})
                 self._rc_gen = getattr(self, "_rc_gen", 0) + 1
                 _gen = self._rc_gen
+                if hasattr(test, "reset_t0"): test.reset_t0()
 
                 def _t35_rain_refresh():
-                    """Rafraîchit rain_intensity=25 toutes les 150ms."""
                     while getattr(self, "_rc_gen", 0) == _gen:
                         rc.set_cmd("rain_intensity", 25)
                         time.sleep(0.15)
                 threading.Thread(target=_t35_rain_refresh, daemon=True).start()
 
-                time.sleep(0.2)
-                if hasattr(test, "reset_t0"): test.reset_t0()
                 def _t35_cycles():
+                    # FIX JENKINS T35 : même logique que T34 — attendre state=AUTO
+                    # avant de démarrer les cycles rest_contact.
+                    for _ in range(20):
+                        if rc.get("state") == "AUTO":
+                            break
+                        time.sleep(0.1)
+                    if getattr(self, "_rc_gen", 0) != _gen: return
                     for cycle in range(3):
-                        time.sleep(0.3 + cycle * 1.7 - (0.3 if cycle > 0 else 0))
+                        time.sleep(0.3 if cycle == 0 else 1.7)
                         if getattr(self, "_rc_gen", 0) != _gen: return
                         rc.set_cmd("rest_contact_sim", True)
                         time.sleep(1.55)
@@ -995,21 +1004,43 @@ class HeadlessTestRunner:
 
         elif tid == "T36":
             self._log("  → T36 : FRONT_WASH + cycles rest_contact")
+            # FIX JENKINS T36 : port fidèle de test_runner avec QTimer.singleShot(400).
+            # La plateforme envoie FRONT_WASH + rest_contact_cycles 400ms APRÈS le reset,
+            # pendant que la supervision Qt tourne déjà. Dans le headless, _pre_test
+            # bloque → supervision ne démarre pas → les cycles arrivent avant que
+            # _check_rte soit actif → fallback durée=49ms (moteur déjà OFF).
+            # FIX : envoyer tout dans un thread différé pour que la supervision soit
+            # active avant le stimulus. Attente de state=WASH_FRONT avant les cycles.
             if rc: rc.set_cmd("crs_wiper_op", 0)
-            mw.queue_send({"ignition_status": 1, "vehicle_speed": 0})
-            time.sleep(0.4)
+            mw.queue_send({"ignition_status": "ON", "vehicle_speed": 0})
             if hasattr(test, "reset_t0"): test.reset_t0()
-            if rc:
-                rc.set_cmd("rest_contact_sim_active", True)
-                rc.set_cmd("rest_contact_sim", False)
-                lw.queue_send({"cmd": "FRONT_WASH"})
-                def _t36_cycles():
-                    for cycle in range(3):
-                        time.sleep(0.15)
-                        rc.set_cmd("rest_contact_sim", True)
-                        time.sleep(1.45)
-                        rc.set_cmd("rest_contact_sim", False)
-                threading.Thread(target=_t36_cycles, daemon=True).start()
+            _rc_ref = rc
+            _lw_ref = lw
+            self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+            _gen = self._rc_gen
+
+            def _t36_deferred():
+                time.sleep(0.4)   # laisser supervision démarrer (≈ port QTimer 400ms)
+                if getattr(self, "_rc_gen", 0) != _gen: return
+                if _rc_ref:
+                    _rc_ref.set_cmd("rest_contact_sim_active", True)
+                    _rc_ref.set_cmd("rest_contact_sim", False)
+                _lw_ref.queue_send({"cmd": "FRONT_WASH"})
+                # Attendre confirmation state=WASH_FRONT avant les cycles
+                for _ in range(20):   # max 2s
+                    if _rc_ref and _rc_ref.get("state") == "WASH_FRONT":
+                        break
+                    time.sleep(0.1)
+                if getattr(self, "_rc_gen", 0) != _gen: return
+                # 3 cycles : timing plateforme b+150ms → True, b+1600ms → False
+                for cycle in range(3):
+                    time.sleep(0.15 if cycle == 0 else 1.7)
+                    if getattr(self, "_rc_gen", 0) != _gen: return
+                    if _rc_ref: _rc_ref.set_cmd("rest_contact_sim", True)
+                    time.sleep(1.45)
+                    if getattr(self, "_rc_gen", 0) != _gen: return
+                    if _rc_ref: _rc_ref.set_cmd("rest_contact_sim", False)
+            threading.Thread(target=_t36_deferred, daemon=True).start()
 
         elif tid == "T37":
             self._log("  → T37 : LIN REAR_WASH")
@@ -1356,11 +1387,7 @@ class HeadlessTestRunner:
                 if rc: rc.set_cmd("wc_available", False)
 
             elif _tid in ("T30", "T31", "T32", "T34", "T35", "T36", "T37", "T38"):
-                # LIN OFF obligatoire pour T30/T31/T32 (stimulus LIN)
-                # FIX JENKINS T37 : LIN OFF ajouté pour T34/T35/T36/T37 également —
-                # sans cela, le simulateur LIN continue d'émettre REAR_WASH/SPEED1
-                # après la fin du test, ce qui peut relancer un cycle BCM et faire
-                # déborder le TEST_TIMEOUT_S du test suivant.
+                # LIN OFF obligatoire pour T30/T31/T32/T34/T35/T36/T37 (stimulus LIN)
                 lw = self._lin_w
                 if _tid in ("T30", "T31", "T32", "T34", "T35", "T36", "T37") and lw:
                     lw.queue_send({"cmd": "OFF"})
@@ -1368,6 +1395,19 @@ class HeadlessTestRunner:
                     rc.set_cmd("crs_wiper_op",   0)
                     rc.set_cmd("ignition_status", 1)
                     rc.set_cmd("rain_intensity",  0)
+                    if _tid in ("T34", "T35"):
+                        # Invalider _rc_gen : stoppe les threads refresh/cycles résiduels
+                        self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                        rc.set_cmd("rain_sensor_installed", False)
+                        rc.set_cmd("rest_contact_sim_active", False)
+                        rc.set_cmd("rest_contact_sim",        False)
+                        mw = self._motor_w
+                        if mw: mw.queue_send({"rain_intensity": 0, "sensor_status": "OK"})
+                    if _tid == "T36":
+                        # Invalider _rc_gen + désactiver rest_contact sim
+                        self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+                        rc.set_cmd("rest_contact_sim_active", False)
+                        rc.set_cmd("rest_contact_sim",        False)
 
             elif _tid in ("TC_AUTO_004", "TC_FSR_008"):
                 # Cleanup commun : crs_wiper_op=0 + ignition ON simulateur
