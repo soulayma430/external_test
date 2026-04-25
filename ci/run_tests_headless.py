@@ -445,6 +445,17 @@ class HeadlessTestRunner:
             self._log("  → stop_lin_tx")
             lw.queue_send({"test_cmd": "stop_lin_tx"})
 
+        elif tid in ("T03", "T04", "T05"):
+            # Port fidèle de test_runner._pre_test (T03/T04/T05) :
+            # 0x200 (T03) / 0x201 (T04) / 0x202 (T05) ne sont émis par le BCM
+            # qu'en CAS B (wc_available=True).  Sans ce pré-requis les trames
+            # n'arrivent jamais et le test TIMEOUT immédiatement.
+            self._log(f"  → {tid} : wc_available=True (CAS B)")
+            if rc:
+                rc.set_cmd("wc_available",    True)
+                rc.set_cmd("ignition_status", 1)
+            mw.queue_send({"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+
         elif tid == "T11":
             self._log("  → stop_can_tx")
             if rc: rc.set_cmd("wc_available", True)
