@@ -92,11 +92,14 @@ pipeline {
         // Si le dépôt est checké directement dans WORKSPACE, DEPOT_DIR = WORKSPACE
         // Si le dépôt est dans un sous-dossier 'depot', DEPOT_DIR = WORKSPACE\depot
         // La logique ci-dessous gère les deux cas.
-        DEPOT_DIR      = "${WORKSPACE}"
-        REPORTS_DIR    = "${WORKSPACE}\\reports"
-        VENV_DIR       = "${WORKSPACE}\\.venv"
-        PYTHON_EXE     = "${WORKSPACE}\\.venv\\Scripts\\python.exe"
-        PIP_EXE        = "${WORKSPACE}\\.venv\\Scripts\\pip.exe"
+        DEPOT_DIR        = "${WORKSPACE}"
+        REPORTS_DIR      = "${WORKSPACE}\\reports"
+        VENV_DIR         = "${WORKSPACE}\\.venv"
+        PYTHON_EXE       = "${WORKSPACE}\\.venv\\Scripts\\python.exe"
+        PIP_EXE          = "${WORKSPACE}\\.venv\\Scripts\\pip.exe"
+        // ── Encodage UTF-8 forcé pour Python sous Windows ─────────────────
+        PYTHONIOENCODING = "utf-8"
+        PYTHONUTF8       = "1"
     }
 
     stages {
@@ -184,7 +187,7 @@ pipeline {
                     }
 
                     // ── Exécution ─────────────────────────────────────────
-                    def exitCode = bat(script: cmd, returnStatus: true)
+                    def exitCode = bat(script: "chcp 65001 >nul 2>&1\r\n" + cmd, returnStatus: true)
                     env.TEST_EXIT_CODE = "${exitCode}"
 
                     echo "  → Exit code runner : ${exitCode}"
