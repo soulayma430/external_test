@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import sys, io
+# Force UTF-8 output on Windows (Jenkins console encoding fix)
+if sys.stdout.encoding and sys.stdout.encoding.upper() not in ("UTF-8", "UTF8"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if sys.stderr.encoding and sys.stderr.encoding.upper() not in ("UTF-8", "UTF8"):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 """
 run_tests_headless.py  —  WipeWash BCM Test Runner (mode headless / Jenkins Windows)
 =====================================================================================
