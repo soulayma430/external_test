@@ -366,7 +366,21 @@ class DataSavePanel(QWidget):
 
     # ── Style ────────────────────────────────────────────────
     def _setStyleSheet(self):
-        self.setStyleSheet(f"background:{W_BG};color:{W_TEXT};")
+        self.setStyleSheet(f"""
+            QWidget {{
+                background: #0D1117;
+                color: #C9D1D9;
+                font-family: '{FONT_MONO}';
+            }}
+            QScrollBar:vertical {{
+                background: #161B22; width: 6px; border-radius: 3px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: #30363D; border-radius: 3px; min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{ background: {KPIT_GREEN}; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        """)
 
     # ── Build ────────────────────────────────────────────────
     def _build(self):
@@ -374,33 +388,59 @@ class DataSavePanel(QWidget):
         root.setContentsMargins(10, 8, 10, 8)
         root.setSpacing(8)
 
-        # ── Titre ─────────────────────────────────────────────
-        title_row = QHBoxLayout()
-        ic = _lbl("◉", 20, True, A_RED)
-        ic.setFixedWidth(26)
-        title_row.addWidget(ic)
-        title_row.addWidget(_lbl("DATA SAVE", 15, True, W_DOCK_HDR))
-        title_row.addWidget(_lbl("— Enregistrement & Export CSV", 10, False, W_TEXT_DIM))
-        title_row.addStretch()
-        self._lbl_elapsed = _lbl("00:00:00", 13, True, A_TEAL, True)
-        self._lbl_elapsed.setFont(QFont(FONT_MONO, 13, QFont.Weight.Bold))
-        title_row.addWidget(self._lbl_elapsed)
-        root.addLayout(title_row)
-        root.addWidget(_hsep())
+        # ── Header bar ─────────────────────────────────────────────
+        hdr_frame = QFrame()
+        hdr_frame.setFixedHeight(52)
+        hdr_frame.setStyleSheet(
+            "QFrame{background:#161B22;border-bottom:1px solid #21262D;"
+            "border-radius:0px;}")
+        hdr_lay = QHBoxLayout(hdr_frame)
+        hdr_lay.setContentsMargins(18, 0, 18, 0)
+        hdr_lay.setSpacing(14)
+
+        # Accent dot
+        dot = QLabel("●")
+        dot.setStyleSheet(f"color:{A_RED};font-size:11pt;background:transparent;")
+        hdr_lay.addWidget(dot)
+
+        title_lbl = QLabel("DATA")
+        title_lbl.setStyleSheet(
+            f"color:#E6EDF3;font-family:{FONT_MONO};font-size:14pt;"
+            "font-weight:bold;letter-spacing:4px;background:transparent;")
+        hdr_lay.addWidget(title_lbl)
+
+        desk_lbl = QLabel("DESK")
+        desk_lbl.setStyleSheet(
+            f"color:{KPIT_GREEN};font-family:{FONT_MONO};font-size:14pt;"
+            "font-weight:bold;letter-spacing:4px;background:transparent;")
+        hdr_lay.addWidget(desk_lbl)
+
+        sep_lbl = QLabel("  /  RECORD & EXPORT")
+        sep_lbl.setStyleSheet(
+            "color:#484F58;font-family:'" + FONT_MONO + "';font-size:9pt;"
+            "letter-spacing:2px;background:transparent;")
+        hdr_lay.addWidget(sep_lbl)
+        hdr_lay.addStretch()
+
+        self._lbl_elapsed = _lbl("00:00:00", 15, True, "#484F58", True)
+        self._lbl_elapsed.setFont(QFont(FONT_MONO, 15, QFont.Weight.Bold))
+        hdr_lay.addWidget(self._lbl_elapsed)
+
+        root.addWidget(hdr_frame)
 
         # ── Splitter vertical : contrôles haut | preview bas ──
         spl = QSplitter(Qt.Orientation.Vertical)
-        spl.setStyleSheet(f"QSplitter::handle{{background:{W_BORDER};height:3px;}}")
+        spl.setStyleSheet("QSplitter::handle{background:#21262D;height:2px;}")
 
-        top = QWidget(); top.setStyleSheet(f"background:{W_BG};")
+        top = QWidget(); top.setStyleSheet("background:#0D1117;")
         top_lay = QVBoxLayout(top); top_lay.setContentsMargins(0, 0, 0, 0); top_lay.setSpacing(8)
 
         # ── Ligne 1 : boutons Rec/Stop/Clear ──────────────────
         btn_row = QHBoxLayout(); btn_row.setSpacing(8)
 
-        self._btn_rec   = self._mk_btn("REC",   A_RED,    160, 48)
-        self._btn_stop  = self._mk_btn("STOP",  "#707070", 140, 48)
-        self._btn_clear = self._mk_btn("CLEAR", A_AMBER,  140, 48)
+        self._btn_rec   = self._mk_btn("⏺  REC",   "#DA3633",  150, 42)
+        self._btn_stop  = self._mk_btn("⏹  STOP",  "#30363D",  130, 42)
+        self._btn_clear = self._mk_btn("⟳  CLEAR", "#B08800",  130, 42)
         self._btn_stop.setEnabled(False)
 
         self._btn_rec.clicked.connect(self._on_rec)
@@ -413,7 +453,7 @@ class DataSavePanel(QWidget):
         btn_row.addStretch()
 
         # Pause preview
-        self._btn_pause = self._mk_btn("Pause Preview", "#444466", 170, 38)
+        self._btn_pause = self._mk_btn("⏸  Pause", "#21262D", 120, 38)
         self._btn_pause.setCheckable(True)
         self._btn_pause.toggled.connect(self._on_pause_preview)
         btn_row.addWidget(self._btn_pause)
@@ -421,10 +461,13 @@ class DataSavePanel(QWidget):
         top_lay.addLayout(btn_row)
 
         # ── Ligne 2 : filtres sources + compteurs ─────────────
-        src_card = QFrame(); src_card.setStyleSheet(_CARD_STYLE)
+        src_card = QFrame()
+        src_card.setStyleSheet(
+            "QFrame{background:#161B22;border:1px solid #21262D;"
+            "border-left:3px solid " + KPIT_GREEN + ";border-radius:6px;padding:4px;}")
         src_lay  = QHBoxLayout(src_card); src_lay.setContentsMargins(10, 6, 10, 6); src_lay.setSpacing(16)
 
-        src_lay.addWidget(_lbl("SOURCES :", 10, True, W_TEXT_DIM))
+        src_lay.addWidget(_lbl("SRC", 8, True, "#484F58"))
         self._src_checks: dict[str, QCheckBox] = {}
         self._src_leds:   dict[str, StatusLed] = {}
         self._src_counts: dict[str, QLabel]    = {}
@@ -436,10 +479,10 @@ class DataSavePanel(QWidget):
             cb.setChecked(True)
             cb.setStyleSheet(
                 f"QCheckBox{{color:{col};font-weight:bold;font-family:{FONT_MONO};"
-                f"font-size:10pt;background:transparent;}}"
-                f"QCheckBox::indicator{{width:14px;height:14px;border:2px solid {col};"
-                f"border-radius:3px;background:{W_PANEL2};}}"
-                f"QCheckBox::indicator:checked{{background:{col};}}"
+                f"font-size:9pt;background:transparent;letter-spacing:1px;}}"
+                f"QCheckBox::indicator{{width:12px;height:12px;border:1px solid {col}44;"
+                f"border-radius:2px;background:#0D1117;}}"
+                f"QCheckBox::indicator:checked{{background:{col};border-color:{col};}}"
             )
             cb.toggled.connect(lambda checked, s=src: self._rec.set_filter(s, checked))
             self._src_checks[src] = cb
@@ -468,16 +511,16 @@ class DataSavePanel(QWidget):
 
         # ── Ligne 3 : barre de progression (buffer) ───────────
         prog_row = QHBoxLayout(); prog_row.setSpacing(8)
-        prog_row.addWidget(_lbl("Buffer :", 9, False, W_TEXT_DIM))
+        prog_row.addWidget(_lbl("BUF", 8, True, "#484F58"))
         self._prog = QProgressBar()
         self._prog.setRange(0, MAX_BUFFER)
         self._prog.setValue(0)
         self._prog.setFixedHeight(10)
         self._prog.setTextVisible(False)
         self._prog.setStyleSheet(
-            f"QProgressBar{{background:{W_PANEL3};border:1px solid {W_BORDER};"
-            f"border-radius:3px;}}"
-            f"QProgressBar::chunk{{background:{A_TEAL};border-radius:3px;}}"
+            "QProgressBar{background:#161B22;border:none;border-radius:3px;}"
+            f"QProgressBar::chunk{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            f"stop:0 {KPIT_GREEN},stop:1 {A_TEAL});border-radius:3px;}}"
         )
         prog_row.addWidget(self._prog, 1)
         self._lbl_buf = _lbl(f"0 / {MAX_BUFFER:,}", 9, False, W_TEXT_DIM, True)
@@ -485,30 +528,33 @@ class DataSavePanel(QWidget):
         top_lay.addLayout(prog_row)
 
         # ── Ligne 4 : export ──────────────────────────────────
-        exp_card = QFrame(); exp_card.setStyleSheet(_CARD_STYLE)
+        exp_card = QFrame()
+        exp_card.setStyleSheet(
+            "QFrame{background:#161B22;border:1px solid #21262D;"
+            "border-left:3px solid " + A_TEAL + ";border-radius:6px;padding:4px;}")
         exp_lay  = QHBoxLayout(exp_card); exp_lay.setContentsMargins(10, 6, 10, 6); exp_lay.setSpacing(12)
 
-        exp_lay.addWidget(_lbl("EXPORT :", 10, True, W_TEXT_DIM))
+        exp_lay.addWidget(_lbl("EXP", 8, True, "#484F58"))
 
         # Filtre source pour l'export
         self._exp_filter = QComboBox()
         self._exp_filter.addItems(["Tout (merged)", "Motor", "LIN", "CAN", "Pump", "Par source (4 fichiers)"])
         self._exp_filter.setStyleSheet(
-            f"QComboBox{{background:{W_PANEL2};border:1px solid {W_BORDER};"
-            f"color:{W_TEXT};border-radius:4px;padding:3px 8px;"
-            f"font-family:{FONT_MONO};font-size:10pt;}}"
-            f"QComboBox::drop-down{{border:none;}}"
-            f"QComboBox QAbstractItemView{{background:{W_PANEL2};color:{W_TEXT};"
-            f"border:1px solid {W_BORDER};}}"
+            "QComboBox{background:#21262D;border:1px solid #30363D;"
+            "color:#C9D1D9;border-radius:4px;padding:3px 8px;"
+            f"font-family:{FONT_MONO};font-size:9pt;}}"
+            "QComboBox::drop-down{border:none;}"
+            "QComboBox QAbstractItemView{background:#161B22;color:#C9D1D9;"
+            "border:1px solid #30363D;}"
         )
         self._exp_filter.setFixedWidth(200)
         exp_lay.addWidget(self._exp_filter)
 
-        self._btn_export = self._mk_btn("Export CSV", A_TEAL, 170, 40)
+        self._btn_export = self._mk_btn("↓  CSV", A_TEAL, 110, 36)
         self._btn_export.clicked.connect(self._on_export)
         exp_lay.addWidget(self._btn_export)
 
-        self._btn_export_mdf = self._mk_btn("Export MDF4", "#6A1B9A", 175, 40)
+        self._btn_export_mdf = self._mk_btn("↓  MDF4", "#7B2FBE", 110, 36)
         self._btn_export_mdf.clicked.connect(self._on_export_mdf)
         if not _MDF_AVAILABLE:
             self._btn_export_mdf.setEnabled(False)
@@ -526,33 +572,41 @@ class DataSavePanel(QWidget):
         spl.addWidget(top)
 
         # ── Preview table ─────────────────────────────────────
-        bot = QWidget(); bot.setStyleSheet(f"background:{W_BG};")
+        bot = QWidget(); bot.setStyleSheet("background:#0D1117;")
         bot_lay = QVBoxLayout(bot); bot_lay.setContentsMargins(0, 4, 0, 0); bot_lay.setSpacing(4)
 
-        prev_hdr = QHBoxLayout()
-        prev_hdr.addWidget(_lbl("PREVIEW", 11, True, W_DOCK_HDR))
-        prev_hdr.addWidget(_lbl(f"(dernières {_PREVIEW_MAX} lignes)", 9, False, W_TEXT_DIM))
-        prev_hdr.addStretch()
-        self._lbl_preview_count = _lbl("0 lignes visibles", 9, False, W_TEXT_DIM, True)
-        prev_hdr.addWidget(self._lbl_preview_count)
-        bot_lay.addLayout(prev_hdr)
+        prev_hdr = QFrame()
+        prev_hdr.setFixedHeight(32)
+        prev_hdr.setStyleSheet(
+            "QFrame{background:#161B22;border-bottom:1px solid #21262D;border-radius:0;}")
+        ph_lay = QHBoxLayout(prev_hdr)
+        ph_lay.setContentsMargins(14, 0, 14, 0)
+        ph_lay.addWidget(_lbl("LIVE PREVIEW", 9, True, "#484F58"))
+        ph_lay.addWidget(_lbl(f"— last {_PREVIEW_MAX}", 8, False, "#30363D"))
+        ph_lay.addStretch()
+        self._lbl_preview_count = _lbl("0 visible", 8, False, "#484F58", True)
+        ph_lay.addWidget(self._lbl_preview_count)
+        bot_lay.addWidget(prev_hdr)
 
         self._table = QTableWidget(0, len(_PREVIEW_COLS))
         self._table.setHorizontalHeaderLabels(_PREVIEW_COLS)
         self._table.setStyleSheet(
-            f"QTableWidget{{background:{W_PANEL};border:1px solid {W_BORDER};"
-            f"gridline-color:{W_BORDER};color:{W_TEXT};"
-            f"font-family:{FONT_MONO};font-size:9pt;}}"
-            f"QHeaderView::section{{background:{W_DOCK_HDR};color:{W_TEXT_HDR};"
-            f"border:none;padding:4px;font-family:{FONT_MONO};font-size:9pt;font-weight:bold;}}"
-            f"QTableWidget::item:selected{{background:{A_TEAL};color:#FFFFFF;}}"
+            "QTableWidget{background:#0D1117;border:none;"
+            "gridline-color:#161B22;color:#8B949E;"
+            f"font-family:{FONT_MONO};font-size:8.5pt;}}"
+            "QHeaderView::section{background:#161B22;color:#484F58;"
+            "border:none;border-bottom:1px solid #21262D;"
+            f"padding:5px 8px;font-family:{FONT_MONO};font-size:8pt;"
+            "font-weight:bold;letter-spacing:2px;}"
+            f"QTableWidget::item:selected{{background:#1F6FEB22;color:#79C0FF;}}"
+            "QTableWidget::item{padding:2px 6px;}"
         )
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setAlternatingRowColors(True)
         self._table.setStyleSheet(
             self._table.styleSheet() +
-            f"QTableWidget{{alternate-background-color:{W_PANEL2};}}"
+            "QTableWidget{alternate-background-color:#0D1117;}"
         )
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self._table.horizontalHeader().setStretchLastSection(True)
@@ -572,14 +626,16 @@ class DataSavePanel(QWidget):
     def _mk_btn(self, text: str, color: str, w: int = 120, h: int = 36) -> QPushButton:
         b = QPushButton(text)
         b.setFixedSize(w, h)
-        b.setFont(QFont(FONT_UI, 10, QFont.Weight.Bold))
+        b.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
         b.setCursor(Qt.CursorShape.PointingHandCursor)
         b.setStyleSheet(
-            f"QPushButton{{background:{color};color:#FFFFFF;"
-            f"border:none;border-radius:6px;padding:4px 12px;}}"
-            f"QPushButton:hover{{background:{color}CC;}}"
-            f"QPushButton:disabled{{background:#555555;color:#888888;}}"
-            f"QPushButton:checked{{background:{color};border:2px solid #FFFFFF;}}"
+            f"QPushButton{{background:{color}22;color:{color};"
+            f"border:1px solid {color}66;border-radius:5px;"
+            f"padding:4px 12px;letter-spacing:1px;}}"
+            f"QPushButton:hover{{background:{color}44;border-color:{color};color:#FFFFFF;}}"
+            f"QPushButton:pressed{{background:{color}66;}}"
+            f"QPushButton:disabled{{background:#21262D;color:#484F58;border-color:#30363D;}}"
+            f"QPushButton:checked{{background:{color};color:#FFFFFF;border-color:{color};}}"
         )
         return b
 
@@ -626,7 +682,7 @@ class DataSavePanel(QWidget):
 
         # Auto-scroll vers le bas
         self._table.scrollToBottom()
-        self._lbl_preview_count.setText(f"{self._table.rowCount()} lignes visibles")
+        self._lbl_preview_count.setText(f"{self._table.rowCount()} rows")
 
     # ── Slots ────────────────────────────────────────────────
     def _on_rec(self):
@@ -655,7 +711,7 @@ class DataSavePanel(QWidget):
         self._table.setRowCount(0)
         self._preview_rows.clear()
         self._lbl_total.setText("0 lignes")
-        self._lbl_preview_count.setText("0 lignes visibles")
+        self._lbl_preview_count.setText("0 rows")
         self._prog.setValue(0)
         self._lbl_buf.setText(f"0 / {MAX_BUFFER:,}")
         for cnt in self._src_counts.values():
@@ -664,7 +720,7 @@ class DataSavePanel(QWidget):
 
     def _on_pause_preview(self, paused: bool):
         self._paused = paused
-        self._btn_pause.setText("Resume Preview" if paused else "Pause Preview")
+        self._btn_pause.setText("▶  Resume" if paused else "⏸  Pause")
 
     def _on_row_added(self, row: dict):
         if not self._paused:
@@ -769,9 +825,9 @@ class DataSavePanel(QWidget):
             m  = int((e % 3600) // 60)
             s  = int(e % 60)
             self._lbl_elapsed.setText(f"{h:02d}:{m:02d}:{s:02d}")
-            self._lbl_elapsed.setStyleSheet(f"color:{A_RED};background:transparent;font-weight:bold;")
+            self._lbl_elapsed.setStyleSheet(f"color:#DA3633;background:transparent;font-weight:bold;font-family:'{FONT_MONO}';font-size:15pt;")
         else:
-            self._lbl_elapsed.setStyleSheet(f"color:{A_TEAL};background:transparent;font-weight:bold;")
+            self._lbl_elapsed.setStyleSheet(f"color:#484F58;background:transparent;font-weight:bold;font-family:'{FONT_MONO}';font-size:15pt;")
 
     # ── Slots publics (connectés depuis MainWindow) ───────────
     def on_motor_data(self, data: dict):

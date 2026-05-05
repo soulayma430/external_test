@@ -32,13 +32,15 @@ class TestRunner(QObject):
     log_msg      = Signal(str)        # message texte libre
 
     def __init__(self, can_worker, lin_worker, motor_worker,
-                 pump_signal=None, rte_client=None, sim_client=None, parent=None):
+                 pump_signal=None, rte_client=None, sim_client=None,
+                 can_panel=None, parent=None):
         super().__init__(parent)
         self._can_w      = can_worker
         self._lin_w      = lin_worker
         self._motor_w    = motor_worker
         self._rte_client = rte_client   # RTEClient Redis (optionnel)
         self._sim_client = sim_client   # SimClient TCP vers RPi Simulateur (optionnel)
+        self._can_panel  = can_panel    # CANBusPanel — reset_wc_state() avant chaque ERR0x
 
         self._queue  : List[BaseTest]   = []
         self._current: Optional[BaseTest] = None
@@ -114,11 +116,15 @@ class TestRunner(QObject):
         # Après T21 (FRONT_WASH), le BCM met ~2s à terminer les cycles
         # et revenir en OFF. Attendre avant le pre_test des tests suivants.
         if tid_cur in ("T30","T31","T32","T33","T34","T35","T36","T37","T38","T38b","T38c","T39",
-                       "T43","T45","TC_LIN_002","TC_LIN_004","TC_LIN_005",
+                       "T43","T45","TC_LIN_002","TC_LIN_017_BIT1_ALONE",
                        "TC_CAN_003","TC_GEN_001","TC_SPD_001","TC_AUTO_004",
                        "TC_FSR_008","TC_FSR_010","TC_COM_001","TC_B2103",
                        "LIN_INVALID_CMD_001","T_RAIN_AUTO_SENSOR_ERROR",
-                       "T_CAS_B_SPEED1_REVERSE","T_B2009_CAN","T50b","T_B2009_CASA"):
+                       "T_CAS_B_SPEED1_REVERSE","T_B2009_CAN","T50b","T50c","T50d","T_B2009_CASA",
+                       "TC_LIN_016_BIT4","TC_LIN_016_BIT6_ALONE",
+                       "TC_B2011_AND","TC_LIN_017_VER","TC_CAN_202_ERR01",
+                       "TC_CAN_202_ERR02","TC_CAN_202_ERR04","TC_CAN_202_ERR05",
+                       "TC_B2104"):
             last = getattr(self, "_last_tid", "")
             delay = 8000 if last == "T22" else \
                     3000 if last == "TC_FSR_010" else \
@@ -284,15 +290,26 @@ class TestRunner(QObject):
             if hasattr(test, "reset_t0"): test.reset_t0()
             self._lin_w.queue_send({"test_cmd": "freeze_alive_counter"})
 
-        elif tid == "TC_LIN_004":
-            self.log_msg.emit("  → TC_LIN_004 : envoyer stickStatus invalide (0xFF)")
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            self._lin_w.queue_send({"test_cmd": "send_invalid_stick_status"})
 
-        elif tid == "TC_LIN_005":
-            self.log_msg.emit("  → TC_LIN_005 : simuler CRS_InternalFault=1 sur LIN 0x17")
-            if hasattr(test, "reset_t0"): test.reset_t0()
-            self._lin_w.queue_send({"test_cmd": "crs_internal_fault"})
+        elif tid == "TC_LIN_017_BIT1_ALONE":
+            self.log_msg.emit("  → TC_LIN_017_BIT1_ALONE : 0x17 bit0=1 seul — B2011 ne doit PAS se déclencher")
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",    False)
+                self._rte_client.set_cmd("crs_wiper_op",    0)
+                self._rte_client.set_cmd("ignition_status", 1)
+                self._rte_client.set_cmd("b2011_active",    False)
+            # Purger résidus : s'assurer que bit6=0 ET bit0=0 avant injection
+            self._lin_w.queue_send({"set_stuck": False})
+            self._lin_w.queue_send({"set_fault": 0})
+            def _bit1_alone_start():
+                # Injecter 0x17 bit0=1 (CRS_InternalFault_Stick) UNIQUEMENT
+                # 0x16 bit6 reste à 0 → condition ET incomplète → B2011 impossible
+                self._lin_w.queue_send({"set_fault": 1})
+                self.log_msg.emit("  → 0x17 bit0=1 (fault_stick) injecté — bit6=0 maintenu")
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+            # 800ms : laisser la queue se vider + BCM stable avant injection
+            QTimer.singleShot(800, _bit1_alone_start)
 
         elif tid == "TC_CAN_003":
             self.log_msg.emit("  → TC_CAN_003 : geler AliveCounter CAN 0x200 (BCM→WC)")
@@ -411,6 +428,15 @@ class TestRunner(QObject):
             # wc_available=False / crs_wiper_op=0 pendant notre setup → BCM sort de SPEED1
             # avant que la corruption soit activée → 0 trames corrompues émises.
             self._rc_gen = getattr(self, "_rc_gen", 0) + 1
+            # Garantir ignition=2 dans bcmcan EN PREMIER.
+            # Si _vehicle_state est resté à ignition=0 (résidu d'un test précédent
+            # comme TC_GEN_001 ou T45 qui envoient ignition=OFF), bcmcan continue
+            # d'émettre CAN 0x300 avec ignition=0 toutes les 200ms. Après 1s la
+            # priorité Redis expire → BCM lit le CAN → passe en ST_OFF → arrête 0x200
+            # → simulator ne déclenche plus _build_0x201 → count=8 jamais décrémenté
+            # → wc_crc_fault jamais levé → timeout TC_FSR_010.
+            self._motor_w.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
             # reset_b2101 : remet _t_last_0x200=now et suspend le check B2101 pendant 3s.
             # Sans ça, si _t_last_0x200 date du test précédent (TC_CAN_003) et est
             # périmé de >2s au moment du setup (1400ms), B2101 se déclenche pendant
@@ -438,6 +464,18 @@ class TestRunner(QObject):
                         self._rte_client.set_cmd("wc_available",  True)
                         self._rte_client.set_cmd("crs_wiper_op",  2)
                     def _fsr010_corrupt():
+                        # FIX race condition Redis : re-affirmer crs_wiper_op=2 (SPEED1)
+                        # juste avant le stimulus. Une commande Redis crs_wiper_op=0
+                        # résiduelle du cleanup du test précédent (TC_FSR_008 _post_test
+                        # ou le bloc inter-test) peut arriver APRÈS la commande =2 de
+                        # _fsr010_set_available (400ms plus tôt) et l'écraser.
+                        # BCM reste en OFF → n'envoie plus 0x200 → WC n'émet plus 0x201
+                        # → count=8 jamais décrémenté → wc_crc_fault jamais levé → timeout.
+                        # Re-poster ici (T_total=1400ms) garantit que crs_wiper_op=2
+                        # est la DERNIÈRE commande Redis avant l'injection CRC KO.
+                        if self._rte_client:
+                            self._rte_client.set_cmd("wc_available", True)
+                            self._rte_client.set_cmd("crs_wiper_op", 2)
                         if hasattr(test, "reset_t0"): test.reset_t0()
                         # Garantir count=0 avant count=8 via sim_client (direct, pas de queue)
                         # Ceinture + bretelles : reset_corrupt_crc dans _post_test suffit,
@@ -1065,7 +1103,7 @@ class TestRunner(QObject):
             QTimer.singleShot(400, _t_b2009_start)
 
         elif tid == "T50b":
-            self.log_msg.emit("  → T50b : CAS B SPEED1 + inject_motor_current → B2001")
+            self.log_msg.emit("  → T50b : CAS B SPEED1 + inject_motor_current + 0x202 ErrorCode=0x03 → B2001")
             if self._rte_client:
                 self._rte_client.set_cmd("wc_available",   True)
                 self._rte_client.set_cmd("lin_op_locked",  True)
@@ -1078,23 +1116,112 @@ class TestRunner(QObject):
                 {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
 
             def _t50b_start():
-                # LIN SPEED1 → BCM ST_SPEED1 → CAN 0x200 → WC répond 0x201 speed=1
                 self._lin_w.queue_send({"cmd": "SPEED1"})
                 if self._rte_client:
                     self._rte_client.set_cmd("crs_wiper_op", 2)
 
             def _t50b_inject():
-                if hasattr(test, "reset_t0"):
-                    test.reset_t0()
-                # Injecter MotorCurrent=0.95A dans trame 0x201
-                # BCM lira motor_current_a > OVERCURRENT_THRESH(0.8A) → B2001
+                # Étape 1 : injecter overcurrent moteur (> OVERCURRENT_THRESH=0.8A)
+                # reset_t0 volontairement PAS ici : on attend que le courant soit
+                # effectivement lu par le BCM avant de démarrer le chrono.
                 if self._sim_client and self._sim_client.is_connected():
                     self._sim_client.inject_motor_current(0.95)
+                    self.log_msg.emit("  → T50b inject_motor_current 0.950A")
 
-            # 400ms : wc_available propagé + SPEED1 établi
+            def _t50b_start_chrono():
+                # Étape 2 : reset_t0 ICI → chrono démarre.
+                # Le courant 0.95A est déjà dans _sensor_state → _build_0x202_from_state()
+                # génère naturellement Err=0x03 au prochain cycle 0x200 reçu.
+                # Plus besoin de send_wiper_ack — le simulateur WC est la source de vérité.
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                if hasattr(test, "notify_ack_err_sent"):
+                    test.notify_ack_err_sent()
+                self.log_msg.emit("  → T50b chrono démarré — 0x202 Err=0x03 généré naturellement")
+
+            # 400ms : wc_available propagé → SPEED1
             QTimer.singleShot(400, _t50b_start)
-            # 700ms : SPEED1 stabilisé → injection overcurrent
+            # 700ms : SPEED1 stabilisé → injection courant
             QTimer.singleShot(700, _t50b_inject)
+            # 1100ms : courant dans _sensor_state → prochain 0x202 aura Err=0x03 automatique
+            QTimer.singleShot(1100, _t50b_start_chrono)
+
+        elif tid == "T50c":
+            self.log_msg.emit("  → T50c : CAS B SPEED1 + inject_motor_current + 0x202 ErrorCode=0x01 → B2001 NON attendu")
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",   True)
+                self._rte_client.set_cmd("lin_op_locked",  True)
+                self._rte_client.set_cmd("crs_wiper_op",   0)
+                self._rte_client.set_cmd("ignition_status", 1)
+                QTimer.singleShot(200, lambda: self._rte_client and
+                    self._rte_client.set_cmd("dtc_inactivate", "B2001"))
+            self._motor_w.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+
+            def _t50c_start():
+                self._lin_w.queue_send({"cmd": "SPEED1"})
+                if self._rte_client:
+                    self._rte_client.set_cmd("crs_wiper_op", 2)
+
+            def _t50c_inject():
+                # FIX : courant SOUS le seuil (0.3A < 0.8A)
+                # _build_0x202_from_state() ne génèrera pas Err=0x03 automatiquement
+                # → seul le send_wiper_ack(Err=0x01) manuel influencera le BCM
+                if self._sim_client and self._sim_client.is_connected():
+                    self._sim_client.inject_motor_current(0.30)
+                    self.log_msg.emit("  → T50c inject_motor_current 0.300A (< seuil 0.8A)")
+
+            def _t50c_send_ack_err():
+                # reset_t0 ici : chrono démarre au moment du NACK
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # ErrorCode=0x01 (≠ 0x03) + courant 0.3A < seuil
+                # → condition conjonctive B2001 incomplète → B2001 ne doit pas déclencher
+                if self._sim_client and self._sim_client.is_connected():
+                    self._sim_client.send_wiper_ack(ack_status=1, error_code=0x01, alive=0)
+                    self.log_msg.emit("  → T50c send_wiper_ack NACK ErrorCode=0x01 (≠ 0x03, courant < seuil)")
+
+            QTimer.singleShot(400, _t50c_start)
+            QTimer.singleShot(700, _t50c_inject)
+            QTimer.singleShot(1100, _t50c_send_ack_err)
+
+        elif tid == "T50d":
+            self.log_msg.emit("  → T50d : CAS B SPEED1 + courant normal 0.30A + 0x202 ErrorCode=0x03 → B2001 NON attendu")
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",   True)
+                self._rte_client.set_cmd("lin_op_locked",  True)
+                self._rte_client.set_cmd("crs_wiper_op",   0)
+                self._rte_client.set_cmd("ignition_status", 1)
+                QTimer.singleShot(200, lambda: self._rte_client and
+                    self._rte_client.set_cmd("dtc_inactivate", "B2001"))
+            self._motor_w.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+
+            def _t50d_start():
+                self._lin_w.queue_send({"cmd": "SPEED1"})
+                if self._rte_client:
+                    self._rte_client.set_cmd("crs_wiper_op", 2)
+
+            def _t50d_inject():
+                # Courant NORMAL (< seuil 0.8A) → condition courant fausse
+                # reset_t0 volontairement pas ici
+                if self._sim_client and self._sim_client.is_connected():
+                    self._sim_client.inject_motor_current(0.30)
+                    self.log_msg.emit("  → T50d inject_motor_current 0.300A (< seuil)")
+
+            def _t50d_send_ack_err():
+                # reset_t0 ici : chrono démarre au moment du NACK
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # AckStatus=1 (NACK) + ErrorCode=0x03 : wc_ack_overcurrent=True posé
+                # Mais courant=0.30A < seuil 0.8A → condition TRIPLE non satisfaite → pas de B2001
+                if self._sim_client and self._sim_client.is_connected():
+                    self._sim_client.send_wiper_ack(ack_status=1, error_code=0x03, alive=0)
+                    self.log_msg.emit("  → T50d send_wiper_ack NACK ErrorCode=0x03 (courant < seuil)")
+
+            QTimer.singleShot(400, _t50d_start)
+            QTimer.singleShot(700, _t50d_inject)
+            QTimer.singleShot(1100, _t50d_send_ack_err)
 
 
         elif tid == "T_B2009_CASA":
@@ -1122,6 +1249,319 @@ class TestRunner(QObject):
                     self._rte_client.set_cmd("crs_wiper_op", 2)
             # 400ms : laisser dtc_inactivate se propager avant le stimulus
             QTimer.singleShot(400, _t_b2009_casa_start)
+
+        # ── TC_LIN_016_BIT4 : StickStatus bit4=0 → B2004 après 2.5s ─────────
+        elif tid == "TC_LIN_016_BIT4":
+            self.log_msg.emit("  → TC_LIN_016_BIT4 : StickStatus bit4=0 (Valid=0) → B2004 après 2.5s")
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",        False)
+                # Remettre lin_timeout_active=False AVANT reset_t0 :
+                # évite que _check_rte détecte un True résiduel du test précédent
+                self._rte_client.set_cmd("lin_timeout_active",  False)
+                self._rte_client.set_cmd("crs_wiper_op",        0)
+                self._rte_client.set_cmd("ignition_status",     1)
+            def _bit4_start():
+                # reset_t0 ICI (après stabilisation Redis) :
+                # garantit que _check_rte ne démarre la mesure qu'après
+                # l'injection du stimulus, pas depuis le début du setup.
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # send_bit4_zero : force stick_status bit0=0 (Valid=0) uniquement
+                # maintenu en continu → bcm_protocol.py accumule cycles bit4=0
+                # → B2004 ACTIVE + lin_timeout_active=True après 2.5s
+                self._lin_w.queue_send({"test_cmd": "send_bit4_zero"})
+                self.log_msg.emit("  → StickStatus bit4=0 injecté — attente B2004 (2.5s)")
+            # 600ms : laisser le BCM sortir de tout état OFF résiduel
+            # (≥ 1 cycle LIN 400ms) avant d'injecter le stimulus
+            QTimer.singleShot(600, _bit4_start)
+
+        # ── TC_LIN_016_BIT6_ALONE : bit6=1 seul → B2011 NON déclenché ────────
+        elif tid == "TC_LIN_016_BIT6_ALONE":
+            self.log_msg.emit("  → TC_LIN_016_BIT6_ALONE : Stuck bit6=1 sans 0x17 bit0")
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",    False)
+                self._rte_client.set_cmd("crs_wiper_op",    0)
+                self._rte_client.set_cmd("ignition_status", 1)
+                self._rte_client.set_cmd("b2011_active",    False)
+            # Purger résidu TC_B2011_AND : s'assurer que 0x17 bit0=0 ET bit6=0
+            # via _lin_w (crslin.py port 5555) — sim_client envoie sur port 5000
+            self._lin_w.queue_send({"set_fault": 0})
+            self._lin_w.queue_send({"set_stuck": False})
+            def _bit6_alone_start():
+                # Injecter bit6=1 (Stuck) UNIQUEMENT — 0x17 bit0 reste à 0
+                # → condition ET incomplète → B2011 ne doit PAS se déclencher
+                self._lin_w.queue_send({"set_stuck": True})
+                self.log_msg.emit("  → Stuck bit6=1 activé (0x17 bit0=0 → B2011 impossible)")
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+            # 800ms : laisse la queue _lin_w se vider des résidus TC_B2011_AND
+            # (set_fault=1 + set_stuck=True) avant d'injecter le stimulus
+            QTimer.singleShot(800, _bit6_alone_start)
+
+        # ── TC_B2011_AND : bit6=1 ET 0x17 bit0=1 ≥ 10s → B2011 ─────────────
+        elif tid == "TC_B2011_AND":
+            self.log_msg.emit("  → TC_B2011_AND : 0x16 bit6=1 ET 0x17 bit0=1 → B2011 après 10s")
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",    False)
+                self._rte_client.set_cmd("crs_wiper_op",    0)
+                self._rte_client.set_cmd("ignition_status", 1)
+                # Ne pas écrire b2011_active ici : flag interne BCM géré par bcm_protocol
+                # Le reset post_test l'écrit via REDIS_WRITABLE_KEYS
+            # Nettoyer conditions résiduelles côté simulateur (via _lin_w → crslin port 5555)
+            self._lin_w.queue_send({"set_stuck": False})
+            self._lin_w.queue_send({"set_fault": 0})
+            def _b2011_inject():
+                # Étape 1 : 0x17 bit0=1 (CRS_InternalFault_Stick)
+                # set_fault → crslin.py port 5555 via _lin_w.queue_send
+                self._lin_w.queue_send({"set_fault": 1})
+                self.log_msg.emit("  → CRS_InternalFault_Stick (0x17 bit0=1) injecté")
+                # Étape 2 : 0x16 bit6=1 (Stuck) — les 2 conditions actives → timer 10s
+                def _inject_stuck():
+                    self._lin_w.queue_send({"set_stuck": True})
+                    self.log_msg.emit("  → Stuck bit6=1 injecté — timer 10s démarré")
+                    if hasattr(test, "reset_t0"):
+                        test.reset_t0()
+                QTimer.singleShot(200, _inject_stuck)
+            QTimer.singleShot(500, _b2011_inject)
+
+        # ── TC_LIN_017_VER : CRS_Version=0xFF → trame ignorée ───────────────
+        elif tid == "TC_LIN_017_VER":
+            self.log_msg.emit("  → TC_LIN_017_VER : CRS_Version=0xFF → trame rejetée")
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",     False)
+                self._rte_client.set_cmd("crs_wiper_op",     0)
+                self._rte_client.set_cmd("ignition_status",  1)
+                # Remettre lin_timeout_active=False : évite que B2004 résiduel
+                # du test précédent (TC_LIN_016_BIT4) se déclenche pendant ce test
+                self._rte_client.set_cmd("lin_timeout_active", False)
+            def _ver_ff_start():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # Injecter via _lin_w (crslin.py port 5555)
+                self._lin_w.queue_send({"set_crs_version": 0xFF})
+                self._lin_w.queue_send({"set_fault": 1})   # bit0=1 (serait B2011 si trame acceptée)
+                self.log_msg.emit("  → CRS_Version=0xFF + fault_stick=1 injectés")
+            # 800ms : laisser le BCM recevoir au moins 2 cycles LIN 0x16 valides
+            # pour réinitialiser t_last_lin0x16 avant de lancer le test
+            QTimer.singleShot(800, _ver_ff_start)
+
+        # ── TC_CAN_202_ERR01 : 0x200 SPEED1 → 0x201 OFF (mismatch) → 0x202 NACK+0x01 naturel ──
+        elif tid == "TC_CAN_202_ERR01":
+            self.log_msg.emit("  → TC_CAN_202_ERR01 : activation mismatch en premier, puis 0x200 SPEED1")
+            # Réinitialiser _last_201 et _last_200 dans CANBusPanel :
+            # évite que la 1ère 0x200 reçue calcule mode_mismatch ou FaultStatus
+            # à partir de trames résiduelles du test précédent → FAIL immédiat.
+            if self._can_panel is not None:
+                self._can_panel.reset_wc_state()
+            # FIX anti-pollution :
+            # Si un test précédent (ERR02/ERR04/ERR05) s'est terminé récemment, ses faults
+            # (motor_driver_fault, xcp_position_sensor_fault, xcp_internal_fault) peuvent
+            # encore avoir leur bit actif dans get_fault_byte_for_tx() à cause du healing 1s.
+            # panels.py donne la priorité bit0 > bit1 > bit2 pour ErrorCode → un bit résiduel
+            # ferait émettre 0x202 Err=0x02/0x04/0x05 au lieu du 0x01 attendu → FAIL.
+            # Solution : forcer tous les faults à False avant d'armer le mismatch.
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.set_motor_driver_fault(False)
+                self._sim_client.set_xcp_position_sensor_fault(False)
+                self._sim_client.set_xcp_internal_fault(False)
+                self.log_msg.emit("  → [anti-pollution] motor_driver/pos_sensor/internal faults purgés")
+
+            # Étape 1 : activer le mismatch AVANT d'ouvrir le bus CAN
+            # → garantit que la 1ère trame 0x201 émise par le simulateur
+            #   aura déjà CurrentMode=OFF, évitant tout ACK=0x00 intempestif
+            # FIX re-run ERR01 : reset_mode_mismatch() d'abord pour purger un éventuel
+            # mismatch résiduel d'un run précédent, puis attendre 800ms (≥ 2×400ms)
+            # pour que _last_201 dans panels.py soit rechargé avec CurrentMode nominal.
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_mode_mismatch()   # purge résidu run précédent
+                self._sim_client.set_mode_mismatch()
+                self.log_msg.emit("  → mode_mismatch_0x201 activé (CurrentMode=OFF)")
+            else:
+                self.log_msg.emit("  [WARN] TC_CAN_202_ERR01 : sim_client non connecté")
+
+            def _err01_start():
+                # Étape 2 : mettre le BCM en SPEED1 (après stabilisation du mismatch)
+                #   crs_wiper_op=2 → BCM émet 0x200 WiperMode=SPEED1
+                #   wc_available=True  → CAS B actif → échange 0x200/0x201/0x202
+                #   lin_op_locked=True → verrouille crs_wiper_op contre LIN 0x16
+                if self._rte_client:
+                    self._rte_client.set_cmd("wc_available",    True)
+                    self._rte_client.set_cmd("lin_op_locked",   True)
+                    self._rte_client.set_cmd("crs_wiper_op",    2)   # SPEED1
+                    self._rte_client.set_cmd("ignition_status", 1)
+                self.log_msg.emit("  → BCM en SPEED1 (0x200 WiperMode=SPEED1 en cours)")
+
+                # Étape 3 : démarrer le chrono
+                #   La 1ère trame 0x201 répondra CurrentMode=OFF (mismatch actif)
+                #   → le WC émet naturellement 0x202 NACK=1 + ErrorCode=0x01
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                self.log_msg.emit("  → chrono démarré — attente 0x202 naturelle (NACK=1, ErrorCode=0x01)")
+
+            # Délai 800ms (≥ 2×400ms cycle 0x201) : laisse panels.py recharger _last_201
+            # avec CurrentMode nominal avant l'ouverture du bus → pas de mismatch résiduel
+            QTimer.singleShot(800, _err01_start)
+
+        # ── TC_CAN_202_ERR02 : DTC B2102 → 0x201 bit1=MotorDriver → 0x202 NACK+0x02 → BCM OFF ──
+        elif tid == "TC_CAN_202_ERR02":
+            self.log_msg.emit("  → TC_CAN_202_ERR02 : déclencher B2102 → FaultStatus_MotorDriver=1 → 0x202 Err=0x02")
+            # Réinitialiser _last_201 et _last_200 dans CANBusPanel :
+            # évite que la 1ère 0x200 reçue calcule mode_mismatch ou FaultStatus
+            # à partir de trames résiduelles du test précédent → FAIL immédiat.
+            if self._can_panel is not None:
+                self._can_panel.reset_wc_state()
+            # FIX anti-pollution ERR01→ERR02 :
+            # TC_CAN_202_ERR01 active mode_mismatch. Son cleanup appelle reset_mode_mismatch(),
+            # mais _last_201 dans panels.py garde encore CurrentMode=OFF de la dernière trame
+            # 0x201 reçue pendant ERR01. La 1ère trame 0x200 SPEED1 d'ERR02 produit alors
+            # mode_mismatch=True dans panels.py → 0x202 Err=0x01 au lieu de 0x02 → FAIL.
+            # Solution : reset_mode_mismatch() ICI + attendre 800ms (≥ 2×400ms cycle 0x201)
+            # pour que _last_201 soit rechargé avec CurrentMode nominal avant d'ouvrir le bus.
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_mode_mismatch()   # purge résidu ERR01
+                self.log_msg.emit("  → [anti-pollution] reset_mode_mismatch forcé avant armer B2102")
+            # Étape 1 : déclencher B2102 (WC Motor Driver Fault) AVANT d'ouvrir le bus
+            # → motor_driver_fault=True → get_fault_byte_for_tx() met bit1=1 dans 0x201
+            # → panels.py détecte bit1 et émet 0x202 NACK+0x02 naturellement
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.set_motor_driver_fault(True)
+                self.log_msg.emit("  → B2102 armé : motor_driver_fault=True → 0x201 bit1=1 automatique")
+            def _err02_start():
+                if self._rte_client:
+                    self._rte_client.set_cmd("wc_available",    True)
+                    self._rte_client.set_cmd("lin_op_locked",   True)
+                    self._rte_client.set_cmd("crs_wiper_op",    2)   # SPEED1
+                    self._rte_client.set_cmd("ignition_status", 1)
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                self.log_msg.emit("  → chrono démarré — attente 0x201 bit1=1 + 0x202 NACK+0x02 + BCM→OFF")
+            # Délai 800ms (≥ 2×400ms cycle 0x201) : laisse panels.py recharger _last_201
+            # avec CurrentMode nominal → mode_mismatch=False garanti à l'ouverture du bus
+            QTimer.singleShot(800, _err02_start)
+
+        # ── TC_CAN_202_ERR04 : DTC B2103 → 0x201 bit2=PosSensor → 0x202 NACK+0x04 → B2006 ──
+        elif tid == "TC_CAN_202_ERR04":
+            self.log_msg.emit("  → TC_CAN_202_ERR04 : déclencher B2103 → FaultStatus_PosSensor=1 → 0x202 Err=0x04 → B2006")
+            # Réinitialiser _last_201 et _last_200 dans CANBusPanel :
+            # évite que la 1ère 0x200 reçue calcule mode_mismatch ou FaultStatus
+            # à partir de trames résiduelles du test précédent → FAIL immédiat.
+            if self._can_panel is not None:
+                self._can_panel.reset_wc_state()
+            # FIX anti-pollution ERR02→ERR04 :
+            # TC_CAN_202_ERR02 arme motor_driver_fault=True. Son cleanup appelle
+            # set_motor_driver_fault(False), mais _check_motor_driver_fault() dans bcmcan.py
+            # a un healing de 1s → bit1 FaultStatus_MotorDriver reste à 1 dans 0x201 pendant
+            # ~1s après la fin d'ERR02. panels.py donne la priorité bit1 (Err=0x02) sur
+            # bit2 (Err=0x04) → ERR04 reçoit un NACK 0x02 au lieu du 0x04 attendu → FAIL.
+            # De même, xcp_internal_fault résiduel d'ERR05 produirait Err=0x05 au lieu de 0x04.
+            # Solution : forcer les deux faults à False ICI et attendre 1200ms (> healing 1s)
+            # avant d'ouvrir le bus CAN → bits 0 et 1 garantis à 0.
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_mode_mismatch()            # purge résidu ERR01
+                self._sim_client.set_motor_driver_fault(False)    # purge résidu ERR02
+                self._sim_client.set_xcp_internal_fault(False)    # purge résidu ERR05
+                self.log_msg.emit("  → [anti-pollution] reset_mode_mismatch + motor_driver + xcp_internal purgés avant armer B2103")
+            # Étape 1 : déclencher B2103 (WC PosSensor Fault) via xcp_position_sensor_fault
+            # → get_fault_byte_for_tx() met bit2=1 dans 0x201 automatiquement
+            # → panels.py détecte bit2 et émet 0x202 NACK+0x04 naturellement
+            # → BCM : condition conjointe (0x201 bit2=1 ET 0x202 code=0x04) → B2006
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.set_xcp_position_sensor_fault(True)
+                self.log_msg.emit("  → B2103 armé : xcp_position_sensor_fault=True → 0x201 bit2=1 automatique")
+            def _err04_start():
+                if self._rte_client:
+                    # Nettoyer les résidus B2006/B2103 d'un run précédent AVANT d'ouvrir
+                    # le bus — évite que _check_rte détecte une valeur Redis périmée
+                    self._rte_client.set_cmd("wc_b2006_active",           False)
+                    self._rte_client.set_cmd("wc_b2103_active",           False)
+                    self._rte_client.set_cmd("wc_ack_pos_fault",          False)
+                    self._rte_client.set_cmd("rest_contact_b2006_active", 0)
+                    # Ouvrir le bus et commander SPEED1
+                    self._rte_client.set_cmd("wc_available",    True)
+                    self._rte_client.set_cmd("lin_op_locked",   True)
+                    self._rte_client.set_cmd("crs_wiper_op",    2)   # SPEED1
+                    self._rte_client.set_cmd("ignition_status", 1)
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                self.log_msg.emit("  → chrono démarré — attente 0x201 bit2=1 + 0x202 NACK+0x04 + B2006")
+            # Délai 1200ms (au lieu de 300ms) : laisse le healing motor_driver_fault (1s)
+            # s'achever avant d'ouvrir le bus → bit1=0 garanti dans get_fault_byte_for_tx()
+            QTimer.singleShot(1200, _err04_start)
+
+        # ── TC_CAN_202_ERR05 : DTC B2101 → 0x201 bit0=WC_Internal → 0x202 NACK+0x05 → BCM OFF ──
+        elif tid == "TC_CAN_202_ERR05":
+            self.log_msg.emit("  → TC_CAN_202_ERR05 : déclencher B2101 → FaultStatus_WC_Internal=1 → 0x202 Err=0x05")
+            # Réinitialiser _last_201 et _last_200 dans CANBusPanel :
+            # évite que la 1ère 0x200 reçue calcule mode_mismatch ou FaultStatus
+            # à partir de trames résiduelles du test précédent → FAIL immédiat.
+            if self._can_panel is not None:
+                self._can_panel.reset_wc_state()
+            # FIX anti-pollution ERR02→ERR05 :
+            # TC_CAN_202_ERR02 arme motor_driver_fault=True côté simulateur.
+            # Son cleanup appelle set_motor_driver_fault(False), mais _check_motor_driver_fault()
+            # dans bcmcan.py a un healing de 1s → bit1 FaultStatus_MotorDriver reste à 1 dans
+            # 0x201 pendant ~1s après la fin d'ERR02. Comme panels.py donne la priorité
+            # fault_motor_driver (→ ErrorCode=0x02) sur fault_wc_internal (→ ErrorCode=0x05),
+            # ERR05 reçoit un NACK 0x02 au lieu du 0x05 attendu → FAIL.
+            # Solution : forcer motor_driver_fault=False ICI (avant d'armer B2101) et attendre
+            # 1200ms (> healing 1s) avant d'ouvrir le bus CAN → bit1 garanti à 0.
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_mode_mismatch()                # purge résidu ERR01
+                self._sim_client.set_motor_driver_fault(False)        # purge résidu ERR02
+                self._sim_client.set_xcp_position_sensor_fault(False) # purge résidu ERR04
+                self.log_msg.emit("  → [anti-pollution] reset_mode_mismatch + motor_driver + xcp_pos_sensor purgés avant armer B2101")
+            # Étape 1 : déclencher B2101 (WC Internal Fault) via xcp_internal_fault
+            # → get_fault_byte_for_tx() met bit0=1 dans 0x201 automatiquement
+            # → panels.py détecte bit0 et émet 0x202 NACK+0x05 naturellement
+            # → BCM : _check_wc_fault_status → WiperMode=OFF
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.set_xcp_internal_fault(True)
+                self.log_msg.emit("  → B2101 armé : xcp_internal_fault=True → 0x201 bit0=1 automatique")
+            def _err05_start():
+                if self._rte_client:
+                    self._rte_client.set_cmd("wc_available",    True)
+                    self._rte_client.set_cmd("lin_op_locked",   True)
+                    self._rte_client.set_cmd("crs_wiper_op",    2)   # SPEED1
+                    self._rte_client.set_cmd("ignition_status", 1)
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                self.log_msg.emit("  → chrono démarré — attente 0x201 bit0=1 + 0x202 NACK+0x05 + BCM→OFF")
+            # Délai 1200ms (au lieu de 300ms) : laisse le healing motor_driver_fault (1s)
+            # s'achever avant d'ouvrir le bus → bit1=0 garanti dans get_fault_byte_for_tx()
+            QTimer.singleShot(1200, _err05_start)
+
+        # ── TC_B2104 : 3 NACKs consécutifs → B2104 ACTIVE ───────────────────
+        elif tid == "TC_B2104":
+            self.log_msg.emit("  → TC_B2104 : 3 NACKs (AckStatus=1, ErrorCode=0x01) → B2104")
+            # Pré-conditions : wc_available=True pour que la file 0x202 soit active
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",   True)
+                self._rte_client.set_cmd("crs_wiper_op",  2)   # SPEED1 → WC reçoit 0x200
+                self._rte_client.set_cmd("ignition_status", 1)
+                self._rte_client.set_cmd("lin_op_locked",  True)
+            # Réinitialiser B2104 avant le test
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_b2104()
+
+            def _b2104_inject():
+                if hasattr(test, "reset_t0"):
+                    test.reset_t0()
+                # Envoyer 3 NACKs consécutifs avec 50ms d'intervalle
+                # (< 400ms cycle ACK auto → les 3 NACKs passent avant le prochain ACK)
+                # Le 3e NACK déclenchera B2104 côté WC via _b2104_track()
+                for i in range(3):
+                    def _send_nack(idx=i):
+                        alive = idx & 0xFF
+                        ok = self._sim_client.send_wiper_ack(
+                            ack_status=1, error_code=0x01, alive=alive) \
+                            if (self._sim_client and self._sim_client.is_connected()) else False
+                        self.log_msg.emit(
+                            f"  → NACK 0x01 #{idx+1}/3 {'envoyé' if ok else 'échec'}")
+                        # Notifier le test que le 3e NACK vient d'être envoyé
+                        if idx == 2 and hasattr(test, "notify_nack3_sent"):
+                            test.notify_nack3_sent()
+                    QTimer.singleShot(i * 50, _send_nack)
+            QTimer.singleShot(600, _b2104_inject)
 
     def _inject_overcurrent(self, remaining: int):
         """Injecte motor_current=0.95A dans motor_received toutes les 50 ms."""
@@ -1360,6 +1800,26 @@ class TestRunner(QObject):
             self._motor_w.queue_send(
                 {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
 
+        elif tid in ("T50c", "T50d"):
+            self.log_msg.emit(f"  → {tid} cleanup : reset_motor_current + OFF")
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_motor_current()
+            self._lin_w.queue_send({"cmd": "OFF"})
+            if self._rte_client:
+                self._rte_client.set_cmd("motor_current_a",  0.0)
+                self._rte_client.set_cmd("crs_wiper_op",     0)
+                self._rte_client.set_cmd("lin_op_locked",    False)
+                self._rte_client.set_cmd("front_motor_error", False)
+                self._rte_client.set_cmd("wc_available",     False)
+                QTimer.singleShot(300, lambda: self._rte_client and
+                    self._rte_client.set_cmd("dtc_inactivate", "B2001"))
+                QTimer.singleShot(400, lambda: self._rte_client and (
+                    self._rte_client.set_cmd("wc_timeout_active",  False) or
+                    self._rte_client.set_cmd("lin_timeout_active", False)
+                ))
+            self._motor_w.queue_send(
+                {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
+
         elif tid == "T_B2009_CASA":
             self.log_msg.emit("  → T_B2009_CASA cleanup : reset B2009 + OFF")
             self._lin_w.queue_send({"cmd": "OFF"})
@@ -1441,15 +1901,14 @@ class TestRunner(QObject):
             if self._rte_client:
                 QTimer.singleShot(300, lambda: self._rte_client and
                     self._rte_client.set_cmd("lin_alive_fault", False))
-        elif tid == "TC_LIN_004":
-            # Cleanup : restaurer stickStatus normal
-            self._lin_w.queue_send({"test_cmd": "restore_lin_normal"})
-        elif tid == "TC_LIN_005":
-            # Cleanup : annuler simulation CRS_InternalFault
-            self._lin_w.queue_send({"test_cmd": "restore_lin_normal"})
+
+        elif tid == "TC_LIN_017_BIT1_ALONE":
+            self.log_msg.emit("  → TC_LIN_017_BIT1_ALONE post : restore fault=0")
+            self._lin_w.queue_send({"set_fault": 0})
+            self._lin_w.queue_send({"set_stuck": False})
             if self._rte_client:
-                QTimer.singleShot(200, lambda: self._rte_client and
-                    self._rte_client.set_cmd("crs_fault_active", False))
+                self._rte_client.set_cmd("b2011_active", False)
+                self._rte_client.set_cmd("crs_wiper_op", 0)
         elif tid == "TC_CAN_003":
             self._motor_w.queue_send({"test_cmd": "restore_can_alive"})
             self._lin_w.queue_send({"cmd": "OFF"})
@@ -1513,13 +1972,17 @@ class TestRunner(QObject):
                 if self._sim_client and self._sim_client.is_connected():
                     self._sim_client.reset_b2101()
                 if self._rte_client:
-                    self._rte_client.set_cmd("wc_available",    False)
-                    self._rte_client.set_cmd("wc_crc_fault",    False)
-                    self._rte_client.set_cmd("crs_wiper_op",    0)
-                    self._rte_client.set_cmd("lin_op_locked",   False)
+                    self._rte_client.set_cmd("wc_available",      False)
+                    self._rte_client.set_cmd("wc_crc_fault",      False)
+                    # B2005 peut s'être déclenché ~2s après les trames CRC KO
+                    # (t_last_wiper_status non mis à jour sur CRC KO → timeout naturel).
+                    # Reset explicite pour ne pas polluer les tests suivants.
+                    self._rte_client.set_cmd("wc_timeout_active", False)
+                    self._rte_client.set_cmd("crs_wiper_op",      0)
+                    self._rte_client.set_cmd("lin_op_locked",     False)
                     # Sécurité : remettre alive_tx_frozen=False au cas où TC_CAN_003
                     # aurait été interrompu avant son propre cleanup
-                    self._rte_client.set_cmd("alive_tx_frozen", False)
+                    self._rte_client.set_cmd("alive_tx_frozen",   False)
                 self._lin_w.queue_send({"cmd": "OFF"})
             QTimer.singleShot(3500, _fsr010_cleanup)  # 3500ms : Redis uniquement
 
@@ -1599,6 +2062,102 @@ class TestRunner(QObject):
             self._motor_w.queue_send(
                 {"ignition_status": "ON", "reverse_gear": 0, "vehicle_speed": 0})
 
+        # ── Cleanup tests version28 ─────────────────────────────────────────
+
+        elif tid == "TC_LIN_016_BIT4":
+            self.log_msg.emit("  → TC_LIN_016_BIT4 post : restaurer bit4=1 (Valid=1)")
+            # restore_bit4 : remet stick_status bit0=1 → BCM voit stick_valid=True
+            # → bcm_protocol.py reset _t_b2004_invalid_start + B2004 INACTIVE
+            self._lin_w.queue_send({"test_cmd": "restore_bit4"})
+            if self._rte_client:
+                self._rte_client.set_cmd("lin_timeout_active", False)
+                self._rte_client.set_cmd("crs_wiper_op",       0)
+
+        elif tid in ("TC_LIN_016_BIT6_ALONE", "TC_B2011_AND"):
+            self.log_msg.emit(f"  → {tid} post : restore Stuck + CRS fault")
+            # Restaurer via _lin_w (crslin.py port 5555) — sim_client envoie sur port 5000
+            self._lin_w.queue_send({"set_stuck": False})
+            self._lin_w.queue_send({"set_fault": 0})
+            if self._rte_client:
+                self._rte_client.set_cmd("b2011_active",  False)
+                self._rte_client.set_cmd("crs_wiper_op",  0)
+                # Si B2011 a mis le BCM en ERROR, le sortir
+                QTimer.singleShot(300, lambda: self._rte_client and
+                    self._rte_client.set_cmd("bcm_error_reset", True))
+
+        elif tid == "TC_LIN_017_VER":
+            self.log_msg.emit("  → TC_LIN_017_VER post : restaurer CRS_Version=0x20")
+            # Restaurer via _lin_w (crslin.py port 5555)
+            self._lin_w.queue_send({"set_crs_version": 0x20})
+            self._lin_w.queue_send({"set_fault": 0})
+            if self._rte_client:
+                self._rte_client.set_cmd("crs_wiper_op", 0)
+
+        elif tid == "TC_CAN_202_ERR01":
+            self.log_msg.emit("  → TC_CAN_202_ERR01 post : reset mismatch + restore état nominal")
+            # Désactiver en priorité le mismatch 0x201 pour éviter que
+            # le simulateur continue d'émettre des 0x202 NACK spurieux
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_mode_mismatch()
+                self._sim_client.reset_b2101()
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",    False)
+                self._rte_client.set_cmd("lin_op_locked",   False)
+                self._rte_client.set_cmd("crs_wiper_op",    0)
+
+        elif tid == "TC_CAN_202_ERR02":
+            self.log_msg.emit("  → TC_CAN_202_ERR02 post : reset B2102 (motor_driver_fault=False)")
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.set_motor_driver_fault(False)   # retire condition B2102
+                self._sim_client.reset_b2101()
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",          False)
+                self._rte_client.set_cmd("lin_op_locked",         False)
+                self._rte_client.set_cmd("crs_wiper_op",          0)
+                self._rte_client.set_cmd("wc_fault_motor_driver", False)
+
+        elif tid == "TC_CAN_202_ERR04":
+            self.log_msg.emit("  → TC_CAN_202_ERR04 post : reset B2103 (xcp_position_sensor_fault=False)")
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.set_xcp_position_sensor_fault(False)  # retire condition B2103
+                self._sim_client.reset_b2101()
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",  False)
+                self._rte_client.set_cmd("lin_op_locked", False)
+                self._rte_client.set_cmd("crs_wiper_op",  0)
+                # Délai 500ms : laisser le BCM finir le traitement B2006 ACTIVE
+                # avant de remettre wc_ack_pos_fault=False — évite [DTC INACTIVE]
+                # affiché avant [B2006] ACTIVE dans les logs BCM
+                def _err04_post_cleanup():
+                    if self._rte_client:
+                        self._rte_client.set_cmd("wc_ack_pos_fault",          False)
+                        self._rte_client.set_cmd("rest_contact_b2006_active", False)
+                        self._rte_client.set_cmd("wc_b2006_active",           False)
+                QTimer.singleShot(1500, _err04_post_cleanup)
+
+        elif tid == "TC_CAN_202_ERR05":
+            self.log_msg.emit("  → TC_CAN_202_ERR05 post : reset B2101 (xcp_internal_fault=False)")
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.set_xcp_internal_fault(False)   # retire condition B2101
+                self._sim_client.reset_b2101()
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_available",         False)
+                self._rte_client.set_cmd("lin_op_locked",        False)
+                self._rte_client.set_cmd("crs_wiper_op",         0)
+                self._rte_client.set_cmd("wc_fault_wc_internal", False)
+
+        elif tid == "TC_B2104":
+            self.log_msg.emit("  → TC_B2104 post : reset B2104 + wc_available maintenu pour heal 3 ACK")
+            # Armer le flag : _on_motor coupera wc_available dès réception de b2104_inactive
+            self._wait_b2104_inactive = True
+            if self._sim_client and self._sim_client.is_connected():
+                self._sim_client.reset_b2104()   # remet compteurs + B2104 INACTIVE
+                self._sim_client.reset_b2101()   # évite B2101 résiduel CAS B
+            if self._rte_client:
+                self._rte_client.set_cmd("wc_nack_consecutive", 0)
+                self._rte_client.set_cmd("lin_op_locked",       False)
+                self._rte_client.set_cmd("crs_wiper_op",        0)
+
     def _record(self, result: TestResult):
         if not self._running:
             return
@@ -1634,6 +2193,16 @@ class TestRunner(QObject):
                 self.log_msg.emit(f"  ⚠ Erreur on_lin_frame [{self._current.ID}]: {e}")
 
     def _on_motor(self, data: dict):
+        # TC_B2104 : détecter b2104_inactive → désactiver wc_available
+        # Le test PASS en 10ms donc self._current=None au moment du healing.
+        # On utilise _wait_b2104_inactive (armé dans le post_test) pour savoir
+        # qu'on attend encore le signal de fin de healing.
+        if (data.get("type") == "b2104_inactive"
+                and getattr(self, "_wait_b2104_inactive", False)
+                and self._rte_client):
+            self._wait_b2104_inactive = False
+            self.log_msg.emit("  → TC_B2104 : B2104 INACTIVE (3 ACK) → wc_available=False")
+            self._rte_client.set_cmd("wc_available", False)
         if self._current:
             try:
                 r = self._current.on_motor_data(data)

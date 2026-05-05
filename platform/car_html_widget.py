@@ -1,8 +1,8 @@
 """
 car_html_widget.py — Deux widgets voiture pour la plateforme HIL.
 
-CarHTMLWidget   → car_simulator.html      (onglet LIN / CRS / Vehicle)
-CarXRayWidget   → controldesk-xray.html   (onglet Motor / Pump)
+CarHTMLWidget   → car_controldesk_v5_modified.html  (onglet LIN / CRS / Vehicle)
+CarXRayWidget   → controldesk-xray.html             (onglet Motor / Pump)
 
 Les deux héritent de _CarBaseWidget qui gère le chargement HTML,
 la file JS et l'API Python commune.
@@ -17,17 +17,53 @@ from PySide6.QtGui              import QColor
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  JS injecté pour car_simulator.html  (onglet LIN / CRS / Vehicle)
+#  JS injecté pour car_controldesk_v5_modified.html  (onglet LIN / CRS / Vehicle)
+#  Masque TOUS les panneaux de contrôle HTML — seule la vue 3D reste visible.
+#  Le comportement est identique à l'ancien car_simulator.html :
+#  Python pilote tout via window.controlAPI (setWiperOp, setRain, etc.)
 # ════════════════════════════════════════════════════════════════════════════
 _SIMULATOR_API_JS = """
 <style>
-  .ww-panel, #bottom-controls { display: none !important; }
-  .lock-btn, #lock-btn, #lock-status { display: none !important; }
-  body { padding-top: 2px !important; align-items: center; }
-  .hud-title { margin-top: 4px !important; margin-bottom: 4px !important; }
-  .status-bar { margin-bottom: 4px !important; }
-  .main-layout { justify-content: center; width: 100%; }
-  .car-stage { transform-origin: top center; }
+  /* ── Masquer TOUS les panneaux de contrôle HTML ── */
+  #ctrl-panel,
+  #avatar-switcher,
+  #selector-toggle,
+  #sel-breadcrumb,
+  #sel-clear,
+  #comp-selector-panel,
+  #comp-inspector,
+  #hint,
+  #mesh-debug-panel,
+  #mesh-toggle-btn,
+  #mesh-sel-label
+  { display: none !important; }
+
+  /* ── Viewer plein écran, pas de marges ── */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+    background: #0a0f0a !important;
+  }
+  #viewer-wrap {
+    width: 100vw !important;
+    height: 100vh !important;
+  }
+  #three-container {
+    width: 100vw !important;
+    height: 100vh !important;
+  }
+  #viewer-header {
+    position: absolute !important;
+    top: 4px !important;
+    left: 8px !important;
+    z-index: 10 !important;
+    pointer-events: none !important;
+  }
+  #loading-screen { background: #0a0f0a !important; }
+  #wave-bg { display: none !important; }
 </style>
 <script>
 window.addEventListener('load', function () {
@@ -402,6 +438,226 @@ window.addEventListener('load', function () {
 
 
 # ════════════════════════════════════════════════════════════════════════════
+#  Injection CSS/JS pour car_controldesk_v11.html (onglet Motor/Pump)
+#  — masque le ctrl-panel HTML et les panneaux debug/sélecteur
+#  — adapte le layout pour remplir le QWebEngineView
+# ════════════════════════════════════════════════════════════════════════════
+_CONTROLDESK_V11_JS = """
+<style>
+  /* ── Masquer les panneaux de contrôle HTML (remplacés par PyQt) ── */
+  #ctrl-panel,
+  #avatar-switcher,
+  #mesh-debug-panel,
+  #mesh-toggle-btn,
+  #mesh-sel-label,
+  #selector-toggle,
+  #sel-clear,
+  #sel-breadcrumb,
+  #comp-selector-panel,
+  #comp-inspector,
+  #hint
+  { display: none !important; }
+
+  /* ── Viewer plein écran ── */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+    background: #0a0f0a !important;
+  }
+  #viewer-wrap {
+    width: 100vw !important;
+    height: 100vh !important;
+  }
+  #three-container {
+    width: 100vw !important;
+    height: 100vh !important;
+  }
+  #viewer-header {
+    position: absolute !important;
+    top: 4px !important;
+    left: 8px !important;
+    z-index: 10 !important;
+    pointer-events: none !important;
+  }
+  #loading-screen { background: #0a0f0a !important; }
+
+  /* ── Supprimer l'animation de fond (points verts en vagues) ── */
+  #wave-bg { display: none !important; }
+</style>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   controlAPI — Pont Python ↔ car_controldesk_v11.html
+   Appelle les fonctions natives du HTML (setFrontWiper,
+   setRearWiper, startPump, stopPump, toggleFrontMotorAnimation,
+   toggleRearMotorAnimation, togglePumpAnimation, setLightsMode…)
+   exactement comme le faisait controldesk-xray.html.
+   ═══════════════════════════════════════════════════════ */
+window.addEventListener('load', function () {
+
+  /* ── Helpers pour activer/désactiver les animations moteur 3D ── */
+  function _setFMotor(on) {
+    if (typeof frontMotorAnimating === 'undefined') return;
+    if (on && !frontMotorAnimating) toggleFrontMotorAnimation();
+    if (!on && frontMotorAnimating)  toggleFrontMotorAnimation();
+  }
+  function _setRMotor(on) {
+    if (typeof rearMotorAnimating === 'undefined') return;
+    if (on && !rearMotorAnimating) toggleRearMotorAnimation();
+    if (!on && rearMotorAnimating)  toggleRearMotorAnimation();
+  }
+  function _setPumpMotor(on) {
+    if (typeof pumpAnimationActive === 'undefined') return;
+    if (on && !pumpAnimationActive) togglePumpAnimation();
+    if (!on && pumpAnimationActive)  togglePumpAnimation();
+  }
+
+  window.controlAPI = {
+
+    /* Vitesse : affichée dans le header de la voiture si disponible */
+    setSpeed: function (v) {
+      v = parseFloat(v) || 0;
+      /* car_controldesk_v11 n'a pas de speedometer → no-op */
+    },
+
+    /* Pluie : mappe pourcentage → mode HTML */
+    setRain: function (pct) {
+      pct = parseFloat(pct) || 0;
+      var mode = pct <= 0 ? 'off' : pct <= 30 ? 'light' : pct <= 65 ? 'medium' : 'heavy';
+      if (typeof setRain === 'function') setRain(mode);
+    },
+
+    /* Gear / Reverse */
+    setGear: function (g) {
+      if (typeof g === 'boolean') g = g ? 'R' : 'D';
+      var rev = (typeof g === 'string' && g.toUpperCase() === 'R');
+      if (typeof toggleReverse === 'function') {
+        var btn = document.getElementById('reverse-btn');
+        var isRev = btn && btn.classList.contains('active-rev');
+        if (rev && !isRev) toggleReverse();
+        if (!rev && isRev)  toggleReverse();
+      }
+    },
+
+    /* Reverse direct (appelé depuis _toggle_rev) */
+    setReverse: function (rev) {
+      this.setGear(rev ? 'R' : 'D');
+    },
+
+    /* Ignition → setLightsMode du HTML */
+    setIgnition: function (state) {
+      var s = (state || 'off').toLowerCase();
+      if (typeof setLightsMode === 'function') {
+        setLightsMode(s === 'on' ? 'on' : s === 'acc' ? 'acc' : 'off');
+      }
+    },
+
+    /* ── Wiper Operation (0-7, même encodage que xray) ──────────────
+       0 = tout OFF
+       1 = front SLOW     (+ animation moteur front)
+       2 = front FAST     (+ animation moteur front)
+       3 = front AUTO     (+ animation moteur front)
+       4 = rear ON        (+ animation moteur rear)
+       5 = wash front     (+ pump 3D + animation moteur pump)
+       6 = wash rear      (+ pump 3D + animation moteur pump)
+       7 = tout OFF + stop pump
+    ─────────────────────────────────────────────────────────────── */
+    setWiperOp: function (op) {
+      op = parseInt(op);
+      switch (op) {
+        case 0:
+          setFrontWiper('off');
+          setRearWiper('off');
+          _setFMotor(false);
+          _setRMotor(false);
+          break;
+        case 1:
+          setFrontWiper('slow');
+          _setFMotor(true);
+          break;
+        case 2:
+          setFrontWiper('fast');
+          _setFMotor(true);
+          break;
+        case 3:
+          setFrontWiper('auto');
+          _setFMotor(true);
+          break;
+        case 4:
+          setRearWiper('on');
+          _setRMotor(true);
+          break;
+        case 5:
+          startPump('forward');
+          _setFMotor(true);
+          _setPumpMotor(true);
+          break;
+        case 6:
+          startPump('backward');
+          _setRMotor(true);
+          _setPumpMotor(true);
+          break;
+        case 7:
+          setFrontWiper('off');
+          setRearWiper('off');
+          stopPump('forward');
+          stopPump('backward');
+          _setFMotor(false);
+          _setRMotor(false);
+          _setPumpMotor(false);
+          break;
+      }
+    },
+
+    /* ── Appel direct depuis BCM (setWiperFromBCM) ─────────────── */
+    setWiperFromBCM: function (motor, op, state) {
+      this.setWiperOp(op);
+    },
+
+    /* ── Pompe (depuis PumpPanel Python) ────────────────────────── */
+    setPump: function (active) {
+      if (active) {
+        startPump('forward');
+        _setPumpMotor(true);
+      } else {
+        stopPump('forward');
+        stopPump('backward');
+        _setPumpMotor(false);
+      }
+    },
+
+    /* ── État pompe complet (FORWARD / BACKWARD / OFF + fault) ──── */
+    setPumpState: function (state, fault) {
+      if (fault) {
+        stopPump('forward');
+        stopPump('backward');
+        _setPumpMotor(false);
+        return;
+      }
+      if (state === 'FORWARD') {
+        startPump('forward');
+        _setPumpMotor(true);
+      } else if (state === 'BACKWARD') {
+        startPump('backward');
+        _setPumpMotor(true);
+      } else {
+        stopPump('forward');
+        stopPump('backward');
+        _setPumpMotor(false);
+      }
+    },
+  };
+
+  console.log('[CarXRayWidget] controlAPI ready — car_controldesk_v11');
+});
+</script>
+"""
+
+
+# ════════════════════════════════════════════════════════════════════════════
 #  Page silencieuse (supprime les messages JS en console)
 # ════════════════════════════════════════════════════════════════════════════
 class _SilentPage(QWebEnginePage):
@@ -472,7 +728,7 @@ class _CarBaseWidget(QWebEngineView):
 
     def _show_fallback(self, err: str = "") -> None:
         self.setHtml(f"""
-        <html><body style="background:#FFFFFF;color: #FFFFFFF;font-family:monospace;
+        <html><body style="background:#0D1117;color: #E6EDF3;font-family:monospace;
             display:flex;align-items:center;justify-content:center;height:100vh;">
         <div style="text-align:center">
             <div style="font-size:48px">&#128663;</div>
@@ -567,10 +823,10 @@ class _CarBaseWidget(QWebEngineView):
 # ════════════════════════════════════════════════════════════════════════════
 class CarHTMLWidget(_CarBaseWidget):
     """
-    Voiture car_simulator.html pour l'onglet LIN / CRS / Vehicle.
+    Voiture car_controldesk_v5_modified.html pour l'onglet LIN / CRS / Vehicle.
     Utilisée pour piloter les wipers et le véhicule depuis les panneaux CRS/LIN.
     """
-    HTML_FILE      = "car_simulator.html"
+    HTML_FILE      = "car_controldesk_v5_modified.html"
     CONTROL_API_JS = _SIMULATOR_API_JS
 
 
@@ -579,11 +835,11 @@ class CarHTMLWidget(_CarBaseWidget):
 # ════════════════════════════════════════════════════════════════════════════
 class CarXRayWidget(_CarBaseWidget):
     """
-    Voiture controldesk-xray.html pour l'onglet Motor / Pump.
+    Voiture car_controldesk_v11.html pour l'onglet Motor / Pump.
     Affiche les animations moteur (impeller, gear rotor, fluid lines, wipers).
     """
-    HTML_FILE      = "controldesk-xray.html"
-    CONTROL_API_JS = _XRAY_API_JS
+    HTML_FILE      = "car_controldesk_v11.html"
+    CONTROL_API_JS = _CONTROLDESK_V11_JS
 
     def _restore_state(self) -> None:
         super()._restore_state()

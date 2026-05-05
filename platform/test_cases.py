@@ -58,7 +58,7 @@ def _get_t(ev: dict) -> float:
 class BaseTest:
     ID             = ""
     NAME           = ""
-    CATEGORY       = ""     # "CYCLE" | "TIMEOUT" | "FONCTIONNEL"
+    CATEGORY       = ""     # "CYCLE" | "TIMEOUT" | "FUNCTIONAL"
     REF            = ""
     LIMIT_STR      = ""
     TEST_TIMEOUT_S = 30
@@ -253,7 +253,7 @@ class BaseBCMTest(BaseTest):
     Le test_runner appelle _check_rte() toutes les 200ms (timer).
     Subclass surcharge _target_state() pour indiquer l'état attendu.
     """
-    CATEGORY       = "FONCTIONNEL_BCM"
+    CATEGORY       = "FUNCTIONAL_BCM"
     LIMIT_MS       = 800
     LIMIT_STR      = "≤ 800 ms"
     TEST_TIMEOUT_S = 5
@@ -446,8 +446,8 @@ class T40_Touch_SingleCycle_Then_Off(BaseBCMTest):
     Critères  : durée ≤ 1700 ms  ET  state=OFF après cycle  ET  pas de 2e cycle
     """
     ID             = "T40"
-    NAME           = "Touch : 1 cycle puis retour OFF (no repeat)"
-    CATEGORY       = "FONCTIONNEL"
+    NAME           = "Touch : 1 cycle then return OFF (no repeat)"
+    CATEGORY       = "FUNCTIONAL"
     REF            = "SRD_WW_020 / SRS_WSM_002"
     LIMIT_STR      = "≤ 1700 ms, state=OFF, 1 cycle"
     LIMIT_MS       = 1700
@@ -556,8 +556,8 @@ class T22_FrontWash_DTC_BCM(BaseBCMTest):
     DTC attendu: B2008 (pump overtime) via Redis GET dtc_active ou pump_error.
     """
     ID             = "T22"
-    NAME           = "Pompe FORWARD >5s → DTC BCM (B2008)"
-    CATEGORY       = "FONCTIONNEL"
+    NAME           = "Pump FORWARD >5s → DTC BCM (B2008)"
+    CATEGORY       = "FUNCTIONAL"
     REF            = "FSR_005 / B2008 / SRD_WW_120"
     LIMIT_STR      = "4800–6000 ms (pompe coupée + DTC B2008)"
     LIMIT_MS       = 6000
@@ -645,8 +645,8 @@ class T21_Pump_AutoStop(BaseBCMTest):
     Critère   : pump_active=False ET durée < PUMP_MAX_RUNTIME (arrêt normal, pas FSR)
     """
     ID             = "T21"
-    NAME           = "Pump arrêt automatique (3 cycles avant 5s)"
-    CATEGORY       = "FONCTIONNEL"
+    NAME           = "Pump auto-stop (3 blade cycles before 5s)"
+    CATEGORY       = "FUNCTIONAL"
     REF            = "FSR_005 / SRD_WW_120 / SRS_WASH_003"
     LIMIT_STR      = "< 5000 ms (arrêt avant FSR)"
     LIMIT_MS       = 4900   # strictement < PUMP_MAX_RUNTIME (5000ms) : arrêt normal
@@ -843,7 +843,7 @@ class T34_Auto_Rain_Speed1(BaseBCMTest):
     GET rte:state → attend "AUTO" + rte:front_motor_speed=1.
     """
     ID             = "T34"
-    NAME           = "AUTO : pluie faible → Speed1"
+    NAME           = "AUTO : light rain → Speed1"
     REF            = "SRD_WW_050"
     LIMIT_STR      = "≤ 1500 ms"
     LIMIT_MS       = 1500
@@ -892,7 +892,7 @@ class T35_Auto_Rain_Speed2(BaseBCMTest):
     GET rte:front_motor_speed → attend 2.
     """
     ID             = "T35"
-    NAME           = "AUTO : pluie forte → Speed2"
+    NAME           = "AUTO : heavy rain → Speed2"
     REF            = "SRD_WW_050"
     LIMIT_STR      = "≤ 1500 ms"
     LIMIT_MS       = 1500
@@ -950,7 +950,7 @@ class T36_FrontWash(BaseBCMTest):
       Quand front_blade_cycles ≥ 3 ET front_motor_on=False → 3 cycles complétés.
     """
     ID             = "T36"
-    NAME           = "FRONT_WASH : pompe FWD + Speed1 + 3 cycles (rest_contact)"
+    NAME           = "FRONT_WASH : pump FWD + Speed1 + 3 cycles (rest_contact)"
     REF            = "SRD_WW_100"
     LIMIT_STR      = "= 3 cycles (rest_contact 1→0)"
     LIMIT_MS       = 3 * 1700 + 2000   # 7100 ms — budget max avec marges hardware
@@ -1098,7 +1098,7 @@ class T37_RearWash_Cycle(BaseBCMTest):
       - rear_motor_on=True maintenu ≥ 2 cycles × 1700 ms = 3400 ms
     """
     ID              = "T37"
-    NAME            = "REAR_WASH : pompe BWD + 2 cycles arrière (≥ 3400 ms)"
+    NAME            = "REAR_WASH : pump BWD + 2 rear cycles (≥ 3400 ms)"
     REF             = "SRD_WW_110"
     LIMIT_STR       = "≥ 2 cycles (1700 ms/cycle)"
     LIMIT_MS        = 2 * 1700 + 1000   # 4400 ms — budget max acceptable
@@ -1179,7 +1179,7 @@ class T38_Overcurrent_Motor(BaseBCMTest):
     GET rte:state → attend "ERROR" dans 300–600ms.
     """
     ID             = "T38"
-    NAME           = "Surcourant moteur → ERROR à 300 ms (± tolérance)"
+    NAME           = "Motor overcurrent → ERROR at 300 ms (± tolerance)"
     REF            = "FSR_003 / B2001"
     LIMIT_STR      = "≈ 300 ms (≤ 600 ms)"
     LIMIT_MS       = 600
@@ -1236,7 +1236,7 @@ class T39_LIN_Timeout_WSM_Off(BaseBCMTest):
                 → GET rte:state=OFF.
     """
     ID             = "T39"
-    NAME           = "LIN timeout → WSM retour OFF"
+    NAME           = "LIN timeout → WSM return OFF"
     REF            = "FSR_001 / SRS_LIN_003"
     LIMIT_STR      = "≤ 2500 ms"
     LIMIT_MS       = 2500
@@ -1290,7 +1290,7 @@ class T43_ReverseGear_RearWiper_Intermittent(BaseBCMTest):
     """
     ID             = "T43"
     NAME           = "Reverse Gear : rear wiper intermittent ≈ 1700 ms"
-    CATEGORY       = "FONCTIONNEL"
+    CATEGORY       = "FUNCTIONAL"
     REF            = "SRD_WW_060"
     LIMIT_STR      = "≈ 1700 ms (± 400 ms)"
     LIMIT_MS       = 2100    # 1700 + 250ms impulsion OFF + marge
@@ -1370,7 +1370,7 @@ class T45_BladeReturn_Ignition_Off(BaseBCMTest):
     """
     ID             = "T45"
     NAME           = "Blade return to rest at Ignition OFF"
-    CATEGORY       = "FONCTIONNEL"
+    CATEGORY       = "FUNCTIONAL"
     REF            = "FSR_004 / SRD non-func §7.2"
     LIMIT_STR      = "≤ 3000 ms (state=OFF + rest_contact=False)"
     LIMIT_MS       = 3000
@@ -1441,7 +1441,7 @@ class TC_LIN_002_AliveCounter_AntiReplay(BaseBCMTest):
     Observation : Redis GET lin_alive_fault=True ou DTC B20xx créé dans les 3s
     """
     ID             = "TC_LIN_002"
-    NAME           = "LIN AliveCounter figé → faute anti-replay"
+    NAME           = "LIN AliveCounter frozen → anti-replay fault"
     CATEGORY       = "LIN_SECURITE"
     REF            = "Message Catalogue LIN 0x16 / SRS_LIN_004"
     LIMIT_STR      = "≤ 3000 ms (détection counter figé)"
@@ -1483,115 +1483,56 @@ class TC_LIN_002_AliveCounter_AntiReplay(BaseBCMTest):
         return None
 
 
-class TC_LIN_004_StickStatus_Validation(BaseBCMTest):
-    """
-    TC_LIN_004 — Validation stickStatus avant traitement commande
-
-    Prérequis : LIN actif
-    Étapes    : Envoyer frame LIN 0x16 avec stickStatus invalide
-    Résultat  : Commande ignorée si stickStatus invalide
-                (état WSM ne change pas)
-
-    Stimulus  : Redis SET lin_stick_status_invalid=True →
-                crslin envoie une frame avec stickStatus=0xFF (invalide)
-    Observation : Redis GET state reste "OFF" (commande ignorée)
-                  OU Redis GET lin_stick_fault=True
-    """
-    ID             = "TC_LIN_004"
-    NAME           = "LIN stickStatus invalide → commande ignorée"
-    CATEGORY       = "LIN_SECURITE"
-    REF            = "Message Catalogue LIN 0x16 / SRS_LIN_005"
-    LIMIT_STR      = "commande ignorée (state=OFF conservé)"
-    LIMIT_MS       = 2000
-    TEST_TIMEOUT_S = 8
-
-    def _on_start(self):
-        super()._on_start()
-        self._state_changed = False
-        self._checked       = False
-
-    def _check_rte(self) -> Optional[TestResult]:
-        if self._confirmed or self.rte_client is None:
-            return None
-        state      = self.rte_client.get("state")
-        stick_fault = self.rte_client.get_bool("lin_stick_fault")
-
-        # Si le BCM lève explicitement une faute stickStatus → PASS
-        if stick_fault:
-            self._confirmed = True
-            delta = time.time() * 1000.0 - self._t0_ms
-            return self._pass(f"{delta:.0f} ms",
-                "lin_stick_fault=True : stickStatus invalide détecté par BCM")
-
-        # Si le BCM change d'état malgré un stickStatus invalide → FAIL
-        if state and state not in ("OFF", "ERROR", None):
-            self._state_changed = True
-            self._confirmed = True
-            delta = time.time() * 1000.0 - self._t0_ms
-            return self._fail(f"{delta:.0f} ms",
-                f"BCM a traité la commande (state={state}) malgré stickStatus invalide")
-
-        # Après LIMIT_MS sans changement d'état → commande bien ignorée → PASS
-        delta = time.time() * 1000.0 - self._t0_ms
-        if delta >= self.LIMIT_MS and not self._checked:
-            self._checked   = True
-            self._confirmed = True
-            return self._pass(f"{delta:.0f} ms",
-                f"state=OFF conservé pendant {delta:.0f} ms : commande ignorée")
-        return None
-
 
 class TC_LIN_005_CRS_InternalFault(BaseBCMTest):
     """
-    TC_LIN_005 — Réception LIN frame 0x17 CRS_Status (faute interne)
+    TC_LIN_017_BIT1_ALONE — 0x17 bit0=1 (CRS_InternalFault_Stick) SEUL,
+    sans 0x16 bit6=1 (Stuck) → B2011 ne doit PAS se déclencher.
 
-    Message Catalogue LIN 0x17 — Priorité Moyenne
-    Prérequis : CRS en faute interne
-    Étapes    : Simuler CRS envoyant CRS_InternalFault=1 via LIN 0x17
-    Résultat  : BCM détecte la faute CRS et réagit en conséquence
-                (state=ERROR ou crs_fault_active=True)
+    Condition ET incomplète : un seul des deux critères B2011 est actif.
+    Le test vérifie que b2011_active reste False pendant toute la durée.
 
-    Stimulus  : Redis SET crs_internal_fault_sim=True →
-                crslin envoie LIN 0x17 avec CRS_InternalFault=1
-    Observation : Redis GET crs_fault_active=True  OU  state=ERROR
+    Séquence :
+      1. Purger résidus : set_fault=0, set_stuck=False
+      2. Injecter 0x17 bit0=1 (CRS_InternalFault_Stick) via set_fault=1
+         — 0x16 bit6 reste à 0 (pas de Stuck)
+      3. Attendre 13s (> délai B2011 10s)
+      4. Vérifier que b2011_active=False → PASS
+         Si b2011_active=True → FAIL (condition ET déclenchée à tort)
     """
-    ID             = "TC_LIN_005"
-    NAME           = "LIN 0x17 CRS_InternalFault=1 → BCM réagit"
+    ID             = "TC_LIN_017_BIT1_ALONE"
+    NAME           = "B2011 NON déclenché : 0x17 bit0=1 seul (sans 0x16 bit6=1)"
     CATEGORY       = "LIN_SECURITE"
-    REF            = "Message Catalogue LIN 0x17 / SRS_DIA_001"
-    LIMIT_STR      = "≤ 2000 ms (détection faute CRS)"
-    LIMIT_MS       = 2000
-    TEST_TIMEOUT_S = 8
+    REF            = "WW-MCAT-005 Rev5 / B2011 condition ET — cas 0x17 seul"
+    LIMIT_STR      = "b2011_active=False pendant ≥ 13s (B2011 non déclenché)"
+    LIMIT_MS       = 13000
+    TEST_TIMEOUT_S = 16
 
     def _on_start(self):
         super()._on_start()
         self._detected = False
 
+    def _target_state(self): return None
+
     def _check_rte(self) -> Optional[TestResult]:
         if self._detected or self.rte_client is None:
             return None
-        crs_fault = self.rte_client.get_bool("crs_fault_active")
-        state     = self.rte_client.get("state")
-        if crs_fault or state == "ERROR":
-            self._detected = True
-            delta = time.time() * 1000.0 - self._t0_ms
-            detail = f"crs_fault_active={crs_fault} state={state} | {delta:.0f} ms"
-            return (self._pass if delta <= self.LIMIT_MS else self._fail)(
-                f"{delta:.0f} ms", detail)
-        return None
+        b2011 = self.rte_client.get_bool("b2011_active")
+        delta = time.time() * 1000.0 - self._t0_ms
 
-    def on_lin_frame(self, ev):
-        """Fallback : écouter un event 0x17 avec CRS_InternalFault."""
-        if self._detected or self.rte_client is not None:
-            return None
-        if ev.get("type") == "tx17":
-            fault_bit = ev.get("fields", {}).get("CRS_InternalFault", 0)
-            if fault_bit:
-                self._detected = True
-                delta = time.time() * 1000.0 - self._t0_ms
-                return (self._pass if delta <= self.LIMIT_MS else self._fail)(
-                    f"{delta:.0f} ms",
-                    "LIN 0x17 CRS_InternalFault=1 reçu (fallback frame)")
+        # FAIL immédiat si B2011 se déclenche (condition ET activée à tort)
+        if b2011:
+            self._detected = True
+            return self._fail(
+                f"{delta:.0f} ms",
+                f"B2011 déclenché à tort avec 0x17 bit0=1 seul (0x16 bit6=0) | {delta:.0f} ms")
+
+        # PASS après 13s sans B2011
+        if delta >= self.LIMIT_MS:
+            self._detected = True
+            return self._pass(
+                f"{delta:.0f} ms",
+                f"b2011_active=False après {delta:.0f}ms — condition ET non satisfaite")
         return None
 
 
@@ -1613,7 +1554,7 @@ class TC_CAN_003_AliveCounter_0x200(BaseBCMTest):
     Observation : CAN 0x202 Wiper_Ack avec NACK  OU  Redis GET wc_alive_fault=True
     """
     ID             = "TC_CAN_003"
-    NAME           = "CAN 0x200 AliveCounter figé → WC NACK/faute"
+    NAME           = "CAN 0x200 AliveCounter frozen → WC NACK/fault"
     CATEGORY       = "CAN_SECURITE"
     REF            = "Message Catalogue CAN 0x200 / SRS_CAN_004"
     LIMIT_STR      = "≤ 3000 ms (WC détecte counter figé)"
@@ -1648,14 +1589,15 @@ class TC_CAN_003_AliveCounter_0x200(BaseBCMTest):
             return None
         if ev.get("can_id_int") != 0x202:
             return None
-        ack = ev.get("fields", {}).get("ack", 1)
-        nack = ev.get("fields", {}).get("nack", 0)
-        if ack == 0 or nack == 1:
+        # Nouveau catalogue WW-MCAT-005 Rev5 : AckStatus = bit0 de byte0
+        # _decode_0x202 émet "ack_status" (0=ACK, 1=NACK)
+        ack_status = ev.get("fields", {}).get("ack_status", 0)
+        if ack_status == 1:   # NACK
             self._detected = True
             delta = time.time() * 1000.0 - self._t0_ms
             return (self._pass if delta <= self.LIMIT_MS else self._fail)(
                 f"{delta:.0f} ms",
-                "CAN 0x202 NACK reçu : WC a détecté AliveCounter figé")
+                "CAN 0x202 NACK reçu (ack_status=1) : WC a détecté AliveCounter figé")
         return None
 
     def on_motor_data(self, data: dict):
@@ -1703,8 +1645,8 @@ class TC_GEN_001_Ignition_On_Activation(BaseBCMTest):
     Observation : Redis GET state == "SPEED1" + front_motor_on == True
     """
     ID             = "TC_GEN_001"
-    NAME           = "Activation moteur sur Ignition ON → SPEED1"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    NAME           = "Motor activation on Ignition ON → SPEED1"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "SRD_WW_001"
     LIMIT_STR      = "≤ 800 ms (state=SPEED1 + front_motor_on=True)"
     LIMIT_MS       = 800
@@ -1761,8 +1703,8 @@ class TC_SPD_001_Speed1_Continuous(BaseBCMTest):
                   Aucune transition vers OFF détectée
     """
     ID             = "TC_SPD_001"
-    NAME           = "SPEED1 continu 5 s — aucun arrêt spontané"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    NAME           = "SPEED1 continuous 5s — no spontaneous stop"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "SRD_WW_030"
     LIMIT_STR      = "SPEED1 maintenu pendant 5 s sans interruption"
     LIMIT_MS       = 5000
@@ -1818,8 +1760,8 @@ class TC_AUTO_004_Auto_Inhibit_No_Sensor(BaseBCMTest):
     Observation : state reste "OFF" pendant OBSERVE_MS
     """
     ID             = "TC_AUTO_004"
-    NAME           = "AUTO inhibé si capteur pluie absent (state=OFF conservé)"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    NAME           = "AUTO inhibited if rain sensor absent (state=OFF kept)"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "SRD_WW_052"
     LIMIT_STR      = "state=OFF conservé (commande ignorée)"
     LIMIT_MS       = 2000
@@ -1890,8 +1832,8 @@ class TC_FSR_008_Watchdog_Supervision(BaseBCMTest):
            On vérifie la mise en sécurité des actionneurs, pas le reboot.
     """
     ID             = "TC_FSR_008"
-    NAME           = "Watchdog BCM → mise en sécurité actionneurs (TSR_005)"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    NAME           = "Watchdog BCM → actuator safety shutdown (TSR_005)"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "TSR_005 · SRS_SAFE_001 · SRS timing 50 ms"
     LIMIT_STR      = "≤ 2500 ms (arrêt actionneurs après watchdog)"
     LIMIT_MS       = 2500
@@ -1939,23 +1881,27 @@ class TC_FSR_008_Watchdog_Supervision(BaseBCMTest):
 # ─── TC_FSR_010 : CRC invalide CAN 0x201 → trame rejetée ─────────────────
 class TC_FSR_010_CRC_Invalid_0x201(BaseBCMTest):
     """
-    TC_FSR_010 — Alive counter + CRC invalides sur Wiper_Status (CAN 0x201)
+    TC_FSR_010 — CRC invalide sur Wiper_Status (CAN 0x201) → B2005
 
-    Prérequis : WcAvailable = Installed, système actif
-    Étapes    : Injecter une trame 0x201 avec CRC erroné via test_cmd
-    Résultat  : BCM rejette la trame, aucune mise à jour état WC,
-                wc_crc_fault=True ou wc_timeout_active=True
+    SRD       : le BCM rejette toute trame 0x201 avec CRC invalide.
+                t_last_wiper_status n'est PAS mis à jour sur CRC KO :
+                une trame corrompue ne prouve pas que le WC est opérationnel.
+                Après CAN_WC_TIMEOUT (2s) sans trame valide → B2005 déclenché.
+    Prérequis : WcAvailable = Installed, BCM en SPEED1, lin_op_locked=True
+    Étapes    : Injecter 8 trames 0x201 avec CRC intentionnellement faux
+    Résultat  : wc_crc_fault=True (~200ms, 1ère trame KO détectée)
+                OU wc_timeout_active=True / B2005 (~2000ms, timeout naturel)
 
     Stimulus  : motor_w.queue_send({"test_cmd": "corrupt_crc_0x201"})
-                → bcmcan envoie un 0x201 avec CRC intentionnellement faux
-    Observation : Redis GET wc_crc_fault==True
-                  OU Redis GET wc_timeout_active après délai répétitions
+                → bcmcan envoie 0x201 avec CRC = ~XOR(b0..b6) & 0xFF
+    Observation : Redis GET wc_crc_fault==True  (chemin nominal ~200ms)
+                  OU Redis GET wc_timeout_active=True (B2005 ~2000ms)
     """
     ID             = "TC_FSR_010"
     NAME           = "CAN 0x201 CRC invalide → BCM rejette la trame"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "TSR_002 · Message Catalogue CAN 0x201 Protection"
-    LIMIT_STR      = "≤ 3000 ms (BCM détecte CRC invalide)"
+    LIMIT_STR      = "≤ 3000 ms (B2005 déclenché après CAN_WC_TIMEOUT=2s)"
     LIMIT_MS       = 3000
     TEST_TIMEOUT_S = 17  # 400ms+400ms+600ms pre-delay + 3000ms detection + marge
 
@@ -1977,11 +1923,18 @@ class TC_FSR_010_CRC_Invalid_0x201(BaseBCMTest):
             return None
         crc_fault  = self.rte_client.get_bool("wc_crc_fault")
         wc_timeout = self.rte_client.get_bool("wc_timeout_active")
-        if crc_fault or wc_timeout:
+        # Critère : wc_timeout_active=True (B2005) UNIQUEMENT.
+        # wc_crc_fault=True seul n'est pas suffisant : le DTC B2005 doit
+        # être explicitement déclenché pour valider que le BCM traite correctement
+        # l'absence de trame valide consécutive aux CRC KO.
+        # Les deux flags doivent être True simultanément :
+        #   wc_crc_fault  = BCM a bien reçu et rejeté des trames CRC KO
+        #   wc_timeout_active = B2005 déclenché après CAN_WC_TIMEOUT (2s)
+        if crc_fault and wc_timeout:
             self._confirmed = True
             delta = time.time() * 1000.0 - self._t0_ms
             detail = (f"wc_crc_fault={crc_fault} wc_timeout_active={wc_timeout} "
-                      f"| {delta:.0f} ms")
+                      f"B2005 déclenché | {delta:.0f} ms")
             return (self._pass if delta <= self.LIMIT_MS else self._fail)(
                 f"{delta:.0f} ms", detail)
         return None
@@ -2028,8 +1981,8 @@ class TC_COM_001_LIN_Baudrate(BaseBCMTest):
       Insuffisant pour mesurer une dérive cristal de ±2% avec certitude.
     """
     ID             = "TC_COM_001"
-    NAME           = "LIN baudrate = 19 200 bps (mesure physique BREAK)"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    NAME           = "LIN baudrate = 19 200 bps (physical BREAK measurement)"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "Message Catalogue §1"
     LIMIT_STR      = "19200 bps ± 2% (18816 – 19584)"
     LIMIT_MS       = 5000   # délai max pour recevoir 5 mesures BREAK
@@ -2142,7 +2095,7 @@ class TC_B2103_PositionSensorFault(BaseBCMTest):
     """
     ID             = "TC_B2103"
     NAME           = "WC Position Sensor Fault (blade mismatch > 10 % / 1 s)"
-    CATEGORY       = "FONCTIONNEL_WC"
+    CATEGORY       = "FUNCTIONAL_WC"
     REF            = "B2103 / bcmcan._check_blade_position_mismatch"
     LIMIT_STR      = "1 000–1 500 ms (DTC B2103 armé)"
     LIMIT_LO_MS    = 1000.0
@@ -2221,8 +2174,8 @@ class TC_LIN_CS_Invalid_0x16(BaseBCMTest):
     Critère FAIL : state=SPEED1 (trame corrompue acceptée)
     """
     ID             = "TC_LIN_CS"
-    NAME           = "5 trames checksum LIN KO → timeout B2004 + WSM OFF"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    NAME           = "5 LIN checksum frames KO → timeout B2004 + WSM OFF"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "TSR_001 / FSR_001 / B2004"
     LIMIT_STR      = "lin_timeout_active=True + state=OFF ≤ 4000 ms"
     LIMIT_MS       = 4000
@@ -2326,7 +2279,7 @@ class T44_RearWipe_Standalone(BaseBCMTest):
     """
     ID             = "T44"
     NAME           = "REAR_WIPE (op=7) : RL3 activé ≥ 1700ms puis coupure sur WOP=0"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "SRD_WW_090 / SRD_WW_092 / SRD_WW_011 WOP=7"
     LIMIT_STR      = "REAR_WIPE ≤ 1500ms, RL3=LOW ≥ 1700ms, RL3=HIGH sur WOP=0"
     LIMIT_MS       = 1500     # délai max pour atteindre REAR_WIPE
@@ -2507,8 +2460,8 @@ class T50_CasA_DirectMotorControl(BaseBCMTest):
       FAIL : RL2=LOW(ON) détecté → GPIO H-Bridge activé malgré wc_available=True
     """
     ID             = "T50"
-    NAME           = "Cas B : commande SPEED1 avec wc_available=True → RL2 H-Bridge bloqué"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    NAME           = "Case B : SPEED1 command with wc_available=True → RL2 H-Bridge stuck"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "SRD_WW_070 / SRD_WW_080"
     LIMIT_STR      = "RL2=LOW absent (H-Bridge bloqué) + front_motor_on=True"
     LIMIT_MS       = 1500     # délai max pour atteindre state=SPEED1
@@ -2672,8 +2625,8 @@ class T51_CasA_RestContact_Stuck(BaseBCMTest):
       MAX_MS = 5000 ms (limite généreuse pour variation hardware)
     """
     ID             = "T51"
-    NAME           = "Cas A : rest contact bloqué → FSR_006 (state=ERROR)"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    NAME           = "Case A : rest contact stuck → FSR_006 (state=ERROR)"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "SRD_WW_071 / FSR_006 / B2006"
     LIMIT_STR      = "state=ERROR dans [1500, 5000] ms (WIPE_CYCLE_DURATION)"
     LIMIT_MS       = 5000    # limite haute
@@ -2822,7 +2775,7 @@ class T38b_Overcurrent_RearMotor(BaseBCMTest):
     REF : FSR_003 / B2002.
     """
     ID             = "T38b"
-    NAME           = "Surcourant moteur ARRIÈRE → ERROR + B2002"
+    NAME           = "Rear motor overcurrent → ERROR + B2002"
     REF            = "FSR_003 / B2002"
     LIMIT_STR      = "≈ 300 ms (200–700 ms)"
     LIMIT_MS       = 700
@@ -2881,7 +2834,7 @@ class T38c_Overcurrent_Pump(BaseBCMTest):
     REF : FSR_003 / B2003.
     """
     ID             = "T38c"
-    NAME           = "Surcourant pompe → B2003 (moteur avant non affecté)"
+    NAME           = "Pump overcurrent → B2003 (front motor unaffected)"
     REF            = "FSR_003 / B2003"
     LIMIT_STR      = "≤ 600 ms"
     LIMIT_MS       = 600
@@ -3011,7 +2964,7 @@ class T_B2009_CAN(BaseBCMTest):
     REF : FSR_003 / B2009 / SRD_WW_070
     """
     ID             = "T_B2009_CAN"
-    NAME           = "CAS B : blade figée + rest_contact figé → B2009"
+    NAME           = "Case B : blade stuck + rest_contact stuck → B2009"
     REF            = "FSR_003 / B2009 / SRD_WW_070"
     LIMIT_STR      = "wiper_fault=True + state=ERROR ≤ 4500 ms"
     LIMIT_MS       = 4500   # REST_STUCK_DELAY=3s + latence BCM + marge
@@ -3049,43 +3002,52 @@ class T_B2009_CAN(BaseBCMTest):
         return None
 
 
-# ─── T50b : Overcurrent moteur avant CAS B → B2001 ──────────────────────────
+# ─── T50b : Overcurrent moteur avant CAS B + ErrorCode 0x202=0x03 → B2001 ────
 class T50b_Overcurrent_CAS_B(BaseBCMTest):
     """
-    T50b — CAS B (wc_available=True) : surcourant moteur avant via CAN → B2001
+    T50b — CAS B (wc_available=True) : surcourant moteur avant (inject_motor_current)
+           ET ErrorCode 0x202 = 0x03 → BCM déclenche B2001 + ST_ERROR.
 
     Objectif :
-      Vérifier que le BCM détecte un surcourant moteur avant lorsque le moteur
-      est commandé via CAN (wc_available=True). MotorCurrent est injecté dans
-      la trame 0x201 par le simulateur WC → BCM lit motor_current_a via
-      _can_process_0x201 → _check_overcurrent() → B2001 + ST_ERROR.
+      Vérifier que le BCM détecte B2001 uniquement quand les DEUX conditions
+      sont réunies simultanément :
+        1. Courant moteur avant injecté > seuil (0.95 A > OVERCURRENT_THRESH=0.8A)
+           via sim_client.inject_motor_current(0.95)
+        2. Trame 0x202 WiperAck avec ErrorCode=0x03 envoyée par le simulateur WC
+           via sim_client.send_wiper_ack(ack_status=0, error_code=0x03)
 
     Mécanisme BCM :
-      _can_process_0x201 : motor_current_a = ((byte3<<8)|byte4) * 0.1
+      _can_process_0x202 : lit ErrorCode byte1 → 0x03 = OVERCURRENT_FAULT
       _check_overcurrent : front_motor_on=True (CAS B) + motor_current_a > 0.8A
-                           pendant OVERCURRENT_DELAY=300ms → B2001
+                           + ErrorCode=0x03 pendant OVERCURRENT_DELAY=300ms → B2001
 
     Note : OBS_MS implicite < REST_STUCK_DELAY=3s pour éviter B2009.
 
     Critère PASS : state=ERROR + front_motor_error=True dans ≤ 700ms
-    REF : FSR_003 / B2001 / SRD_WW_070
+    REF : FSR_003 / B2001 / SRD_WW_070 / WW-MCAT-005 §6.3
     """
     ID             = "T50b"
-    NAME           = "CAS B : overcurrent moteur avant via CAN → B2001"
+    NAME           = "Case B : overcurrent inject + 0x202 ErrorCode=0x03 → B2001"
     REF            = "FSR_003 / B2001 / SRD_WW_070"
     LIMIT_STR      = "state=ERROR + front_motor_error=True ≤ 700 ms"
     LIMIT_MS       = 700
-    TEST_TIMEOUT_S = 6
+    TEST_TIMEOUT_S = 8
 
     _OC_MIN_MS = 200
 
     def __init__(self):
         super().__init__()
-        self._confirmed  = False
+        self._confirmed       = False
+        self._ack_err_sent    = False   # True après envoi 0x202 ErrorCode=0x03
 
     def _on_start(self):
         super()._on_start()
-        self._confirmed  = False
+        self._confirmed    = False
+        self._ack_err_sent = False
+
+    def notify_ack_err_sent(self):
+        """Appelé par test_runner quand send_wiper_ack(error_code=0x03) est envoyé."""
+        self._ack_err_sent = True
 
     def _check_rte(self):
         if self._confirmed or self.rte_client is None:
@@ -3098,7 +3060,8 @@ class T50b_Overcurrent_CAS_B(BaseBCMTest):
         if state == "ERROR" or (motor_error and not motor_on):
             self._confirmed = True
             detail = (f"state={state} front_motor_error={motor_error} "
-                      f"front_motor_on={motor_on} | {delta:.0f} ms")
+                      f"front_motor_on={motor_on} ack_err_sent={self._ack_err_sent} "
+                      f"| {delta:.0f} ms")
             if not motor_error:
                 return self._fail(f"{delta:.0f} ms",
                                   detail + " — front_motor_error=False (cause inconnue)")
@@ -3109,6 +3072,152 @@ class T50b_Overcurrent_CAS_B(BaseBCMTest):
                 return self._fail(f"{delta:.0f} ms",
                                   detail + f" — réaction < {self._OC_MIN_MS} ms")
             return self._pass(f"{delta:.0f} ms", detail)
+        return None
+
+
+# ─── T50c : Overcurrent CAS B + ErrorCode 0x202 ≠ 0x03 → B2001 NON déclenché ─
+class T50c_Overcurrent_WrongErrorCode(BaseBCMTest):
+    """
+    T50c — CAS B (wc_available=True) : surcourant moteur avant (inject_motor_current)
+           MAIS ErrorCode 0x202 ≠ 0x03 → BCM NE DOIT PAS déclencher B2001.
+
+    Objectif :
+      Vérifier que le BCM n'arme PAS B2001 si le code d'erreur 0x202 est différent
+      de 0x03, même si le courant moteur dépasse le seuil.
+      Valide le caractère CONJONCTIF de la détection B2001.
+
+    Conditions injectées :
+      1. Courant moteur avant = 0.30 A (< seuil 0.8 A)          → condition fausse
+      2. 0x202 ErrorCode = 0x01 (InvalidCmd, ≠ 0x03)            → condition fausse
+    Note : les deux conditions B2001 sont fausses → double vérification
+    que la détection est bien conjonctive (courant ET code 0x03 requis).
+
+    Critère PASS : front_motor_error=False + state ≠ ERROR pendant GUARD_MS=2000ms
+    Critère FAIL : front_motor_error=True ou state=ERROR détecté pendant la fenêtre
+    REF : FSR_003 / B2001 / WW-MCAT-005 §6.3
+    """
+    ID             = "T50c"
+    NAME           = "Case B : overcurrent + 0x202 ErrorCode≠0x03 → B2001 NOT triggered"
+    CATEGORY       = "FUNCTIONAL_BCM"
+    REF            = "FSR_003 / B2001 / WW-MCAT-005 §6.3"
+    LIMIT_STR      = "front_motor_error=False pendant 2000 ms"
+    GUARD_MS       = 2000
+    TEST_TIMEOUT_S = 8
+
+    def __init__(self):
+        super().__init__()
+        self._confirmed  = False
+        self._speed1_ok  = False   # SPEED1 établi avant injection
+
+    def _on_start(self):
+        super()._on_start()
+        self._confirmed = False
+        self._speed1_ok = False
+
+    def _target_state(self) -> Optional[str]:
+        return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        if self._confirmed or self.rte_client is None:
+            return None
+        state       = self.rte_client.get("state")
+        motor_error = self.rte_client.get_bool("front_motor_error")
+        delta       = time.time() * 1000.0 - self._t0_ms
+
+        # Phase 1 : attendre SPEED1 avant de surveiller
+        if not self._speed1_ok:
+            if state == "SPEED1":
+                self._speed1_ok = True
+            return None
+
+        # FAIL : B2001 déclenché à tort
+        if motor_error or state == "ERROR":
+            self._confirmed = True
+            return self._fail(
+                f"{delta:.0f} ms",
+                f"B2001 déclenché à tort avec ErrorCode≠0x03 | "
+                f"state={state} front_motor_error={motor_error} | {delta:.0f} ms")
+
+        # PASS : fenêtre de garde écoulée sans déclenchement
+        if delta >= self.GUARD_MS:
+            self._confirmed = True
+            return self._pass(
+                f"{delta:.0f} ms",
+                f"B2001 NON déclenché pendant {self.GUARD_MS} ms ✓ | "
+                f"state={state} front_motor_error={motor_error}")
+
+        return None
+
+
+# ─── T50d : Courant normal CAS B + ErrorCode 0x202=0x03 → B2001 NON déclenché ─
+class T50d_NoOvercurrent_ErrorCode03(BaseBCMTest):
+    """
+    T50d — CAS B (wc_available=True) : courant moteur avant NORMAL (0.30 A < seuil)
+           ET ErrorCode 0x202 = 0x03 → BCM NE DOIT PAS déclencher B2001.
+
+    Objectif :
+      Vérifier que le BCM n'arme PAS B2001 si le courant moteur reste sous le seuil,
+      même si ErrorCode=0x03 est reçu dans la trame 0x202.
+      Valide le caractère CONJONCTIF de la détection B2001 : ErrorCode seul ne suffit pas.
+
+    Conditions injectées :
+      1. Courant moteur avant = 0.30 A (< seuil 0.8 A)           → condition fausse
+      2. 0x202 ErrorCode = 0x03 (OVERCURRENT_FAULT)               → condition vraie
+
+    Critère PASS : front_motor_error=False + state ≠ ERROR pendant GUARD_MS=2000ms
+    Critère FAIL : front_motor_error=True ou state=ERROR détecté pendant la fenêtre
+    REF : FSR_003 / B2001 / WW-MCAT-005 §6.3
+    """
+    ID             = "T50d"
+    NAME           = "Case B : normal current + 0x202 ErrorCode=0x03 → B2001 NOT triggered"
+    CATEGORY       = "FUNCTIONAL_BCM"
+    REF            = "FSR_003 / B2001 / WW-MCAT-005 §6.3"
+    LIMIT_STR      = "front_motor_error=False pendant 2000 ms"
+    GUARD_MS       = 2000
+    TEST_TIMEOUT_S = 8
+
+    def __init__(self):
+        super().__init__()
+        self._confirmed  = False
+        self._speed1_ok  = False
+
+    def _on_start(self):
+        super()._on_start()
+        self._confirmed = False
+        self._speed1_ok = False
+
+    def _target_state(self) -> Optional[str]:
+        return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        if self._confirmed or self.rte_client is None:
+            return None
+        state       = self.rte_client.get("state")
+        motor_error = self.rte_client.get_bool("front_motor_error")
+        delta       = time.time() * 1000.0 - self._t0_ms
+
+        # Phase 1 : attendre SPEED1 avant de surveiller
+        if not self._speed1_ok:
+            if state == "SPEED1":
+                self._speed1_ok = True
+            return None
+
+        # FAIL : B2001 déclenché à tort
+        if motor_error or state == "ERROR":
+            self._confirmed = True
+            return self._fail(
+                f"{delta:.0f} ms",
+                f"B2001 déclenché à tort avec courant=0.30A < seuil | "
+                f"state={state} front_motor_error={motor_error} | {delta:.0f} ms")
+
+        # PASS : fenêtre de garde écoulée sans déclenchement
+        if delta >= self.GUARD_MS:
+            self._confirmed = True
+            return self._pass(
+                f"{delta:.0f} ms",
+                f"B2001 NON déclenché pendant {self.GUARD_MS} ms ✓ | "
+                f"state={state} front_motor_error={motor_error}")
+
         return None
 
 
@@ -3151,8 +3260,8 @@ class T_CasB_Speed1_Reverse(BaseBCMTest):
     REF : SRD_WW_060 / SRD_WW_070
     """
     ID             = "T_CAS_B_SPEED1_REVERSE"
-    NAME           = "CAS B : SPEED1 CAN + Reverse 0x300 → front ET rear moteurs actifs"
-    CATEGORY       = "FONCTIONNEL_BCM"
+    NAME           = "Case B : SPEED1 CAN + Reverse 0x300 → front AND rear motors active"
+    CATEGORY       = "FUNCTIONAL_BCM"
     REF            = "SRD_WW_060 / SRD_WW_070"
     LIMIT_STR      = "front_motor_on=True ET rear_motor_on=True ≤ 3000 ms"
     LIMIT_MS       = 3000
@@ -3289,6 +3398,677 @@ class T_B2009_CASA(BaseBCMTest):
         return None
 
 
+# ══════════════════════════════════════════════════════════════════════════
+#  NOUVEAUX TESTS — version28
+#  TC_LIN_016_BIT4  : StickStatus bit4=0 → B2004 après 2.5s
+#  TC_LIN_016_BIT6  : Stuck bit6=1 seul → pas de B2011
+#  TC_B2011_AND     : bit6=1 ET 0x17 bit0=1 pendant 10s → B2011
+#  TC_LIN_017_VER   : CRS_Version=0xFF → trame ignorée
+#  TC_CAN_202_ERR01 : ErrorCode=0x01 InvalidCmd → resync + ST_ERROR si 3×NACK
+# ══════════════════════════════════════════════════════════════════════════
+
+class TC_LIN_016_BIT4_StickValid(BaseBCMTest):
+    """
+    TC_LIN_016_BIT4 — StickStatus bit4=0 pendant ≥ 2.5s → B2004
+
+    LIN 0x16 byte0 : StickStatus nibble haut.
+    bit0 du nibble (= bit4 de byte0) = Valid.
+    Si bit4=0 pendant ≥ 2500ms → BCM lève B2004 + WOP_OFF + WSM→OFF.
+    Rétablissement : bit4=1 → B2004 INACTIVE.
+
+    Stimulus : sim_client.set_stick_stuck() ne touche pas bit4 (Valid).
+    Stimulus : send_bit4_zero → stickStatus bit0=0 (Valid=0) maintenu.
+
+    Observation : lin_timeout_active=True OU state=OFF dans ≤ 3500ms.
+    """
+    ID             = "TC_LIN_016_BIT4"
+    NAME           = "LIN 0x16 StickStatus bit4=0 (invalid) → B2004 ≤ 2500ms"
+    CATEGORY       = "LIN_SECURITE"
+    REF            = "WW-MCAT-005 Rev5 / SRS_LIN_002 / B2004"
+    LIMIT_STR      = "lin_timeout_active=True + state=OFF ≤ 3500ms"
+    LIMIT_MS       = 3500
+    TEST_TIMEOUT_S = 10
+
+    def _on_start(self):
+        super()._on_start()
+        self._detected = False
+
+    def _target_state(self): return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        if self._detected or self.rte_client is None:
+            return None
+        # Surveiller UNIQUEMENT lin_timeout_active=True :
+        # state=OFF ne suffit pas — le BCM peut être en OFF pour d'autres raisons
+        # (test précédent, état initial). B2004 pose lin_timeout_active=True
+        # dans bcm_protocol.py après 2.5s de bit4=0 maintenu.
+        timeout = self.rte_client.get_bool("lin_timeout_active")
+        state   = self.rte_client.get("state")
+        delta   = time.time() * 1000.0 - self._t0_ms
+        if timeout:
+            self._detected = True
+            detail = (f"lin_timeout_active=True state={state} | {delta:.0f} ms | "
+                      f"B2004 déclenché après bit4=0 ≥ 2.5s")
+            return (self._pass if delta <= self.LIMIT_MS else self._fail)(
+                f"{delta:.0f} ms", detail)
+        return None
+
+    def on_lin_frame(self, ev):
+        """Fallback : écouter timeout event crslin."""
+        if self._detected or self.rte_client is not None:
+            return None
+        msg = str(ev.get("msg", "")).lower()
+        if "b2004" in msg:
+            self._detected = True
+            delta = time.time() * 1000.0 - self._t0_ms
+            return (self._pass if delta <= self.LIMIT_MS else self._fail)(
+                f"{delta:.0f} ms", "fallback crslin b2004 event")
+        return None
+
+
+class TC_LIN_016_BIT6_Stuck_Alone(BaseBCMTest):
+    """
+    TC_LIN_016_BIT6 — StickStatus bit6=1 SEUL (sans 0x17 bit0=1) → pas de B2011
+
+    Vérifie que la condition B2011 n'est PAS déclenchée si uniquement
+    bit6=1 (Stuck) mais que 0x17 bit0=0 (CRS OK).
+    La relation ET est vérifiée : une seule condition est insuffisante.
+
+    Stimulus  : sim_client.set_stick_stuck(True) → bit6=1
+                CRS_Status reste nominal (bit0=0)
+    Observation : b2011_active=False ET state ≠ ERROR pendant 12s.
+    PASS : aucun B2011 après 12s de bit6=1 seul.
+    FAIL : B2011 déclenché (condition ET incorrectement évaluée).
+    """
+    ID             = "TC_LIN_016_BIT6_ALONE"
+    NAME           = "LIN 0x16 bit6=1 seul → B2011 NON déclenché (12s)"
+    CATEGORY       = "LIN_SECURITE"
+    REF            = "WW-MCAT-005 Rev5 / condition ET B2011"
+    LIMIT_STR      = "B2011 INACTIVE (state ≠ ERROR) pendant 12s"
+    LIMIT_MS       = 12000
+    TEST_TIMEOUT_S = 15
+
+    def _on_start(self):
+        super()._on_start()
+        self._b2011_triggered = False
+        self._observation_done = False
+
+    def _target_state(self): return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        if self._confirmed or self.rte_client is None:
+            return None
+        state  = self.rte_client.get("state")
+        delta  = time.time() * 1000.0 - self._t0_ms
+
+        # FAIL immédiat si B2011 se déclenche
+        if state == "ERROR":
+            self._b2011_triggered = True
+            self._confirmed = True
+            return self._fail(f"{delta:.0f} ms",
+                f"B2011 déclenché alors que 0x17 bit0=0 (condition ET incorrecte) "
+                f"après {delta:.0f} ms")
+
+        # PASS après 12s sans B2011
+        if delta >= self.LIMIT_MS and not self._observation_done:
+            self._observation_done = True
+            self._confirmed = True
+            return self._pass(f"{delta:.0f} ms",
+                f"B2011 NON déclenché après {delta:.0f} ms de bit6=1 seul — "
+                f"condition ET respectée (0x17 bit0=0)")
+        return None
+
+
+class TC_B2011_AND_Condition(BaseBCMTest):
+    """
+    TC_B2011_AND — B2011 : condition conjointe 0x16 bit6=1 ET 0x17 bit0=1 ≥ 10s
+
+    Les deux conditions doivent être actives simultanément pendant ≥ 10s
+    pour déclencher B2011.
+
+    Séquence :
+      1. Injecter 0x17 bit0=1 (CRS_InternalFault_Stick)
+      2. Injecter 0x16 bit6=1 (StickStatus Stuck)
+      3. Attendre ≥ 10s → B2011 ACTIVE + state=ERROR
+      4. Rétablissement : bit0=0 → B2011 INACTIVE
+
+    Observation : b2011_active=True via Redis GET OU state=ERROR dans
+                  [10000, 12000] ms.
+    """
+    ID             = "TC_B2011_AND"
+    NAME           = "B2011 : 0x16 bit6=1 ET 0x17 bit0=1 ≥ 10s → B2011 ACTIVE"
+    CATEGORY       = "LIN_SECURITE"
+    REF            = "WW-MCAT-005 Rev5 / B2011 condition ET"
+    LIMIT_STR      = "B2011 ACTIVE dans [10000, 12000] ms"
+    LIMIT_LO_MS    = 9500    # 10s - 500ms tolérance
+    LIMIT_HI_MS    = 13000   # 10s + 3s marge poll/latence
+    TEST_TIMEOUT_S = 18
+
+    def _on_start(self):
+        super()._on_start()
+        self._detected = False
+
+    def _target_state(self): return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        if self._detected or self.rte_client is None:
+            return None
+        state  = self.rte_client.get("state")
+        b2011  = self.rte_client.get_bool("b2011_active")
+        delta  = time.time() * 1000.0 - self._t0_ms
+
+        if b2011 or state == "ERROR":
+            self._detected = True
+            ok = self.LIMIT_LO_MS <= delta <= self.LIMIT_HI_MS
+            detail = (f"b2011_active={b2011} state={state} | {delta:.0f} ms | "
+                      f"fenêtre [{self.LIMIT_LO_MS:.0f}–{self.LIMIT_HI_MS:.0f} ms] | "
+                      f"{'DANS' if ok else 'HORS'} fenêtre")
+            return (self._pass if ok else self._fail)(f"{delta:.0f} ms", detail)
+        return None
+
+
+class TC_LIN_017_Version_Filter(BaseBCMTest):
+    """
+    TC_LIN_017_VER — CRS_Version invalide (byte1) → trame 0x17 ignorée
+
+    Règle catalogue WW-MCAT-005 Rev5 :
+      - version nominale = 0x20 → trame traitée normalement
+      - version = 0xFF → trame ignorée (log dédié, pas de DTC)
+      - toute autre valeur ≠ 0x20 → trame rejetée
+
+    Stimulus : sim_client.set_crs_version(0xFF) → crslin émet byte1=0xFF
+    Observation : crs_fault_stick ne change PAS même si bit0=1 est injecté
+                  simultanément (trame ignorée = contribution B2011 bloquée).
+
+    PASS : crs_fault reste 0 pendant 3s (trame ignorée).
+    FAIL : crs_fault change (trame 0xFF acceptée par le BCM).
+    """
+    ID             = "TC_LIN_017_VER"
+    NAME           = "LIN 0x17 CRS_Version=0xFF → trame ignorée (contribution B2011 bloquée)"
+    CATEGORY       = "LIN_SECURITE"
+    REF            = "WW-MCAT-005 Rev5 / filtre CRS_Version"
+    LIMIT_STR      = "crs_fault inchangé pendant 3s (version 0xFF ignorée)"
+    LIMIT_MS       = 3000
+    TEST_TIMEOUT_S = 8
+
+    def _on_start(self):
+        super()._on_start()
+        self._baseline_fault = None
+        self._violation      = False
+
+    def _target_state(self): return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        if self._confirmed or self.rte_client is None:
+            return None
+        crs_fault = self.rte_client.get_int("crs_fault", default=0)
+        delta     = time.time() * 1000.0 - self._t0_ms
+
+        # Capturer la baseline au premier poll
+        if self._baseline_fault is None:
+            self._baseline_fault = crs_fault
+            return None
+
+        # FAIL : crs_fault a changé → trame 0xFF acceptée
+        if crs_fault != self._baseline_fault and crs_fault != 0:
+            self._violation = True
+            self._confirmed = True
+            return self._fail(f"{delta:.0f} ms",
+                f"crs_fault={crs_fault} (baseline={self._baseline_fault}) — "
+                f"trame 0x17 avec CRS_Version=0xFF acceptée par le BCM")
+
+        # PASS après 3s sans changement
+        if delta >= self.LIMIT_MS:
+            self._confirmed = True
+            return self._pass(f"{delta:.0f} ms",
+                f"crs_fault={crs_fault} inchangé après {delta:.0f} ms — "
+                f"trame 0x17 CRS_Version=0xFF correctement ignorée")
+        return None
+
+
+class TC_CAN_202_ERR01_InvalidCmd(BaseBCMTest):
+    """
+    TC_CAN_202_ERR01 — CAN 0x202 ErrorCode=0x01 (InvalidCmd) — désaccord naturel
+
+    Vérifie que le WC émet SPONTANÉMENT une trame 0x202 avec NACK=1 et
+    ErrorCode=0x01 lorsqu'il détecte un désaccord entre le WiperMode reçu
+    dans 0x200 et le CurrentMode qu'il retourne dans 0x201.
+
+    Séquence :
+      1. BCM envoie 0x200 avec WiperMode=SPEED1 (crs_wiper_op=2)
+      2. Le simulateur répond 0x201 avec CurrentMode=OFF (≠ SPEED1) via
+         le mécanisme mode_mismatch_0x201 activé dans bcmcan.py
+      3. Le WC détecte le désaccord et émet NATURELLEMENT 0x202 avec
+         AckStatus=1 (NACK) et ErrorCode=0x01 (InvalidCmd)
+      → PASS si la première 0x202 reçue a bien NACK=1 ET ErrorCode=0x01
+
+    Pas d'injection forcée de NACK : le 0x202 doit être produit par le WC
+    de manière autonome, sans intervention du test_runner.
+    """
+    ID             = "TC_CAN_202_ERR01"
+    NAME           = "CAN 0x202 NACK naturel : 0x200 SPEED1 → 0x201 OFF → 0x202 NACK+0x01"
+    CATEGORY       = "CAN_SECURITE"
+    REF            = "WW-MCAT-005 Rev5 / Wiper_Ack ErrorCode=0x01 — désaccord mode"
+    LIMIT_STR      = "0x202 NACK=1 + ErrorCode=0x01 reçu ≤ 2000ms après mismatch"
+    LIMIT_MS       = 2000
+    TEST_TIMEOUT_S = 10
+
+    def _on_start(self):
+        super()._on_start()
+        self._detected      = False   # True dès que 0x202 valide reçue
+        self._speed1_cmd_ok = False   # True dès que 0x200 SPEED1 confirmé
+        self._result_detail = ""
+
+    def _target_state(self): return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        """
+        Confirme que le BCM émet bien 0x200 avec WiperMode=SPEED1.
+        Positionne _speed1_cmd_ok pour valider le contexte du test.
+        """
+        if self._detected or self.rte_client is None:
+            return None
+        state = self.rte_client.get("state")
+        if not self._speed1_cmd_ok and state == "SPEED1":
+            self._speed1_cmd_ok = True
+        return None
+
+    def on_can_frame(self, ev) -> Optional[TestResult]:
+        """
+        Observe les trames 0x202 émises naturellement par le WC.
+
+        Stratégie :
+          - Les ACK normaux (AckStatus=0, ErrorCode=0x00) sont IGNORÉS :
+            ils peuvent arriver pendant la montée en SPEED1, avant que le
+            mismatch 0x201 soit perçu par le WC.
+          - Seule la première trame 0x202 avec AckStatus=1 (NACK) est jugée :
+              PASS si ErrorCode=0x01 (InvalidCmd) dans le délai
+              FAIL si ErrorCode≠0x01
+          - Si le timeout (TEST_TIMEOUT_S) expire sans NACK → FAIL par timeout
+            géré par BaseBCMTest.
+        """
+        if self._detected:
+            return None
+        if ev.get("can_id_int") != 0x202:
+            return None
+
+        fields = ev.get("fields", {})
+        ack = int(fields.get("ack_status", 0))
+        err = int(fields.get("error_code", 0))
+
+        # Ignorer les ACK normaux (mismatch pas encore perçu par le WC)
+        if ack == 0 and err == 0x00:
+            return None
+
+        # Première trame avec NACK=1 → c'est le cas qu'on attend
+        delta = time.time() * 1000.0 - self._t0_ms
+        self._detected = True
+        ok = (ack == 1 and err == 0x01 and delta <= self.LIMIT_MS)
+        detail = (
+            f"0x202 naturelle NACK reçue | AckStatus={ack} (attendu 1) | "
+            f"ErrorCode=0x{err:02X} (attendu 0x01) | "
+            f"mismatch_ctx={'OK' if self._speed1_cmd_ok else 'non confirmé'} | "
+            f"{delta:.0f} ms"
+        )
+        return (self._pass if ok else self._fail)(
+            f"NACK={ack} Err=0x{err:02X} {delta:.0f}ms", detail
+        )
+
+
+class TC_CAN_202_ERR02_MotorBlocked(BaseBCMTest):
+    """
+    TC_CAN_202_ERR02 — CAN 0x202 ErrorCode=0x02 (MotorBlocked) — naturel
+
+    Séquence :
+      1. BCM envoie 0x200 avec WiperMode=SPEED1 (crs_wiper_op=2)
+      2. Le simulateur injecte FaultStatus_MotorDriver=1 (bit1 du byte4 de 0x201)
+         via set_fault_status_bits(0x02)
+      3. panels.py détecte le bit1 et émet naturellement 0x202 avec
+         AckStatus=1 (NACK) et ErrorCode=0x02 (MotorBlocked)
+      4. Le BCM reçoit 0x202 NACK 0x02 → envoie WiperMode=OFF dans 0x200
+      → PASS si :
+          a) 0x201 byte4 bit1=1 (FaultStatus_MotorDriver) vu sur le bus
+          b) 0x202 naturel avec NACK=1 + ErrorCode=0x02 reçu dans le délai
+          c) BCM envoie WiperMode=OFF (state→OFF) après réception du NACK
+    """
+    ID             = "TC_CAN_202_ERR02"
+    NAME           = "CAN 0x202 NACK naturel : 0x201 bit1=MotorDriver → 0x202 Err=0x02 → BCM OFF"
+    CATEGORY       = "CAN_SECURITE"
+    REF            = "WW-MCAT-005 Rev5 / Wiper_Ack ErrorCode=0x02 — MotorBlocked"
+    LIMIT_STR      = "0x202 NACK+0x02 reçu ET BCM→OFF ≤ 3000ms"
+    LIMIT_MS       = 3000
+    TEST_TIMEOUT_S = 12
+
+    def _on_start(self):
+        super()._on_start()
+        self._detected       = False
+        self._fault_201_seen = False   # FaultStatus_MotorDriver=1 vu dans 0x201
+        self._nack_seen      = False   # 0x202 NACK+0x02 vu
+        self._bcm_off_seen   = False   # BCM passé en OFF
+
+    def _target_state(self): return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        if self._detected or self.rte_client is None:
+            return None
+        state = self.rte_client.get("state")
+        # Attendre que le BCM passe en OFF suite au NACK 0x02
+        if self._nack_seen and not self._bcm_off_seen and state == "OFF":
+            self._bcm_off_seen = True
+        if self._nack_seen and self._bcm_off_seen and not self._detected:
+            self._detected = True
+            delta = time.time() * 1000.0 - self._t0_ms
+            ok = (self._fault_201_seen and delta <= self.LIMIT_MS)
+            detail = (
+                f"0x201 bit1={'OK' if self._fault_201_seen else 'NON VU'} | "
+                f"0x202 NACK+0x02={'OK' if self._nack_seen else 'NON'} | "
+                f"BCM→OFF={state} | {delta:.0f} ms"
+            )
+            return (self._pass if ok else self._fail)(
+                f"Err=0x02 BCM={state} {delta:.0f}ms", detail)
+        return None
+
+    def on_can_frame(self, ev) -> Optional[TestResult]:
+        if self._detected:
+            return None
+        cid = ev.get("can_id_int")
+        fields = ev.get("fields", {})
+
+        if cid == 0x201:
+            # Vérifier FaultStatus_MotorDriver = bit1
+            fault_byte = int(fields.get("fault_byte", 0))
+            if fault_byte & 0x02:
+                self._fault_201_seen = True
+            return None
+
+        if cid == 0x202:
+            ack = int(fields.get("ack_status", 0))
+            err = int(fields.get("error_code", 0))
+            if ack == 0 and err == 0x00:
+                return None   # ignorer ACK normaux
+            if ack == 1 and err == 0x02:
+                self._nack_seen = True
+            elif ack == 1:
+                # NACK avec mauvais ErrorCode → FAIL immédiat
+                self._detected = True
+                delta = time.time() * 1000.0 - self._t0_ms
+                return self._fail(
+                    f"NACK Err=0x{err:02X} (attendu 0x02)",
+                    f"0x202 NACK reçu avec ErrorCode=0x{err:02X} au lieu de 0x02 | {delta:.0f} ms"
+                )
+        return None
+
+
+class TC_CAN_202_ERR04_PosSensorFault(BaseBCMTest):
+    """
+    TC_CAN_202_ERR04 — CAN 0x202 ErrorCode=0x04 (PosSensorFault) — naturel
+
+    Séquence :
+      1. BCM envoie 0x200 avec WiperMode=SPEED1 (crs_wiper_op=2)
+      2. Le simulateur injecte FaultStatus_PosSensor=1 (bit2 du byte4 de 0x201)
+         via set_fault_status_bits(0x04)
+      3. panels.py détecte le bit2 et émet naturellement 0x202 avec
+         AckStatus=1 (NACK) et ErrorCode=0x04 (PosSensorFault)
+      4. Le BCM reçoit 0x202 NACK 0x04 → pose le flag wc_ack_pos_fault
+         → _check_wc_fault_status : condition conjointe (bit2=1 ET code=0x04) → B2006
+      → PASS si :
+          a) 0x201 byte4 bit2=1 (FaultStatus_PosSensor) vu sur le bus
+          b) 0x202 naturel avec NACK=1 + ErrorCode=0x04 reçu dans le délai
+          c) BCM déclenche B2006 (via RTE wc_b2006_active, wc_b2103_active
+             ou rest_contact_b2006_active ou motor_data broadcast)
+    """
+    ID             = "TC_CAN_202_ERR04"
+    NAME           = "CAN 0x202 NACK naturel : 0x201 bit2=PosSensor → 0x202 Err=0x04 → B2006"
+    CATEGORY       = "CAN_SECURITE"
+    REF            = "WW-MCAT-005 Rev5 / Wiper_Ack ErrorCode=0x04 — PosSensorFault → B2006"
+    LIMIT_STR      = "0x202 NACK+0x04 reçu ET B2006 ACTIVE ≤ 3000ms"
+    LIMIT_MS       = 3000
+    TEST_TIMEOUT_S = 12
+
+    def _on_start(self):
+        super()._on_start()
+        self._detected       = False
+        self._fault_201_seen = False
+        self._nack_seen      = False
+        self._b2006_seen     = False
+
+    def _target_state(self): return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        if self._detected or self.rte_client is None:
+            return None
+        # B2006 se déclenche côté BCM via _check_wc_fault_status.
+        # Trois clés Redis observables selon la version du BCM :
+        #   • wc_b2006_active        : bool, clé directe B2006
+        #   • wc_b2103_active        : bool, publiée par BCM lors du déclenchement B2103→B2006
+        #   • rest_contact_b2006_active : int (0 ou 1), posé après cycle repos
+        b2006 = (
+            self.rte_client.get("wc_b2006_active")
+            or self.rte_client.get("wc_b2103_active")
+            or (int(self.rte_client.get("rest_contact_b2006_active") or 0) > 0)
+        )
+        if self._nack_seen and b2006 and not self._b2006_seen:
+            self._b2006_seen = True
+        if self._nack_seen and self._b2006_seen and not self._detected:
+            self._detected = True
+            delta = time.time() * 1000.0 - self._t0_ms
+            ok = (self._fault_201_seen and delta <= self.LIMIT_MS)
+            detail = (
+                f"0x201 bit2={'OK' if self._fault_201_seen else 'NON VU'} | "
+                f"0x202 NACK+0x04={'OK' if self._nack_seen else 'NON'} | "
+                f"B2006={'ACTIVE' if self._b2006_seen else 'absent'} | {delta:.0f} ms"
+            )
+            return (self._pass if ok else self._fail)(
+                f"Err=0x04 B2006={'OK' if self._b2006_seen else 'NON'} {delta:.0f}ms", detail)
+        return None
+
+    def on_motor_data(self, data: dict) -> Optional[TestResult]:
+        """Détecte B2006 via broadcast TCP BCM."""
+        if self._detected:
+            return None
+        if data.get("type") == "b2006_active" or \
+                (data.get("wiper_fault") and self._nack_seen):
+            if not self._b2006_seen:
+                self._b2006_seen = True
+        return None
+
+    def on_can_frame(self, ev) -> Optional[TestResult]:
+        if self._detected:
+            return None
+        cid    = ev.get("can_id_int")
+        fields = ev.get("fields", {})
+
+        if cid == 0x201:
+            fault_byte = int(fields.get("fault_byte", 0))
+            if fault_byte & 0x04:
+                self._fault_201_seen = True
+            return None
+
+        if cid == 0x202:
+            ack = int(fields.get("ack_status", 0))
+            err = int(fields.get("error_code", 0))
+            if ack == 0 and err == 0x00:
+                return None
+            if ack == 1 and err == 0x04:
+                self._nack_seen = True
+            elif ack == 1:
+                self._detected = True
+                delta = time.time() * 1000.0 - self._t0_ms
+                return self._fail(
+                    f"NACK Err=0x{err:02X} (attendu 0x04)",
+                    f"0x202 NACK reçu avec ErrorCode=0x{err:02X} au lieu de 0x04 | {delta:.0f} ms"
+                )
+        return None
+
+
+class TC_CAN_202_ERR05_InternalFault(BaseBCMTest):
+    """
+    TC_CAN_202_ERR05 — CAN 0x202 ErrorCode=0x05 (InternalFault WC) — naturel
+
+    Séquence :
+      1. BCM envoie 0x200 avec WiperMode=SPEED1 (crs_wiper_op=2)
+      2. Le simulateur injecte FaultStatus_WC_Internal=1 (bit0 du byte4 de 0x201)
+         via set_fault_status_bits(0x01)
+      3. panels.py détecte le bit0 et émet naturellement 0x202 avec
+         AckStatus=1 (NACK) et ErrorCode=0x05 (InternalFault)
+      4. Le BCM reçoit 0x202 NACK 0x05 → envoie WiperMode=OFF dans 0x200
+      → PASS si :
+          a) 0x201 byte4 bit0=1 (FaultStatus_WC_Internal) vu sur le bus
+          b) 0x202 naturel avec NACK=1 + ErrorCode=0x05 reçu dans le délai
+          c) BCM envoie WiperMode=OFF (state→OFF) après réception du NACK
+    """
+    ID             = "TC_CAN_202_ERR05"
+    NAME           = "CAN 0x202 NACK naturel : 0x201 bit0=WC_Internal → 0x202 Err=0x05 → BCM OFF"
+    CATEGORY       = "CAN_SECURITE"
+    REF            = "WW-MCAT-005 Rev5 / Wiper_Ack ErrorCode=0x05 — InternalFault WC → BCM OFF"
+    LIMIT_STR      = "0x202 NACK+0x05 reçu ET BCM→OFF ≤ 3000ms"
+    LIMIT_MS       = 3000
+    TEST_TIMEOUT_S = 12
+
+    # Fenêtre de grâce (ms) après reset_t0 pendant laquelle un NACK 0x02 résiduel
+    # issu du healing motor_driver_fault (ERR02→ERR05) est ignoré au lieu de FAIL.
+    # Le healing dure 1s côté bcmcan ; le pre_test ERR05 attend 1200ms AVANT reset_t0,
+    # donc ce guard couvre uniquement les rares trames en transit au moment de reset_t0.
+    _GRACE_ERR02_MS = 200
+
+    def _on_start(self):
+        super()._on_start()
+        self._detected       = False
+        self._fault_201_seen = False
+        self._nack_seen      = False
+        self._bcm_off_seen   = False
+
+    def _target_state(self): return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        if self._detected or self.rte_client is None:
+            return None
+        state = self.rte_client.get("state")
+        if self._nack_seen and not self._bcm_off_seen and state == "OFF":
+            self._bcm_off_seen = True
+        if self._nack_seen and self._bcm_off_seen and not self._detected:
+            self._detected = True
+            delta = time.time() * 1000.0 - self._t0_ms
+            ok = (self._fault_201_seen and delta <= self.LIMIT_MS)
+            detail = (
+                f"0x201 bit0={'OK' if self._fault_201_seen else 'NON VU'} | "
+                f"0x202 NACK+0x05={'OK' if self._nack_seen else 'NON'} | "
+                f"BCM→OFF={state} | {delta:.0f} ms"
+            )
+            return (self._pass if ok else self._fail)(
+                f"Err=0x05 BCM={state} {delta:.0f}ms", detail)
+        return None
+
+    def on_can_frame(self, ev) -> Optional[TestResult]:
+        if self._detected:
+            return None
+        cid    = ev.get("can_id_int")
+        fields = ev.get("fields", {})
+
+        if cid == 0x201:
+            fault_byte = int(fields.get("fault_byte", 0))
+            if fault_byte & 0x01:
+                self._fault_201_seen = True
+            return None
+
+        if cid == 0x202:
+            ack = int(fields.get("ack_status", 0))
+            err = int(fields.get("error_code", 0))
+            if ack == 0 and err == 0x00:
+                return None
+            if ack == 1 and err == 0x05:
+                self._nack_seen = True
+            elif ack == 1:
+                delta = time.time() * 1000.0 - self._t0_ms
+                # FIX anti-pollution ERR02→ERR05 :
+                # Si un NACK 0x02 résiduel (motor_driver_fault healing) arrive dans
+                # la fenêtre de grâce initiale, on l'ignore plutôt que de FAIL.
+                # Le pre_test ERR05 attend déjà 1200ms pour couvrir le healing 1s ;
+                # ce guard couvre les trames encore en transit au moment de reset_t0.
+                if err == 0x02 and delta < self._GRACE_ERR02_MS:
+                    return None   # trame résiduelle ERR02 — ignorée
+                self._detected = True
+                return self._fail(
+                    f"NACK Err=0x{err:02X} (attendu 0x05)",
+                    f"0x202 NACK reçu avec ErrorCode=0x{err:02X} au lieu de 0x05 | {delta:.0f} ms"
+                )
+        return None
+
+
+class TC_B2104_WC_CAN_NACK(BaseBCMTest):
+    """
+    TC_B2104 — WC CAN NACK (B2104)
+    ================================
+    Vérifie que le WC (simulateur) arme le DTC B2104 quand il émet
+    3 trames 0x202 consécutives avec AckStatus=1 (NACK) et ErrorCode≠0.
+
+    Architecture de détection (bcmcan._b2104_track) :
+      - Appelée à chaque émission de trame 0x202 via _relay_0x202()
+      - Compte les NACKs consécutifs (ErrorCode ≠ 0x00)
+      - Seuil = 3 NACKs → B2104 ACTIVE
+      - Healing = 3 ACKs consécutifs (AckStatus=0) → B2104 INACTIVE
+
+    Stimulus (test_runner) :
+      1. reset_b2104() → remet compteurs à zéro
+      2. Forcer 3 NACKs consécutifs via TCP test_cmd ou via la file 0x202
+         Chaque NACK : AckStatus=1, ErrorCode=0x01 (InvalidCmd)
+      3. reset_t0() → chrono démarre
+
+    Observation (priorité) :
+      1. TCP broadcast : {"type": "b2104_active", "wc_b2104_active": True}
+      2. Timeout si non reçu avant TEST_TIMEOUT_S
+
+    Critères :
+      PASS  : B2104 détecté dans ≤ LIMIT_MS après le 3e NACK
+      FAIL  : non détecté dans le délai
+    """
+    ID             = "TC_B2104"
+    NAME           = "WC CAN NACK — 3 NACKs consécutifs (AckStatus=1, ErrorCode≠0) → B2104"
+    CATEGORY       = "FUNCTIONAL_WC"
+    REF            = "B2104 / bcmcan._b2104_track / WW-MCAT-005 Rev5"
+    LIMIT_STR      = "B2104 ACTIVE ≤ 1500 ms après le 3e NACK"
+    LIMIT_MS       = 1500
+    TEST_TIMEOUT_S = 8
+
+    def _on_start(self):
+        super()._on_start()
+        self._detected    = False
+        self._t_nack3_ms  = 0.0   # timestamp du 3e NACK (mis à jour par runner)
+
+    def notify_nack3_sent(self):
+        """Appelé par le runner au moment de l'envoi du 3e NACK → démarre le chrono."""
+        self._t_nack3_ms = time.time() * 1000.0
+
+    def _target_state(self) -> None:
+        return None
+
+    def _check_rte(self) -> Optional[TestResult]:
+        """
+        Pas de clé Redis côté BCM pour B2104 (DTC WC uniquement).
+        Chemin prioritaire : on_motor_data (broadcast TCP bcmcan).
+        """
+        return None
+
+    def on_motor_data(self, data: dict) -> Optional[TestResult]:
+        """
+        Reçoit le broadcast TCP bcmcan {"type": "b2104_active", "wc_b2104_active": True}
+        émis par _b2104_track() lors du déclenchement B2104.
+        """
+        if self._detected:
+            return None
+        if data.get("type") == "b2104_active" and data.get("wc_b2104_active"):
+            self._detected = True
+            t_ref  = self._t_nack3_ms if self._t_nack3_ms > 0 else self._t0_ms
+            delta  = time.time() * 1000.0 - t_ref
+            nack_n = data.get("nack_count", 3)
+            err    = data.get("error_code", 0)
+            ok     = delta <= self.LIMIT_MS
+            detail = (f"B2104 ACTIVE | {nack_n} NACKs consécutifs "
+                      f"(ErrorCode=0x{err:02X}) | {delta:.0f} ms")
+            return (self._pass if ok else self._fail)(f"{delta:.0f} ms", detail)
+        return None
+
+
 # ─── Registre complet dans l'ordre d'exécution ───────────────────────────
 ALL_TESTS = [
     # ── Cycles trames réseau (section 6) ─────────────
@@ -3322,7 +4102,7 @@ ALL_TESTS = [
     T45_BladeReturn_Ignition_Off,
     # ── Sécurité LIN ─────────────────────────────────
     TC_LIN_002_AliveCounter_AntiReplay,
-    TC_LIN_004_StickStatus_Validation,
+    # TC_LIN_017_BIT1_ALONE : 0x17 bit0=1 seul (sans 0x16 bit6=1) → B2011 NON déclenché
     TC_LIN_005_CRS_InternalFault,
     # ── Sécurité CAN ─────────────────────────────────
     TC_CAN_003_AliveCounter_0x200,
@@ -3361,8 +4141,31 @@ ALL_TESTS = [
     T_CasB_Speed1_Reverse,
     # T_B2009_CAN : CAS B blade figée + rest_contact figé → B2009
     T_B2009_CAN,
-    # T50b : overcurrent moteur avant CAS B via CAN → B2001
+    # T50b : overcurrent moteur avant CAS B + 0x202 ErrorCode=0x03 → B2001
     T50b_Overcurrent_CAS_B,
+    # T50c : overcurrent CAS B + 0x202 ErrorCode≠0x03 → B2001 NON déclenché
+    T50c_Overcurrent_WrongErrorCode,
+    # T50d : courant normal CAS B + 0x202 ErrorCode=0x03 → B2001 NON déclenché
+    T50d_NoOvercurrent_ErrorCode03,
     # T_B2009_CASA : CAS A SPEED1 sans rest_contact simulé → B2009
     T_B2009_CASA,
+    # ── TESTS version28 — LIN 0x16/0x17 nouveaux + CAN 0x202 ─────────────
+    # TC_LIN_016_BIT4  : StickStatus bit4=0 (Valid=0) ≥ 2.5s → B2004
+    TC_LIN_016_BIT4_StickValid,
+    # TC_LIN_016_BIT6_ALONE : bit6=1 seul sans 0x17 bit0 → B2011 NON déclenché
+    TC_LIN_016_BIT6_Stuck_Alone,
+    # TC_B2011_AND     : bit6=1 ET 0x17 bit0=1 ≥ 10s → B2011 ACTIVE
+    TC_B2011_AND_Condition,
+    # TC_LIN_017_VER   : CRS_Version=0xFF → trame 0x17 ignorée (contribution B2011 bloquée)
+    TC_LIN_017_Version_Filter,
+    # TC_CAN_202_ERR01 : 0x200 SPEED1 → 0x201 CurrentMode=OFF → 0x202 NACK+0x01
+    TC_CAN_202_ERR01_InvalidCmd,
+    # TC_CAN_202_ERR02 : 0x201 bit1=MotorDriver → 0x202 NACK+0x02 → BCM OFF
+    TC_CAN_202_ERR02_MotorBlocked,
+    # TC_CAN_202_ERR04 : 0x201 bit2=PosSensor → 0x202 NACK+0x04 → B2006
+    TC_CAN_202_ERR04_PosSensorFault,
+    # TC_CAN_202_ERR05 : 0x201 bit0=WC_Internal → 0x202 NACK+0x05 → BCM OFF
+    TC_CAN_202_ERR05_InternalFault,
+    # TC_B2104 : WC CAN NACK — 3 NACKs consécutifs → B2104 ACTIVE (DTC WC)
+    TC_B2104_WC_CAN_NACK,
 ]

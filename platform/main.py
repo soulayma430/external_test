@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 WipeWash — HIL Test Bench Dashboard
 Point d'entrée : python main.py
@@ -33,6 +33,27 @@ def main() -> None:
 
     win = MainWindow()
     win.show()
+
+    # ── Barre de titre sombre Windows (appliqué après show() pour hwnd valide) ──
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            hwnd = int(win.winId())
+            DWMWA_DARK = 20  # Windows 11
+            value = ctypes.c_int(1)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_DARK, ctypes.byref(value), ctypes.sizeof(value)
+            )
+        except Exception:
+            try:
+                DWMWA_DARK = 19  # Windows 10 fallback
+                value = ctypes.c_int(1)
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, DWMWA_DARK, ctypes.byref(value), ctypes.sizeof(value)
+                )
+            except Exception:
+                pass
+
     sys.exit(app.exec())
 
 

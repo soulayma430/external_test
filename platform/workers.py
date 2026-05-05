@@ -41,12 +41,28 @@ class MotorVehicleWorker(QObject):
         self._wiper_lock = threading.Lock()
         self._wiper_op   = 0
         self._wiper_seq  = 0
+        # Discovery manuelle : set_host() impose l'IP, sinon auto_discover est utilisé
+        self._host_event: threading.Event = threading.Event()
+        self._forced_host: str = ""
+        # Discovery manuelle RPiSIM (TX)
+        self._sim_event: threading.Event = threading.Event()
+        self._forced_sim: str = ""
 
     # ── API publique ─────────────────────────────────────────
     def queue_send(self, obj: dict) -> None:
         """Ajoute un message JSON à envoyer (vehicle / rain)."""
         with self._send_lock:
             self._send_queue.append(json.dumps(obj) + "\n")
+
+    def set_host(self, ip: str) -> None:
+        """Impose l'IP du RPiBCM — découverte manuelle depuis le DiscoveryDialog."""
+        self._forced_host = ip
+        self._host_event.set()
+
+    def set_sim_host(self, ip: str) -> None:
+        """Impose l'IP du RPiSIM — découverte manuelle depuis le DiscoveryDialog."""
+        self._forced_sim = ip
+        self._sim_event.set()
 
     def set_wiper_op(self, op: int) -> None:
         with self._wiper_lock:
@@ -58,6 +74,8 @@ class MotorVehicleWorker(QObject):
 
     def stop(self) -> None:
         self.running = False
+        self._host_event.set()   # débloquer wait() si en attente
+        self._sim_event.set()
         if self.sock:
             try:
                 self.sock.close()
@@ -89,14 +107,16 @@ class MotorVehicleWorker(QObject):
 
         # Thread RX : réception état moteur depuis RPiBCM:5000
         while self.running:
-            self.status_changed.emit(f"Scan port {PORT_MOTOR}…", False)
-            from network import auto_discover_all
-            hosts = auto_discover_all(PORT_MOTOR, timeout=2.0)
-            # Identifier le RPiBCM parmi les hôtes trouvés
-            host_rx = self._identify_bcm(hosts)
+            # Attendre un host imposé manuellement (DiscoveryDialog)
+            if not self._host_event.is_set():
+                self.status_changed.emit("En attente de connexion (Discovery)…", False)
+                self._host_event.wait()   # bloque jusqu'à set_host()
+            if not self.running:
+                break
+            host_rx = self._forced_host
+            self._host_event.clear()
+            self._forced_host = ""
             if not host_rx:
-                self.status_changed.emit(f"Port {PORT_MOTOR} : RPiBCM non trouvé", False)
-                time.sleep(5)
                 continue
 
             self._host = host_rx
@@ -124,7 +144,8 @@ class MotorVehicleWorker(QObject):
                                     # FIX TC_CAN_003/TC_FSR_010 : le broadcast de faute n'a pas de "state"
                                     # → il était silencieusement droppé, empêchant la détection.
                                     _TEST_TYPES = ("wc_alive_fault", "wc_crc_fault", "info",
-                                                   "alive_error", "can_fault")
+                                                   "alive_error", "can_fault",
+                                                   "b2104_active", "b2104_inactive")
                                     if (isinstance(parsed.get("state"), str) or
                                             parsed.get("type") in _TEST_TYPES or
                                             parsed.get("wc_alive_fault") or
@@ -200,40 +221,14 @@ class MotorVehicleWorker(QObject):
         last_wiper = time.time()
 
         while self.running:
-            from network import auto_discover_all
-            hosts = auto_discover_all(PORT_MOTOR, timeout=2.0)
-            # Identifier le RPiSIM : premier message contient "front" comme dict
-            host_tx = None
-            for host in hosts:
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    s.settimeout(0.5)
-                    s.connect((host, PORT_MOTOR))
-                    raw = b""
-                    deadline = time.time() + 0.5
-                    while time.time() < deadline and b"\n" not in raw:
-                        try:
-                            chunk = s.recv(512)
-                            if not chunk:
-                                break
-                            raw += chunk
-                        except socket.timeout:
-                            break
-                    s.close()
-                    if raw:
-                        line = raw.split(b"\n")[0].strip()
-                        if line:
-                            try:
-                                msg = json.loads(line)
-                                # RPiSIM/bcmcan : "front" est un dict
-                                if isinstance(msg.get("front"), dict):
-                                    host_tx = host
-                                    break
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-
+            # Attendre un host imposé manuellement (DiscoveryDialog)
+            if not self._sim_event.is_set():
+                self._sim_event.wait()
+            if not self.running:
+                break
+            host_tx = self._forced_sim
+            self._sim_event.clear()
+            self._forced_sim = ""
             if not host_tx:
                 time.sleep(5)
                 continue
@@ -332,10 +327,17 @@ class LINWorker(QObject):
         self._host     = ""
         self._send_lock  = threading.Lock()
         self._send_queue: list[str] = []
+        self._host_event: threading.Event = threading.Event()
+        self._forced_host: str = ""
 
     @property
     def host(self) -> str:
         return self._host
+
+    def set_host(self, ip: str) -> None:
+        """Impose l'IP du RPiBCM pour LIN — découverte manuelle."""
+        self._forced_host = ip
+        self._host_event.set()
 
     def queue_send(self, obj: dict) -> None:
         """Envoie un message JSON vers crslin (ex: {"cmd": "SPEED1"})."""
@@ -350,6 +352,7 @@ class LINWorker(QObject):
 
     def stop(self) -> None:
         self.running = False
+        self._host_event.set()   # débloquer wait() si en attente
         if self.sock:
             try:
                 self.sock.close()
@@ -358,11 +361,15 @@ class LINWorker(QObject):
 
     def run(self) -> None:
         while self.running:
-            self.status_changed.emit(f"Scan port {PORT_LIN}…", False)
-            host = auto_discover(PORT_LIN)
+            if not self._host_event.is_set():
+                self.status_changed.emit("En attente de connexion (Discovery)…", False)
+                self._host_event.wait()
+            if not self.running:
+                break
+            host = self._forced_host
+            self._host_event.clear()
+            self._forced_host = ""
             if not host:
-                self.status_changed.emit(f"Port {PORT_LIN} : aucun hôte", False)
-                time.sleep(5)
                 continue
 
             self._host = host
@@ -435,16 +442,26 @@ class PumpDataClient(threading.Thread):
         super().__init__(daemon=True)
         self.signal = signal
         self._host: str | None = None
+        self._host_event: threading.Event = threading.Event()
+        self._forced_host: str = ""
 
     @property
     def host(self) -> str | None:
         return self._host
 
+    def set_host(self, ip: str) -> None:
+        """Impose l'IP pour la pompe — découverte manuelle."""
+        self._forced_host = ip
+        self._host_event.set()
+
     def run(self) -> None:
         while True:
-            host = auto_discover(PORT_PUMP_RX)
+            if not self._host_event.is_set():
+                self._host_event.wait()
+            host = self._forced_host
+            self._host_event.clear()
+            self._forced_host = ""
             if not host:
-                time.sleep(5)
                 continue
             self._host = host
             try:
@@ -501,10 +518,17 @@ class CANWorker(QObject):
         self._host       = ""
         self._send_lock  = threading.Lock()
         self._send_queue: list[str] = []   # JSON lines à envoyer (0x202)
+        self._host_event: threading.Event = threading.Event()
+        self._forced_host: str = ""
 
     @property
     def host(self) -> str:
         return self._host
+
+    def set_host(self, ip: str) -> None:
+        """Impose l'IP pour CAN — découverte manuelle."""
+        self._forced_host = ip
+        self._host_event.set()
 
     def queue_send(self, obj: dict):
         """Ajoute un message JSON à envoyer (commandes de test)."""
@@ -513,6 +537,7 @@ class CANWorker(QObject):
 
     def stop(self) -> None:
         self.running = False
+        self._host_event.set()   # débloquer wait() si en attente
         if self.sock:
             try:
                 self.sock.close()
@@ -549,11 +574,15 @@ class CANWorker(QObject):
 
     def run(self) -> None:
         while self.running:
-            self.status_changed.emit(f"Scan port {PORT_CAN}…", False)
-            host = auto_discover(PORT_CAN)
+            if not self._host_event.is_set():
+                self.status_changed.emit("En attente de connexion (Discovery)…", False)
+                self._host_event.wait()
+            if not self.running:
+                break
+            host = self._forced_host
+            self._host_event.clear()
+            self._forced_host = ""
             if not host:
-                self.status_changed.emit(f"Port {PORT_CAN} : aucun hôte", False)
-                time.sleep(5)
                 continue
 
             self._host = host

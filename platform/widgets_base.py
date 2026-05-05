@@ -44,14 +44,14 @@ def _lbl(text: str, size: int = 11, bold: bool = False,
 def _hsep() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
-    f.setStyleSheet("background:rgba(141,198,63,0.35);border:none;max-height:1px;")
+    f.setStyleSheet("background:rgba(100,116,139,0.25);border:none;max-height:1px;")
     return f
 
 
 def _vsep() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.VLine)
-    f.setStyleSheet("background:rgba(141,198,63,0.35);border:none;max-width:1px;")
+    f.setStyleSheet("background:rgba(100,116,139,0.25);border:none;max-width:1px;")
     return f
 
 
@@ -134,33 +134,34 @@ class PanelHeader(QFrame):
     def __init__(self, title: str, color_bar: str = A_TEAL, parent=None) -> None:
         super().__init__(parent)
         self.setFixedHeight(26)
-        # Palette HTML car_simulator : fond dégradé sombre verdâtre + bordure verte KPIT
+        self._color_bar = color_bar
+        # Header sombre KPIT unifié — même recette que les draw_header des widgets
         self.setStyleSheet(
             "background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             "stop:0 #0F1A0A, stop:1 #070A04);"
             "border:none;"
-            "border-bottom:1px solid rgba(141,198,63,0.5);")
+            "border-bottom:2px solid #000000;")
         lay = QHBoxLayout(self)
         lay.setContentsMargins(8, 0, 8, 0)
         lay.setSpacing(6)
 
+        # Barre colorée gauche (3px) — identifiant visuel du canal
         cb = QFrame()
-        cb.setFixedSize(3, 14)
-        cb.setStyleSheet(f"background:{color_bar};border-radius:1px;")
+        cb.setFixedSize(3, 16)
+        cb.setStyleSheet(
+            f"background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f"stop:0 {QColor(color_bar).lighter(130).name()}, stop:1 {color_bar});"
+            f"border-radius:1px;")
 
         self._title = QLabel(title.upper())
-        self._title.setFont(QFont(FONT_UI, 7, QFont.Weight.Bold))
+        self._title.setFont(QFont(FONT_MONO, 7, QFont.Weight.Bold))
         self._title.setMinimumWidth(0)
         self._title.setMaximumWidth(9999)
-        # Texte blanc avec reflet vert KPIT
-        self._title.setStyleSheet(
-            "color:#FFFFFF;background:transparent;"
-            "text-shadow: 0 0 6px rgba(141,198,63,0.6);")
+        self._title.setStyleSheet("color:#E8F8E0;background:transparent;")
 
         self._status_lbl = QLabel("")
         self._status_lbl.setFont(QFont(FONT_MONO, 7))
-        self._status_lbl.setStyleSheet(
-            "color:#CCCCCC;background:transparent;")
+        self._status_lbl.setStyleSheet("color:#8DC63F;background:transparent;")
 
         self._led = StatusLed(9)
         self._led.set_state(False)
@@ -180,17 +181,18 @@ class PanelHeader(QFrame):
 
 
 # ═══════════════════════════════════════════════════════════
-#  PANNEAU INSTRUMENT
+#  PANNEAU INSTRUMENT — design unifié KPIT
 # ═══════════════════════════════════════════════════════════
 class InstrumentPanel(QFrame):
     def __init__(self, title: str, color_bar: str = A_TEAL, parent=None) -> None:
         super().__init__(parent)
-        # Fond blanc + reflet vert KPIT clair — identique aux widgets_instruments
+        # Fond blanc professionnel + contour slate unique
         self.setStyleSheet(
             "QFrame#InstrumentPanel{"
             "background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
-            "stop:0 #FFFFFF, stop:0.5 #F5FFF0, stop:1 #EBF9E0);"
-            f"border:1px solid rgba(141,198,63,0.35);border-radius:3px;}}")
+            "stop:0 #FFFFFF, stop:0.5 #F8FAFC, stop:1 #F1F5F9);"
+            "border:1.5px solid #CBD5E1;"
+            "border-radius:6px;}")
         self.setObjectName("InstrumentPanel")
 
         vl = QVBoxLayout(self)
@@ -215,7 +217,7 @@ class InstrumentPanel(QFrame):
 
 
 # ═══════════════════════════════════════════════════════════
-#  AFFICHEUR NUMÉRIQUE
+#  AFFICHEUR NUMÉRIQUE — LCD vert foncé KPIT
 # ═══════════════════════════════════════════════════════════
 class NumericDisplay(QWidget):
     def __init__(self, label: str = "VALUE", unit: str = "", parent=None) -> None:
@@ -226,12 +228,14 @@ class NumericDisplay(QWidget):
         self._color = A_TEAL
         self.setFixedHeight(56)
         self.setStyleSheet(
-            f"background:{W_PANEL3};border:1px solid {W_BORDER};border-radius:2px;")
+            "background:transparent;"
+            "border:1.5px solid #CBD5E1;"
+            "border-radius:4px;")
 
     def set_value(self, val_str: str, color: str | None = None) -> None:
         new_color = color or self._color
         if self._val == val_str and new_color == self._color:
-            return   # rien n'a changé → pas de repaint inutile
+            return
         self._val = val_str
         if color:
             self._color = color
@@ -242,35 +246,41 @@ class NumericDisplay(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
 
+        # Fond blanc cassé professionnel
         g = QLinearGradient(0, 0, 0, H)
-        g.setColorAt(0, QColor(W_PANEL))
-        g.setColorAt(1, QColor(W_PANEL3))
+        g.setColorAt(0, QColor("#F8FAFC"))
+        g.setColorAt(1, QColor("#F1F5F9"))
         p.fillRect(0, 0, W, H, QBrush(g))
-        p.setPen(QPen(QColor(W_BORDER)))
-        p.drawRect(0, 0, W - 1, H - 1)
 
-        # Label
-        p.setFont(QFont(FONT_UI, 10))
-        p.setPen(QPen(QColor(W_TEXT_DIM)))
-        p.drawText(6, 3, W - 12, 14,
+        # Reflet vitre LCD subtil
+        p.setBrush(QBrush(QColor(255, 255, 255, 10)))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(2, 2, W - 4, int(H * 0.4), 2, 2)
+
+        p.setPen(QPen(QColor("#CBD5E1"), 1.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(1, 1, W - 2, H - 2, 4, 4)
+
+        p.setFont(QFont(FONT_MONO, 8))
+        p.setPen(QPen(QColor("#64748B")))
+        p.drawText(6, 3, W - 12, 16,
                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                    self._label)
-        # Valeur
+        # Valeur — couleur dynamique
         p.setFont(QFont(FONT_MONO, 18, QFont.Weight.Bold))
         p.setPen(QPen(QColor(self._color)))
-        p.drawText(4, 15, W - 50, H - 18,
+        p.drawText(4, 17, W - 52, H - 20,
                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                    self._val)
-        # Unité
-        p.setFont(QFont(FONT_UI, 10))
-        p.setPen(QPen(QColor(W_TEXT_DIM)))
-        p.drawText(W - 46, 15, 42, H - 18,
+        p.setFont(QFont(FONT_MONO, 9))
+        p.setPen(QPen(QColor("#64748B")))
+        p.drawText(W - 48, 17, 44, H - 20,
                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                    self._unit)
 
 
 # ═══════════════════════════════════════════════════════════
-#  BARRE LINÉAIRE
+#  BARRE LINÉAIRE — thème KPIT unifié, contour noir
 # ═══════════════════════════════════════════════════════════
 class LinearBar(QWidget):
     def __init__(self, max_v: float = 1.0, unit: str = "",
@@ -281,12 +291,12 @@ class LinearBar(QWidget):
         self._unit  = unit
         self._ticks = ticks
         self._fault = False
-        self.setFixedHeight(28)
+        self.setFixedHeight(32)
         self.setStyleSheet("background:transparent;")
 
     def set_value(self, v: float, fault: bool = False) -> None:
         if self._val == v and self._fault == fault:
-            return   # rien n'a changé → pas de repaint inutile
+            return
         self._val   = v
         self._fault = fault
         self.update()
@@ -295,38 +305,48 @@ class LinearBar(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
-        BH = 14; BY = 2; bw = W
+        BH = 15; BY = 2; bw = W
 
-        # Track
-        p.setBrush(QBrush(QColor(W_PANEL3)))
-        p.setPen(QPen(QColor(W_BORDER), 1))
-        p.drawRect(0, BY, bw, BH)
+        # Track fond gris clair professionnel
+        track_g = QLinearGradient(0, BY, 0, BY + BH)
+        track_g.setColorAt(0, QColor("#E2E8F0"))
+        track_g.setColorAt(1, QColor("#CBD5E1"))
+        p.setBrush(QBrush(track_g))
+        p.setPen(QPen(QColor("#94A3B8"), 1.0))
+        p.drawRoundedRect(0, BY, bw, BH, 2, 2)
 
-        # Fill
+        # Fill coloré avec glow
         ratio = min(self._val / max(self._max, 1e-9), 1.0)
         fill  = int(bw * ratio)
-        if fill > 2:
-            col = QColor(
-                A_RED if self._fault else (A_ORANGE if ratio > 0.75 else A_GREEN))
-            g = QLinearGradient(0, 0, fill, 0)
-            g.setColorAt(0, col.lighter(115))
-            g.setColorAt(1, col)
-            p.setBrush(QBrush(g))
+        if fill > 3:
+            if self._fault:
+                fill_col = QColor(A_RED)
+            elif ratio > 0.75:
+                fill_col = QColor(A_ORANGE)
+            else:
+                fill_col = QColor("#8DC63F")   # vert KPIT signature
+            fg = QLinearGradient(0, 0, fill, 0)
+            fg.setColorAt(0, fill_col.lighter(130))
+            fg.setColorAt(0.5, fill_col)
+            fg.setColorAt(1, fill_col.darker(110))
+            p.setBrush(QBrush(fg))
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawRect(1, BY + 1, fill - 1, BH - 2)
+            p.drawRoundedRect(2, BY + 2, fill - 2, BH - 4, 1, 1)
+            # Reflet brillant dessus
+            p.setBrush(QBrush(QColor(255, 255, 255, 30)))
+            p.drawRoundedRect(2, BY + 2, fill - 2, (BH - 4) // 2, 1, 1)
 
-        # Texte centré
-        p.setFont(QFont(FONT_MONO, 10, QFont.Weight.Bold))
-        p.setPen(QPen(QColor(W_TEXT)))
+        p.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
+        txt_col = QColor(A_RED) if self._fault else QColor("#334155")
+        p.setPen(QPen(txt_col))
         p.drawText(0, BY, bw, BH, Qt.AlignmentFlag.AlignCenter,
                    f"{'FAULT  ' if self._fault else ''}{self._val:.3f} {self._unit}")
 
-        # Graduations
-        p.setFont(QFont(FONT_MONO, 9))
-        p.setPen(QPen(QColor(W_TEXT_DIM)))
+        p.setFont(QFont(FONT_MONO, 7))
+        p.setPen(QPen(QColor("#64748B")))
         for i in range(self._ticks + 1):
             x = int(bw * i / self._ticks)
-            p.drawLine(x, BY + BH, x, BY + BH + 2)
+            p.drawLine(x, BY + BH + 1, x, BY + BH + 3)
             v = self._max * i / self._ticks
-            p.drawText(x - 10, BY + BH + 2, 20, 10,
+            p.drawText(x - 12, BY + BH + 3, 24, 10,
                        Qt.AlignmentFlag.AlignCenter, f"{v:.1g}")

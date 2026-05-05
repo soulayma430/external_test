@@ -176,10 +176,10 @@ def _make_keywords(result) -> List[Keyword]:
                 validate_logs.append(KwLog("INFO", f"Delta  : {delta:.2f} ms"))
                 if is_pass:
                     validate_logs.append(KwLog("INFO",
-                        f"✔ Timing within tolerance ({delta:.2f} ms < {tol} ms)"))
+                        f"PASS - Timing within tolerance ({delta:.2f} ms < {tol} ms)"))
                 else:
                     validate_logs.append(KwLog("FAIL",
-                        f"✘ Out of tolerance — expected {nom}±{tol} ms, got {ms_val:.2f} ms"
+                        f"FAIL - Out of tolerance — expected {nom}±{tol} ms, got {ms_val:.2f} ms"
                         + (f" — {details}" if details else "")))
         elif details:
             validate_logs.append(KwLog("INFO", f"Details: {details}"))
@@ -229,12 +229,12 @@ def _make_keywords(result) -> List[Keyword]:
             KwLog("INFO", f"Limit    : {limit_str}"),
         ]
         if is_pass:
-            validate_logs.append(KwLog("INFO",  "✔ ECU response matches expected specification"))
+            validate_logs.append(KwLog("INFO",  "PASS - ECU response matches expected specification"))
         elif is_timeout:
-            validate_logs.append(KwLog("WARN",  "✘ ECU response timed out — no frame received"))
+            validate_logs.append(KwLog("WARN",  "FAIL - ECU response timed out - no frame received"))
         else:
             validate_logs.append(KwLog("FAIL",
-                f"✘ Value out of specification" + (f" — {details}" if details else "")))
+                f"FAIL - Value out of specification" + (f" — {details}" if details else "")))
         kw_validate = Keyword(
             name="Validate ECU Output",
             kw_type="kw",
@@ -281,9 +281,9 @@ def _make_keywords(result) -> List[Keyword]:
             logs=[
                 KwLog("INFO", f"Expected timeout: {limit_str}"),
                 KwLog("INFO" if is_pass else "FAIL",
-                      "✔ Timeout behaviour correct"
+                      "PASS - Timeout behaviour correct"
                       if is_pass
-                      else "✘ Behaviour mismatch" + (f" — {details}" if details else "")),
+                      else "FAIL - Behaviour mismatch" + (f" — {details}" if details else "")),
             ],
         )
         body_children = [kw_cmd, kw_wait_to, kw_verify]
@@ -299,8 +299,8 @@ def _make_keywords(result) -> List[Keyword]:
             logs=[
                 KwLog("INFO", f"Measured: {measured}  |  Limit: {limit_str}"),
                 KwLog("INFO" if is_pass else "FAIL",
-                      "✔ PASS" if is_pass
-                      else "✘ FAIL" + (f" — {details}" if details else "")),
+                      "PASS" if is_pass
+                      else "FAIL" + (f" — {details}" if details else "")),
             ],
         )
         body_children = [kw_generic]
@@ -607,6 +607,17 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1A1A1A;backgr
 .sec-bar{background:#2E4A1A;color:#FFF;padding:7px 28px;
   font-size:9.5pt;font-weight:700;letter-spacing:.5px;}
 
+/* ══ Run badge ══ */
+.run-hdr{background:#243D12;color:#D4EDBC;padding:6px 12px;
+  border-radius:5px 5px 0 0;display:flex;align-items:center;gap:10px;
+  cursor:pointer;user-select:none;margin-top:6px;border:1px solid #3A5A1F;}
+.run-hdr:hover{background:#2E5016;}
+.run-badge{font-size:7.5pt;padding:2px 9px;border-radius:10px;font-weight:700;
+  background:#1B5E20;color:#A5D6A7;}
+.run-meta{font-size:7.5pt;color:#9AC87A;margin-left:auto;}
+.run-body{border:1px solid #C8E6C9;border-top:none;padding:8px;background:#FAFFFE;margin-bottom:2px;}
+.run-stats{font-size:8pt;color:#666;padding:3px 8px 6px;border-bottom:1px dashed #DDE8D0;margin-bottom:5px;}
+
 /* ══ Fail / timeout focus cards ══ */
 .focus-wrap{padding:14px 28px;background:#FFF8F8;border-bottom:1px solid #FFCDD2;}
 .focus-wrap.warn{background:#FFFBF5;border-color:#FFE0B2;}
@@ -680,11 +691,61 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1A1A1A;backgr
 </div>
 {%- endif %}
 
+<!-- ════ RUNS SUMMARY (multi-run only) ═══════════════════ -->
+{%- if runs and runs|length > 1 %}
+<div class="sec-bar">RÉSUMÉ DES RUNS — {{ runs|length }} exécutions</div>
+<div style="padding:10px 28px;background:#FFF;border-bottom:1px solid #DDE8D0;overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:9pt;">
+    <thead>
+      <tr style="background:#1B2E0F;color:#C8E6B0;">
+        <th style="padding:6px 10px;text-align:left;">Run</th>
+        <th style="padding:6px 10px;text-align:left;">Heure début</th>
+        <th style="padding:6px 10px;text-align:left;">Heure fin</th>
+        <th style="padding:6px 10px;text-align:left;">IDs exécutés</th>
+        <th style="padding:6px 10px;text-align:center;">Total</th>
+        <th style="padding:6px 10px;text-align:center;">PASS</th>
+        <th style="padding:6px 10px;text-align:center;">FAIL</th>
+        <th style="padding:6px 10px;text-align:center;">TIMEOUT</th>
+        <th style="padding:6px 10px;text-align:center;">Score</th>
+      </tr>
+    </thead>
+    <tbody>
+    {%- for run in runs %}
+    {%- set rp = run.results | selectattr('status','eq','PASS') | list | length %}
+    {%- set rf = run.results | selectattr('status','eq','FAIL') | list | length %}
+    {%- set rt = run.results | selectattr('status','eq','TIMEOUT') | list | length %}
+    {%- set tot = run.results | length %}
+    {%- set score = ((rp / tot * 100)|int) if tot > 0 else 0 %}
+    <tr style="border-bottom:1px solid #E8F5E0;{% if loop.index is odd %}background:#F8FFF4;{% else %}background:#FFF;{% endif %}">
+      <td style="padding:5px 10px;font-weight:700;color:#2E6B00;">#{{ run.run_index }}</td>
+      <td style="padding:5px 10px;font-family:Consolas,monospace;font-size:8pt;">
+        {%- if run.t_start %}{{ run.t_start.strftime('%H:%M:%S') }}{%- else %}—{%- endif %}
+      </td>
+      <td style="padding:5px 10px;font-family:Consolas,monospace;font-size:8pt;">
+        {%- if run.t_end %}{{ run.t_end.strftime('%H:%M:%S') }}{%- else %}—{%- endif %}
+      </td>
+      <td style="padding:5px 10px;font-family:Consolas,monospace;font-size:8pt;color:#555;">
+        {{ run.ids | join(', ') if run.ids else '—' }}
+      </td>
+      <td style="padding:5px 10px;text-align:center;font-weight:700;">{{ tot }}</td>
+      <td style="padding:5px 10px;text-align:center;font-weight:700;color:#1B5E20;">{{ rp }}</td>
+      <td style="padding:5px 10px;text-align:center;font-weight:700;color:#B71C1C;">{{ rf }}</td>
+      <td style="padding:5px 10px;text-align:center;font-weight:700;color:#E65100;">{{ rt }}</td>
+      <td style="padding:5px 10px;text-align:center;">
+        <span style="font-weight:900;color:{{ '#1B5E20' if score>=80 else ('#E65100' if score>=50 else '#B71C1C') }};">{{ score }}%</span>
+      </td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+</div>
+{%- endif %}
+
 <!-- ════ SUITE TREE ════════════════════════════════════════ -->
-<div class="sec-bar">TEST SUITE — {{ st.total }} tests</div>
+<div class="sec-bar">TEST SUITE — {{ st.total }} test(s) sur {{ runs|length if runs else 1 }} run(s)</div>
 <div id="suite-area">
   <div class="rf-suite-hdr" onclick="toggleEl('suite-body')">
-    <span style="font-size:10pt;margin-right:2px;">▶</span>
+    
     <span class="sh-name">WipeWash HIL — {{ meta.project }}</span>
     <span class="sh-badge {% if st.n_fail==0 and st.n_timeout==0 %}sh-ok{% elif st.n_pass==0 %}sh-bad{% else %}sh-mix{% endif %}">
       {{ st.n_pass }} PASS &nbsp;·&nbsp; {{ st.n_fail }} FAIL &nbsp;·&nbsp; {{ st.n_timeout }} TIMEOUT
@@ -692,10 +753,70 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1A1A1A;backgr
     <span style="font-size:8pt;color:#9AC87A;">{{ meta.duration }}</span>
   </div>
   <div class="rf-suite-body" id="suite-body">
+
+  {%- if runs and runs|length > 1 %}
+    {#— Multi-run: afficher chaque run comme un sous-bloc —#}
+    {%- set ns = namespace(global_tid=0) %}
+    {%- for run in runs %}
+    {%- set rp = run.results | selectattr('status','eq','PASS') | list | length %}
+    {%- set rf = run.results | selectattr('status','eq','FAIL') | list | length %}
+    {%- set rt = run.results | selectattr('status','eq','TIMEOUT') | list | length %}
+    <div class="run-hdr" onclick="toggleEl('run-body-{{ loop.index }}')">
+      
+      <span class="run-badge">RUN #{{ run.run_index }}</span>
+      <span style="font-size:9pt;font-weight:700;">{{ run.results|length }} test(s)</span>
+      <span style="font-size:8pt;color:#9AC87A;">
+        {%- if run.t_start %}{{ run.t_start.strftime('%H:%M:%S') }}{%- endif %}
+        {%- if run.t_end %} → {{ run.t_end.strftime('%H:%M:%S') }}{%- endif %}
+      </span>
+      <span class="run-meta">
+        <span style="color:#69DB7C;">PASS: {{ rp }}</span>&nbsp;
+        <span style="color:#FF6B6B;">FAIL: {{ rf }}</span>&nbsp;
+        <span style="color:#FFB347;">TIMEOUT: {{ rt }}</span>
+      </span>
+    </div>
+    <div class="run-body" id="run-body-{{ loop.index }}">
+      <div class="run-stats">
+        IDs exécutés : {{ run.ids | join(', ') if run.ids else '—' }}
+      </div>
+      {%- for r in run.results %}
+      {%- set ns.global_tid = ns.global_tid + 1 %}
+      {%- set tid = ns.global_tid %}
+      <div class="rf-test" id="test-{{ tid }}">
+        <div class="rf-test-hdr" onclick="toggleTest({{ tid }})">
+          <div class="rft-exp" id="exp-{{ tid }}">+</div>
+          <span class="rft-status s-{{ r.status }}">{{ r.status }}</span>
+          <span class="rft-id">{{ r.test_id }}</span>
+          <span class="rft-name">{{ r.name }}</span>
+          <span class="rft-cat cat-{{ r.category }}">{{ r.category }}</span>
+          <span class="rft-dur">{{ r.measured }}</span>
+        </div>
+        <div class="rf-test-body" id="tbody-{{ tid }}">
+          <div class="test-info-strip">
+            <span><b>Run :</b> #{{ run.run_index }}</span>
+            <span><b>Ref:</b> <span class="mono">{{ r.ref }}</span></span>
+            <span><b>Limit:</b> <span class="mono">{{ r.limit }}</span></span>
+            <span><b>Measured:</b>
+              <span class="mono {% if r.status=='PASS' %}val-ok{% else %}val-ko{% endif %}">{{ r.measured }}</span>
+            </span>
+            {%- if r.details %}<span><b>Details:</b> {{ r.details }}</span>{%- endif %}
+          </div>
+          <ul class="kw-list">
+          {%- for kw in r._keywords %}
+            {{ render_kw(kw, tid|string ~ '_' ~ loop.index|string) }}
+          {%- endfor %}
+          </ul>
+        </div>
+      </div>
+      {%- endfor %}
+    </div>
+    {%- endfor %}
+
+  {%- else %}
+    {#— Run unique ou pas de runs : affichage plat classique —#}
     {%- for r in results %}
     {%- set tid = loop.index %}
     <div class="rf-test" id="test-{{ tid }}">
-      <!-- header row -->
       <div class="rf-test-hdr" onclick="toggleTest({{ tid }})">
         <div class="rft-exp" id="exp-{{ tid }}">+</div>
         <span class="rft-status s-{{ r.status }}">{{ r.status }}</span>
@@ -704,7 +825,6 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1A1A1A;backgr
         <span class="rft-cat cat-{{ r.category }}">{{ r.category }}</span>
         <span class="rft-dur">{{ r.measured }}</span>
       </div>
-      <!-- body: info strip + keywords -->
       <div class="rf-test-body" id="tbody-{{ tid }}">
         <div class="test-info-strip">
           <span><b>Ref:</b> <span class="mono">{{ r.ref }}</span></span>
@@ -714,7 +834,6 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1A1A1A;backgr
           </span>
           {%- if r.details %}<span><b>Details:</b> {{ r.details }}</span>{%- endif %}
         </div>
-        <!-- Keywords -->
         <ul class="kw-list">
         {%- for kw in r._keywords %}
           {{ render_kw(kw, tid|string ~ '_' ~ loop.index|string) }}
@@ -723,6 +842,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1A1A1A;backgr
       </div>
     </div>
     {%- endfor %}
+  {%- endif %}
+
   </div>
 </div>
 
@@ -732,14 +853,14 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1A1A1A;backgr
 <div class="focus-wrap">
 {%- for r in failed %}
 <div class="focus-card">
-  <div class="fc-title">❌ {{ r.test_id }} — {{ r.name }}</div>
+  <div class="fc-title">FAIL: {{ r.test_id }} — {{ r.name }}</div>
   <div class="fc-grid">
     <div class="fc-cell"><div class="fc-lbl">EXIGENCE</div><div class="fc-val">{{ r.ref }}</div></div>
     <div class="fc-cell"><div class="fc-lbl">LIMITE ATTENDUE</div><div class="fc-val">{{ r.limit }}</div></div>
     <div class="fc-cell"><div class="fc-lbl">VALEUR MESURÉE</div><div class="fc-val" style="color:#B71C1C;">{{ r.measured }}</div></div>
   </div>
-  {%- if r.details %}<div style="font-size:8.5pt;color:#555;margin-top:8px;font-style:italic;">🔍 {{ r.details }}</div>{%- endif %}
-  <div class="fc-action fail">⚠ Action : vérifier timings réseau, rejouer le test isolément, contrôler la tension d'alimentation moteur.</div>
+  {%- if r.details %}<div style="font-size:8.5pt;color:#555;margin-top:8px;font-style:italic;">{{ r.details }}</div>{%- endif %}
+  <div class="fc-action fail">Action : vérifier timings réseau, rejouer le test isolément, contrôler la tension d'alimentation moteur.</div>
 </div>
 {%- endfor %}
 </div>
@@ -750,20 +871,19 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1A1A1A;backgr
 <div class="focus-wrap warn">
 {%- for r in timeout_tests %}
 <div class="focus-card warn">
-  <div class="fc-title warn">⚠ {{ r.test_id }} — {{ r.name }}</div>
+  <div class="fc-title warn">TIMEOUT: {{ r.test_id }} — {{ r.name }}</div>
   <div class="fc-grid">
     <div class="fc-cell"><div class="fc-lbl">EXIGENCE</div><div class="fc-val">{{ r.ref }}</div></div>
     <div class="fc-cell"><div class="fc-lbl">DÉLAI LIMITE</div><div class="fc-val">{{ r.limit }}</div></div>
     <div class="fc-cell"><div class="fc-lbl">CAUSE PROBABLE</div><div class="fc-val" style="color:#E65100;">Pas de trame reçue</div></div>
   </div>
-  <div class="fc-action warn">🔌 Vérifier la connexion TCP/Redis au RPi — banc hors-ligne ou worker non démarré.</div>
+  <div class="fc-action warn">Vérifier la connexion TCP/Redis au RPi — banc hors-ligne ou worker non démarré.</div>
 </div>
 {%- endfor %}
 </div>
 {%- endif %}
 
 <div id="rf-footer">
-  <span>WipeWash Platform v5 · report_generator.py — Robot Framework style</span>
   <span>{{ meta.date }} · Confidentiel — Usage interne</span>
 </div>
 
@@ -841,7 +961,8 @@ class ReportGenerator:
                  output_path: str,
                  pdf: bool = False,
                  t_start   = None,
-                 t_end     = None) -> str:
+                 t_end     = None,
+                 runs      = None) -> str:
         """
         Génère le rapport HTML et l'écrit dans ``output_path`` (chemin complet).
 
@@ -890,6 +1011,7 @@ class ReportGenerator:
             results=results,
             meta=meta, st=st, charts=charts,
             failed=failed, timeout_tests=timeout_tests,
+            runs=runs or [],
         )
 
         # Nettoyer l'attribut temporaire

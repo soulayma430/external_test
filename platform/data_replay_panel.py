@@ -58,16 +58,53 @@ except ImportError:
 
 
 # ══════════════════════════════════════════════════════════════
-#  PALETTE
+#  PALETTE  — DataDesk · thème KPIT harmonisé
 # ══════════════════════════════════════════════════════════════
-_KG         = KPIT_GREEN
-_KG_DIM     = KPIT_GREEN_DIM
-_KG_GLOW    = KPIT_GREEN_GLOW
-_BORDER_HI  = W_BORDER2
-_REC_RED    = "#CC3333"
+# Backgrounds — vert KPIT clair, cohérent avec W_PANEL / W_PANEL2
+_BG_BASE    = "#FFFFFF"       # fond global  = W_PANEL2
+_BG_PANEL   = "#FFFFFF"       # panneaux     = W_PANEL
+_BG_CARD    = "#F8FAFC"       # cartes       = W_PANEL3
+_BG_ROW_ALT = "#D8F0C8"       # alternance table
+_BG_INPUT   = "#C8EAB8"       # champs de saisie
+_BG_TOOLBAR = "#F1F5F9"       # barre statut = W_PANEL2
 
-_FONT_HMI   = FONT_MONO
-_FONT_UI    = FONT_UI
+# Accent vert KPIT — remplace le cyan
+_CY         = "#3A7A10"       # vert KPIT foncé (lisible sur fond clair)
+_CY_DIM     = "rgba(141,198,63,0.18)"
+_CY_GLOW    = "rgba(141,198,63,0.35)"
+_CY_BORDER  = "rgba(141,198,63,0.30)"
+
+# Accent vert action OK — KPIT signature
+_GN         = "#8DC63F"
+_GN_DIM     = "rgba(141,198,63,0.20)"
+_GN_GLOW    = "rgba(141,198,63,0.35)"
+
+# Borders / separators — vert KPIT semi-transparent
+_BR_MAIN    = "rgba(141,198,63,0.35)"
+_BR_DIM     = "rgba(58,122,16,0.18)"
+
+# Text — vert olive foncé lisible sur fond clair
+_TX_PRI     = "#1A2A0A"       # texte principal
+_TX_SEC     = "#4A6A2A"       # texte secondaire  = W_TEXT_DIM
+_TX_DIM     = "#7A9A5A"       # texte discret
+_TX_HDR     = "#2A4A10"       # headers colonnes
+
+# States — inchangés (rouge enregistrement, amber alerte)
+_REC_RED    = "#C0392B"
+_REC_RED_DIM = "rgba(192,57,43,0.15)"
+_WARN_AMB   = "#D35400"
+_WARN_DIM   = "rgba(211,84,0,0.15)"
+
+# KPIT compat
+_KG         = _GN
+_KG_DIM     = _GN_DIM
+_KG_GLOW    = _CY_GLOW
+
+_BORDER_HI  = _BR_MAIN
+
+_FONT_HMI   = "JetBrains Mono, Consolas, Courier New"
+_FONT_UI    = "Segoe UI, SF Pro Display, Arial"
+_FONT_MONO  = "JetBrains Mono, Consolas, Courier New"
 
 _SRC_TAG   = {"motor": "MTR", "lin": "LIN", "can": "CAN", "pump": "PMP"}
 _SRC_LABEL = {"motor": "MOTOR", "lin": "LIN", "can": "CAN", "pump": "PUMP"}
@@ -90,31 +127,43 @@ def _pill(text: str, h: int = 32, w: int = 0, accent: bool = False) -> "QPushBut
     if accent:
         b.setStyleSheet(f"""
             QPushButton {{
-                background: {_KG}; color: #FFFFFF;
-                border: 1px solid {_KG}; border-radius: 4px;
-                padding: 0 14px; letter-spacing: 0.5px;
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 #9ED648, stop:1 {_GN});
+                color: #FFFFFF;
+                border: none; border-radius: 5px;
+                padding: 0 16px; letter-spacing: 1px;
+                font-weight: 900;
             }}
-            QPushButton:hover  {{ background: {_KG}CC; border-color: {_KG}; }}
-            QPushButton:pressed{{ background: {_KG}99; }}
-            QPushButton:disabled{{ background: #CCCCCC; color: #888888; border-color: #BBBBBB; }}
+            QPushButton:hover  {{
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 #A8E050, stop:1 #7AB830);
+            }}
+            QPushButton:pressed{{ background: #6A9A20; }}
+            QPushButton:disabled{{
+                background: {_BG_INPUT}; color: {_TX_DIM};
+                border: 1px solid {_BR_DIM};
+            }}
         """)
     else:
         b.setStyleSheet(f"""
             QPushButton {{
-                background: transparent; color: {_KG};
-                border: 1px solid {_KG_GLOW}; border-radius: 4px;
-                padding: 0 14px; letter-spacing: 0.5px;
+                background: {_BG_CARD}; color: {_CY};
+                border: 1px solid {_CY_BORDER}; border-radius: 5px;
+                padding: 0 14px; letter-spacing: 0.8px;
             }}
             QPushButton:hover  {{
-                background: {_KG_DIM}; border-color: {_KG};
-                color: {W_TEXT};
+                background: {_CY_DIM}; border-color: {_GN};
+                color: #1A3A08;
             }}
-            QPushButton:pressed{{ background: {_KG_GLOW}; }}
+            QPushButton:pressed{{ background: {_GN_DIM}; }}
             QPushButton:checked{{
-                background: {_KG_DIM}; border: 2px solid {_KG};
-                color: {W_TEXT}; font-weight: 900;
+                background: {_GN_DIM}; border: 1px solid {_GN};
+                color: #1A3A08; font-weight: 900;
             }}
-            QPushButton:disabled{{ color: #AAAAAA; border-color: #CCCCCC; }}
+            QPushButton:disabled{{
+                color: {_TX_DIM}; border-color: {_BR_DIM};
+                background: {_BG_INPUT};
+            }}
         """)
     return b
 
@@ -129,13 +178,19 @@ def _rec_pill(text: str, h: int = 32, w: int = 0) -> "QPushButton":
     b.setCursor(Qt.CursorShape.PointingHandCursor)
     b.setStyleSheet(f"""
         QPushButton {{
-            background: transparent; color: {_KG};
-            border: 1px solid {_KG_GLOW}; border-radius: 4px;
-            padding: 0 14px; letter-spacing: 0.5px;
+            background: {_REC_RED_DIM}; color: {_REC_RED};
+            border: 1px solid rgba(255,59,59,0.35); border-radius: 5px;
+            padding: 0 14px; letter-spacing: 1px;
         }}
-        QPushButton:hover  {{ background: {_KG_DIM}; border-color: {_KG}; color: {W_TEXT}; }}
-        QPushButton:pressed{{ background: {_KG_GLOW}; }}
-        QPushButton:disabled{{ color: #AAAAAA; border-color: #CCCCCC; }}
+        QPushButton:hover  {{
+            background: rgba(255,59,59,0.22); border-color: {_REC_RED};
+            color: #FFAAAA;
+        }}
+        QPushButton:pressed{{ background: rgba(255,59,59,0.35); }}
+        QPushButton:disabled{{
+            color: {_TX_DIM}; border-color: {_BR_DIM};
+            background: {_BG_INPUT};
+        }}
     """)
     return b
 
@@ -144,7 +199,7 @@ def _vsep() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.VLine)
     f.setFixedWidth(1)
-    f.setStyleSheet(f"background: {_BORDER_HI}; border: none;")
+    f.setStyleSheet(f"background: {_BR_DIM}; border: none;")
     return f
 
 
@@ -152,17 +207,17 @@ def _hsep_kpit() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
     f.setFixedHeight(1)
-    f.setStyleSheet(f"background: {W_BORDER}; border: none;")
+    f.setStyleSheet(f"background: {_BR_DIM}; border: none;")
     return f
 
 
 def _tag_badge(tag: str) -> QLabel:
-    lbl = QLabel(f"[{tag}]")
+    lbl = QLabel(f"{tag}")
     lbl.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
     lbl.setStyleSheet(
-        f"color: {_KG}; background: {_KG_DIM};"
-        f"border: 1px solid {_KG_GLOW}; border-radius: 3px;"
-        f"padding: 1px 5px; letter-spacing: 0.5px;"
+        f"color: {_CY}; background: {_CY_DIM};"
+        f"border: 1px solid {_CY_BORDER}; border-radius: 3px;"
+        f"padding: 1px 5px; letter-spacing: 1px;"
     )
     lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
     return lbl
@@ -172,9 +227,9 @@ def _status_label(text: str) -> QLabel:
     lbl = QLabel(text)
     lbl.setFont(QFont(_FONT_HMI, 8, QFont.Weight.Bold))
     lbl.setStyleSheet(
-        f"color: {_KG}; background: {_KG_DIM};"
-        f"border: 1px solid {_KG_GLOW}; border-radius: 3px;"
-        f"padding: 2px 8px; letter-spacing: 0.3px;"
+        f"color: {_CY}; background: {_CY_DIM};"
+        f"border: 1px solid {_CY_BORDER}; border-radius: 3px;"
+        f"padding: 2px 8px; letter-spacing: 0.5px;"
     )
     lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
     return lbl
@@ -186,10 +241,10 @@ class _Section:
         self.frame.setObjectName("sec")
         self.frame.setStyleSheet(f"""
             QWidget#sec {{
-                background: {W_PANEL};
-                border: 1px solid {W_BORDER};
-                border-top: 2px solid {_KG};
-                border-radius: 4px;
+                background: {_BG_PANEL};
+                border: 1px solid {_BR_MAIN};
+                border-left: 3px solid {_CY};
+                border-radius: 6px;
             }}
         """)
         vl = QVBoxLayout(self.frame)
@@ -198,39 +253,47 @@ class _Section:
 
         hdr = QWidget()
         hdr.setObjectName("hdr")
-        hdr.setFixedHeight(26)
+        hdr.setFixedHeight(32)
         hdr.setStyleSheet(f"""
-            QWidget#hdr {{ background: {W_TITLEBAR}; border-radius: 3px 3px 0 0; }}
+            QWidget#hdr {{
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                    stop:0 #FFFFFF, stop:1 {_BG_PANEL});
+                border-radius: 5px 5px 0 0;
+                border-bottom: 1px solid {_BR_DIM};
+            }}
         """)
         hl = QHBoxLayout(hdr)
-        hl.setContentsMargins(10, 0, 10, 0)
+        hl.setContentsMargins(14, 0, 14, 0)
         if tag:
-            t = QLabel(f"[{tag}]")
+            t = QLabel(tag)
             t.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
-            t.setStyleSheet(f"color: {_KG}; background: transparent;")
+            t.setStyleSheet(
+                f"color: {_CY}; background: {_CY_DIM};"
+                f"border: 1px solid {_CY_BORDER}; border-radius: 3px;"
+                f"padding: 0px 5px; letter-spacing: 1px;")
             hl.addWidget(t)
-            hl.addSpacing(4)
+            hl.addSpacing(8)
         lb = QLabel(title)
-        lb.setFont(QFont(_FONT_UI, 8, QFont.Weight.Bold))
+        lb.setFont(QFont(_FONT_HMI, 9, QFont.Weight.Bold))
         lb.setStyleSheet(
-            f"color: {W_TEXT_HDR}; letter-spacing: 1px; background: transparent;")
+            f"color: {_TX_PRI}; letter-spacing: 2px; background: transparent;")
         hl.addWidget(lb)
         hl.addStretch()
         self._right_lbl = QLabel("")
         self._right_lbl.setFont(QFont(_FONT_HMI, 7))
         self._right_lbl.setStyleSheet(
-            f"color: {W_TEXT_HDR}; background: transparent;")
+            f"color: {_TX_SEC}; background: transparent;")
         hl.addWidget(self._right_lbl)
         vl.addWidget(hdr)
 
         body = QWidget()
         body.setStyleSheet("background: transparent;")
         self.layout = QVBoxLayout(body)
-        self.layout.setContentsMargins(10, 8, 10, 10)
-        self.layout.setSpacing(6)
+        self.layout.setContentsMargins(12, 10, 12, 12)
+        self.layout.setSpacing(8)
         vl.addWidget(body)
 
-    def set_header_right(self, text: str, color: str = W_TEXT_HDR):
+    def set_header_right(self, text: str, color: str = _TX_SEC):
         self._right_lbl.setText(text)
         self._right_lbl.setStyleSheet(
             f"color: {color}; background: transparent;")
@@ -569,58 +632,33 @@ class Mdf4ScenarioLoader:
         rows: list = []
         t0: float | None = None
 
-        # ── Iterer groupe par groupe ──────────────────────────────────
-        for grp_idx in range(len(mdf.groups)):
-            # Nom du groupe (channel_group.acq_name ou premier canal)
+        # ── Itérer groupe par groupe via iter_groups() ────────────────
+        # On utilise iter_groups() (toujours disponible dans asammdf) plutôt que
+        # to_dataframe(group=N) qui n'existe pas dans toutes les versions.
+        try:
+            group_iter = list(mdf.iter_groups())
+        except Exception:
+            # Fallback ultime si iter_groups non disponible non plus
+            return Mdf4ScenarioLoader._load_flat(mdf, path, sources)
+
+        for grp_idx, df in enumerate(group_iter):
+            if df is None or len(df) == 0:
+                continue
+
+            # Nom du groupe → source
             grp_name = ""
             try:
                 grp_name = (mdf.groups[grp_idx].channel_group.acq_name or "").upper()
             except Exception:
                 pass
-
-            # Detecter la source via le nom du groupe
             src = Mdf4ScenarioLoader._GROUP_TO_SRC.get(grp_name)
 
-            # Exporter ce groupe en DataFrame en ciblant uniquement ses canaux
-            df = None
-            # Methode robuste : récupérer les canaux du groupe et exporter
-            try:
-                # Récupérer les noms des canaux de ce groupe spécifique
-                grp_channels = [
-                    ch.name for ch in mdf.groups[grp_idx].channels
-                    if ch.name and ch.name != "time"
-                ]
-                if grp_channels:
-                    try:
-                        # group=grp_idx force la lecture du groupe exact,
-                        # évite le mélange cross-groupes et les NaN parasites
-                        df = mdf.to_dataframe(group=grp_idx)
-                    except TypeError:
-                        # Ancienne version asammdf sans paramètre group=
-                        df = mdf.to_dataframe(
-                            channels=grp_channels,
-                            raster=None,
-                        )
-            except Exception:
-                df = None
-
-            # Fallback : get_group si disponible
-            if df is None or len(df) == 0:
-                try:
-                    df = mdf.get_group(grp_idx)
-                except (AttributeError, Exception):
-                    df = None
-
-            if df is None or len(df) == 0:
-                continue
-
-            # Normaliser les noms de colonnes (enlever prefixes "GROUP.")
+            # Normaliser les noms de colonnes
             df.columns = [c.split(".")[-1] if "." in c else c for c in df.columns]
-            # Normaliser aussi les suffixes ":N" ajoutés par asammdf pour dédupliquer
-            df.columns = [c.split(":")[0] if ":" in c else c for c in df.columns]
+            df.columns = [c.split(":")[0]  if ":" in c else c for c in df.columns]
             cols = list(df.columns)
 
-            # Si source non trouvee par nom de groupe, deviner via colonnes
+            # Deviner la source via les canaux si nom de groupe inconnu
             if src is None:
                 src = Mdf4ScenarioLoader._detect_source(cols)
             if src is None:
@@ -637,7 +675,6 @@ class Mdf4ScenarioLoader:
                 for col in cols:
                     try:
                         v = df.iloc[i][col]
-                        # Décoder les bytes (chaînes MDF4 string)
                         if isinstance(v, (bytes, bytearray)):
                             row_dict[col] = v.decode("utf-8", errors="replace").strip("\x00")
                         elif v is not None:
@@ -656,7 +693,6 @@ class Mdf4ScenarioLoader:
                 ))
 
         if not rows:
-            # Fallback : to_dataframe() global si aucun groupe exploitable
             return Mdf4ScenarioLoader._load_flat(mdf, path, sources)
 
         rows.sort(key=lambda x: x.t_rel)
@@ -788,6 +824,21 @@ class Mdf4ScenarioLoader:
         return str(r)
 
 
+def _bool_val(raw: str) -> bool:
+    """Interprète un booléen depuis une chaîne qui peut venir d'un CSV ('1','ON','true')
+    ou d'un MDF4 ('1.0', '0.0' — asammdf convertit les uint8 en float64 dans iter_groups).
+    Retourne True si la valeur représente 1/vrai/actif."""
+    s = raw.strip().lower()
+    if s in ("1", "true", "on", "yes", "parked"):
+        return True
+    if s in ("0", "false", "off", "no", "moving"):
+        return False
+    try:
+        return int(float(s)) != 0
+    except ValueError:
+        return False
+
+
 def _parse_ts(ts: str) -> float:
     if not ts:
         return 0.0
@@ -841,6 +892,7 @@ class VirtualECU:
         self.pump_flow   : float = 0.0
         self.pump_pressure: float = 0.0
         self.motor_cur   : float = 0.0
+        self.motor_speed : str   = "Speed1"   # "Speed1" ou "Speed2" — mis à jour par apply_motor_row
         self.rest_contact: bool  = False
         self.blade_cycles: int   = 0
         self.bcm_state   : str   = "OFF"
@@ -877,16 +929,26 @@ class VirtualECU:
             _clean(r.get("wiper_op",     "")) or
             _clean(r.get("state",        ""))
         )
-        # Si crs_wiper_op = "0" (valeur MDF par défaut quand non rempli)
-        # et que state est disponible, on préfère state
-        if wop_raw == "0" and _clean(r.get("state", "")):
+        # Si crs_wiper_op = "0" ou "0.0" (MDF4 float) et que state/front_motor_on
+        # indique que le moteur tourne quand même, préférer state ou ignorer l'op=0
+        wop_is_zero = wop_raw in ("0", "0.0")
+        if wop_is_zero and _clean(r.get("state", "")):
             wop_raw = _clean(r.get("state", ""))
+            wop_is_zero = False
+        # Si op=0 mais front_motor_on=1 dans le fichier → le BCM tourne réellement,
+        # crs_wiper_op n'était pas enregistré correctement → garder wiper_op courant
+        if wop_is_zero:
+            front_hint = str(r.get("front_motor_on", r.get("front_on", ""))).strip()
+            if front_hint and _bool_val(front_hint):
+                wop_raw = ""   # ignorer l'op=0 erroné, ne pas écraser l'état courant
         op = self._parse_wiper_op(wop_raw)
         # Mettre à jour sans la garde "op != self.wiper_op" pour garantir
         # que _update_wiper_state() est appelée à chaque step de replay
         # (sinon si le 1er step est déjà SPEED1, les suivants seraient ignorés)
         if op is not None:
             self.wiper_op = op
+            # Dériver motor_speed depuis wiper_op (source de vérité principale)
+            self.motor_speed = "Speed2" if op == 3 else "Speed1"
             self._update_wiper_state()
         ign_raw = str(r.get("ignition", "") or r.get("ignition_status", "")).strip().upper()
         ign = self._parse_ignition(ign_raw)
@@ -905,22 +967,29 @@ class VirtualECU:
             self.rain = v
             self._apply_rain()
         rev_raw = str(r.get("reverse_gear", "")).strip().lower()
-        if rev_raw in ("1", "true", "r", "reverse"):
+        if rev_raw in ("1", "true", "r", "reverse", "1.0"):
             self.reverse = True
             self._apply_reverse()
-        elif rev_raw in ("0", "false", "d", "n", "p"):
+        elif rev_raw in ("0", "false", "d", "n", "p", "0.0"):
             self.reverse = False
             self._apply_reverse()
         cur = r.get("current", "")
         if cur not in ("", None, "nan"):
             self.motor_cur = _safe_float(cur)
-        rest_raw = str(r.get("rest_contact", "") or r.get("rest_contact_raw", "")).strip().lower()
-        if rest_raw and rest_raw not in ("nan", "none"):
-            # MDF stocke 1=PARKED (uint8), CSV stocke "PARKED"/"MOVING"
-            if rest_raw in ("1", "true", "parked"):
-                rest = False   # PARKED = lame en repos = rest_contact=False dans VirtualECU
+        # Lire la vitesse moteur depuis le champ enregistré (CSV "Speed1"/"Speed2"
+        # ou MDF4 après remap). Si absent, la valeur dérivée de wiper_op (ci-dessus) est conservée.
+        spd_raw = str(r.get("speed", "") or "").strip()
+        if spd_raw.lower() in ("speed2", "2"):
+            self.motor_speed = "Speed2"
+        elif spd_raw.lower() in ("speed1", "1") or spd_raw.lower() == "speed1":
+            self.motor_speed = "Speed1"
+        rest_raw = str(r.get("rest_contact", "") or r.get("rest_contact_raw", "")).strip()
+        if rest_raw and rest_raw.lower() not in ("nan", "none"):
+            # 1/true/parked → PARKED = rest_contact=False dans VirtualECU
+            if _bool_val(rest_raw) or rest_raw.lower() == "parked":
+                rest = False
             else:
-                rest = True    # MOVING (0, false, moving)
+                rest = True
             self.rest_contact = rest
             self._apply_rest_contact()
         bc = r.get("front_blade_cycles", "") or r.get("blade_cycles", "")
@@ -929,36 +998,50 @@ class VirtualECU:
 
         # front_on / rear_on — clés remappées par _remap (front_motor_on → front_on)
         # Le CSV live utilise "front"="ON"/"OFF", le MDF utilise "front_on"=0/1
-        front_raw = str(r.get("front_on", "") or r.get("front", "")).strip().lower()
-        if front_raw and front_raw not in ("nan", "none", ""):
-            self.front_on = front_raw in ("1", "true", "on")
-        rear_raw = str(r.get("rear_on", "") or r.get("rear", "")).strip().lower()
-        if rear_raw and rear_raw not in ("nan", "none", ""):
-            self.rear_on = rear_raw in ("1", "true", "on")
+        front_raw = str(r.get("front_on", "") or r.get("front", "")).strip()
+        if front_raw and front_raw.lower() not in ("nan", "none", ""):
+            self.front_on = _bool_val(front_raw)
+        rear_raw = str(r.get("rear_on", "") or r.get("rear", "")).strip()
+        if rear_raw and rear_raw.lower() not in ("nan", "none", ""):
+            self.rear_on = _bool_val(rear_raw)
 
         self._push_motor_panel()
 
     def apply_lin_row(self, r: dict):
         op_raw = str(r.get("op", "") or r.get("wiper_op", "")).strip()
+
+        # Fallback : bcm_state textuel si wiper_op LIN est absent ou 0
+        if not op_raw or op_raw == "0":
+            bcm_raw = str(r.get("bcm_state", "")).strip()
+            if bcm_raw and bcm_raw.upper() not in ("", "NAN", "NONE"):
+                op_raw = bcm_raw  # ex. "SPEED1" → op=2, "OFF" → op=0
+
         op = self._parse_wiper_op(op_raw)
-        if op is not None:
-            # Pas de garde != : chaque step LIN met à jour l'état wiper
+
+        # op=0 depuis le LIN = bruit de bus (trame RX_HDR sans réponse BCM),
+        # PAS une commande OFF réelle — le OFF réel arrive via apply_motor_row
+        # (motor_state_txt='OFF'). On n'écrase l'état courant que si op > 0.
+        if op is not None and op != 0:
             self.wiper_op = op
             self._update_wiper_state()
 
         # Mettre à jour rest_contact depuis le fichier si présent
-        rest_raw = str(r.get("rest_contact_raw", "") or r.get("rest_contact", "")).strip().lower()
-        if rest_raw and rest_raw not in ("nan", "none", ""):
-            if rest_raw in ("1", "true", "parked"):
+        rest_raw = str(r.get("rest_contact_raw", "") or r.get("rest_contact", "")).strip()
+        if rest_raw and rest_raw.lower() not in ("nan", "none", ""):
+            if _bool_val(rest_raw) or rest_raw.lower() == "parked":
                 self.rest_contact = False   # PARKED = au repos
-            elif rest_raw in ("0", "false", "moving"):
+            else:
                 self.rest_contact = True    # MOVING
             self._apply_rest_contact()
 
-        # Mettre à jour front_on / rear_on si présents
-        front_raw = str(r.get("front_on", "") or r.get("front_motor_on", "")).strip().lower()
-        if front_raw and front_raw not in ("nan", "none", ""):
-            self.front_on = front_raw in ("1", "true")
+        front_raw = str(r.get("front_on", "") or r.get("front_motor_on", "")).strip()
+        if front_raw and front_raw.lower() not in ("nan", "none", ""):
+            val = _bool_val(front_raw)
+            # front_on=False du LIN = bruit de bus, pas un arrêt réel.
+            # On n'applique que True (moteur actif confirmé par le LIN).
+            # Le False réel arrive via apply_motor_row (motor_state_txt='OFF').
+            if val:
+                self.front_on = True
 
         # Mettre à jour bcm_state si présent (champ texte)
         bcm_raw = str(r.get("bcm_state", "")).strip()
@@ -1048,8 +1131,8 @@ class VirtualECU:
         elif direc in ("BWD", "BACKWARD", "REVERSE"):
             state = "BACKWARD"
         # Si pump_active=0 et state vide → OFF
-        active_raw = str(r.get("pump_on", r.get("pump_active", ""))).strip().lower()
-        if active_raw in ("0", "false") and state not in ("FORWARD", "BACKWARD"):
+        active_raw = str(r.get("pump_on", r.get("pump_active", ""))).strip()
+        if active_raw.lower() not in ("", "nan", "none") and not _bool_val(active_raw) and state not in ("FORWARD", "BACKWARD"):
             state = "OFF"
         # Ignorer les valeurs NaN produites par asammdf sur colonnes mixtes
         if state and state not in ("NAN", "NONE", ""):
@@ -1075,6 +1158,10 @@ class VirtualECU:
         if pump != "OFF":
             self.pump_state = pump
         self.bcm_state = _WOP_NAME.get(self.wiper_op, "OFF")
+        # Synchroniser motor_speed avec wiper_op (sauf si apply_motor_row l'a déjà
+        # surchargé depuis le champ "speed" enregistré — dans ce cas il sera
+        # écrasé juste après par la lecture du champ raw, ce qui est correct)
+        self.motor_speed = "Speed2" if self.wiper_op == 3 else "Speed1"
         if self._crslin_panel:
             try:
                 self._crslin_panel._select_op(self.wiper_op)
@@ -1176,7 +1263,8 @@ class VirtualECU:
         if not self._motor_panel:
             return
         try:
-            speed_str = "Speed2" if self.wiper_op == 3 else "Speed1"
+            # Utiliser motor_speed (mis à jour par apply_motor_row depuis wiper_op ou champ "speed")
+            speed_str = self.motor_speed
             self._motor_panel.on_motor_data({
                 "front": "ON" if self.front_on else "OFF",
                 "rear":  "ON" if self.rear_on  else "OFF",
@@ -1358,7 +1446,7 @@ class ScenarioEngine(QObject):
         if self._idx >= len(self._rows):
             self._running = False
             self.replay_finished.emit()
-            self.log_msg.emit("DONE — tous les steps injectés")
+            self.log_msg.emit("DONE — all steps injected")
             return
         row      = self._rows[self._idx]
         elapsed  = time.monotonic() - self._t_start
@@ -1396,10 +1484,19 @@ class ScenarioEngine(QObject):
                 self.ecu.apply_lin_row(r)
             self._inject_lin_physical(r)
             self._emit_legacy_lin(r)
+            # ── FIX : alimenter aussi le SignalHub (instruments drag&drop)
+            # apply_lin_row() met à jour ecu.wiper_op / front_on / rear_on,
+            # mais virtual_lin_event n'est pas connecté au signal_hub.on_motor_data.
+            # On réutilise _emit_legacy_motor() qui émet virtual_motor_data → SignalHub.
+            self._emit_legacy_motor()
         elif src == "can":
             if self._virtual_widgets:
                 self.ecu.apply_can_row(r)
             self._inject_can_physical(r)
+            # ── FIX : même logique que LIN — apply_can_row() peut changer wiper_op,
+            # ignition, vehicle_speed : on propague au SignalHub.
+            if self._virtual_widgets:
+                self._emit_legacy_motor()
         elif src == "pump":
             if self._virtual_widgets:
                 self.ecu.apply_pump_row(r)
@@ -1462,7 +1559,7 @@ class ScenarioEngine(QObject):
             "state":              self.ecu.bcm_state,
             "front":              "ON" if self.ecu.front_on else "OFF",
             "rear":               "ON" if self.ecu.rear_on  else "OFF",
-            "speed":              "Speed2" if self.ecu.wiper_op == 3 else "Speed1",
+            "speed":              self.ecu.motor_speed,   # "Speed1" ou "Speed2" (mis à jour par apply_motor_row / wiper_op)
             "current":            self.ecu.motor_cur,
             "fault":              False,
             "rest":               "PARKED" if not self.ecu.rest_contact else "MOVING",
@@ -1528,14 +1625,17 @@ class ScenarioEngine(QObject):
 # ══════════════════════════════════════════════════════════════
 _TABLE_SS = (
     f"QTableWidget{{"
-    f"background:{W_PANEL};border:1px solid {W_BORDER};"
-    f"gridline-color:{W_BORDER};color:{W_TEXT};"
+    f"background:{_BG_CARD};border:1px solid {_BR_MAIN};"
+    f"gridline-color:{_BR_DIM};color:{_TX_PRI};"
     f"font-family:{_FONT_HMI};font-size:8pt;}}"
-    f"QHeaderView::section{{background:{W_TITLEBAR};color:{W_TEXT_HDR};"
-    f"border:none;padding:3px;font-family:{_FONT_HMI};font-size:8pt;font-weight:bold;}}"
-    f"QTableWidget::item:alternate{{background:{W_PANEL2};}}"
-    f"QTableWidget::item:selected{{background:{_KG_DIM};color:{W_TEXT};"
-    f"border-left:2px solid {_KG};}}"
+    f"QHeaderView::section{{background:{_BG_CARD};color:{_TX_HDR};"
+    f"border:none;border-right:1px solid {_BR_DIM};"
+    f"padding:4px 6px;font-family:{_FONT_HMI};font-size:7pt;font-weight:bold;"
+    f"letter-spacing:1px;}}"
+    f"QTableWidget::item{{padding:2px 4px;}}"
+    f"QTableWidget::item:alternate{{background:{_BG_ROW_ALT};}}"
+    f"QTableWidget::item:selected{{background:{_CY_DIM};color:{_TX_PRI};"
+    f"border-left:2px solid {_CY};}}"
 )
 
 
@@ -1610,58 +1710,77 @@ class DataReplayPanel(QWidget):
     def _apply_style(self):
         self.setStyleSheet(f"""
             QWidget {{
-                background: {W_BG};
-                color: {W_TEXT};
+                background: {_BG_BASE};
+                color: {_TX_PRI};
                 font-family: '{_FONT_UI}';
                 font-size: 10pt;
             }}
             QLabel {{ background: transparent; }}
             QSplitter::handle {{
-                background: {W_BORDER};
-                height: 4px; width: 4px;
+                background: {_BR_DIM};
+                height: 3px; width: 3px;
             }}
             QScrollBar:vertical {{
-                background: {W_PANEL2}; width: 6px; border-radius: 3px;
+                background: {_BG_CARD}; width: 5px; border-radius: 3px;
+                margin: 0;
             }}
             QScrollBar::handle:vertical {{
-                background: {_KG}; border-radius: 3px; min-height: 24px;
+                background: {_CY_BORDER}; border-radius: 3px; min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {_CY};
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height: 0px;
+            }}
+            QScrollBar:horizontal {{
+                background: {_BG_CARD}; height: 5px; border-radius: 3px;
+            }}
+            QScrollBar::handle:horizontal {{
+                background: {_CY_BORDER}; border-radius: 3px;
             }}
         """)
 
     def _build(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(6)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(8)
 
         # ── Title bar ─────────────────────────────────────────
         title_bar = QWidget()
         title_bar.setObjectName("tb")
-        title_bar.setFixedHeight(38)
+        title_bar.setFixedHeight(46)
         title_bar.setStyleSheet(f"""
             QWidget#tb {{
-                background: {W_TITLEBAR};
-                border: 1px solid {W_BORDER};
-                border-left: 4px solid {_KG};
-                border-radius: 4px;
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                    stop:0 #0E1520, stop:0.5 #0B0D12, stop:1 #0E1520);
+                border: 1px solid {_BR_MAIN};
+                border-left: 4px solid {_CY};
+                border-radius: 6px;
             }}
         """)
         tbl = QHBoxLayout(title_bar)
-        tbl.setContentsMargins(12, 0, 12, 0)
-        t1 = QLabel("DATA / REPLAY")
-        t1.setFont(QFont(_FONT_HMI, 11, QFont.Weight.Bold))
-        t1.setStyleSheet(f"color: {_KG}; letter-spacing: 3px; background: transparent;")
-        t2 = QLabel("Record  |  Export CSV  |  Scenario Replay  |  Virtual ECU")
+        tbl.setContentsMargins(16, 0, 16, 0)
+        tbl.setSpacing(0)
+
+        # dot indicator
+        dot = QLabel("◉")
+        dot.setFont(QFont(_FONT_HMI, 10))
+        dot.setStyleSheet(f"color: {_CY}; background: transparent; margin-right: 8px;")
+        tbl.addWidget(dot)
+        tbl.addSpacing(8)
+
+        t1 = QLabel("DATADESK")
+        t1.setFont(QFont(_FONT_HMI, 13, QFont.Weight.Bold))
+        t1.setStyleSheet(f"color: {_TX_PRI}; letter-spacing: 4px; background: transparent;")
+        t2 = QLabel("  //  Record · Export · Replay · Virtual ECU")
         t2.setFont(QFont(_FONT_HMI, 8))
-        t2.setStyleSheet(f"color: rgba(255,255,255,0.4); letter-spacing: 1px; background: transparent;")
+        t2.setStyleSheet(f"color: {_TX_SEC}; letter-spacing: 0.5px; background: transparent;")
         self._title_status = QLabel("IDLE")
         self._title_status.setFont(QFont(_FONT_HMI, 8, QFont.Weight.Bold))
         self._title_status.setStyleSheet(
-            f"color: {W_TEXT_DIM}; letter-spacing: 1px; background: transparent;")
+            f"color: {_TX_DIM}; letter-spacing: 2px; background: transparent;")
         tbl.addWidget(t1)
-        tbl.addSpacing(12)
         tbl.addWidget(t2)
         tbl.addStretch()
         tbl.addWidget(self._title_status)
@@ -1677,24 +1796,25 @@ class DataReplayPanel(QWidget):
         # ── Status bar ────────────────────────────────────────
         sb = QWidget()
         sb.setObjectName("sb")
-        sb.setFixedHeight(22)
+        sb.setFixedHeight(26)
         sb.setStyleSheet(f"""
             QWidget#sb {{
-                background: {W_TOOLBAR};
-                border-top: 1px solid {W_BORDER};
-                border-radius: 0 0 4px 4px;
+                background: {_BG_TOOLBAR};
+                border: 1px solid {_BR_DIM};
+                border-top: 1px solid {_BR_MAIN};
+                border-radius: 0 0 6px 6px;
             }}
         """)
         sl = QHBoxLayout(sb)
-        sl.setContentsMargins(12, 0, 12, 0)
-        sl.setSpacing(20)
-        self._sb_rec    = QLabel("REC  --  idle")
+        sl.setContentsMargins(14, 0, 14, 0)
+        sl.setSpacing(24)
+        self._sb_rec    = QLabel("● REC  —  idle")
         self._sb_rows   = QLabel("0 rows")
-        self._sb_replay = QLabel("REPLAY  --  no file")
+        self._sb_replay = QLabel("▶ REPLAY  —  no file")
         self._sb_time   = QLabel("")
         for lb in (self._sb_rec, self._sb_rows, self._sb_replay, self._sb_time):
             lb.setFont(QFont(_FONT_HMI, 7))
-            lb.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+            lb.setStyleSheet(f"color: {_TX_DIM}; background: transparent;")
         sl.addWidget(self._sb_rec)
         sl.addWidget(self._sb_rows)
         sl.addStretch()
@@ -1718,9 +1838,9 @@ class DataReplayPanel(QWidget):
         # Ligne 1 : REC / STOP / CLR | Preview
         r1 = QHBoxLayout()
         r1.setSpacing(5)
-        self._btn_rec   = _rec_pill("REC",  h=36, w=90)
+        self._btn_rec   = _rec_pill("REC",  h=36, w=92)
         self._btn_stop  = _pill("STOP",      h=36, w=82)
-        self._btn_clear = _pill("CLEAR",     h=36, w=72)
+        self._btn_clear = _pill("CLEAR",     h=36, w=82)
         self._btn_stop.setEnabled(False)
         self._btn_rec.clicked.connect(self._on_rec)
         self._btn_stop.clicked.connect(self._on_stop_rec)
@@ -1735,18 +1855,18 @@ class DataReplayPanel(QWidget):
         r1.addWidget(self._btn_pause_preview)
         r1.addStretch()
         self._lbl_elapsed = QLabel("00:00:00")
-        self._lbl_elapsed.setFont(QFont(_FONT_HMI, 12, QFont.Weight.Bold))
+        self._lbl_elapsed.setFont(QFont(_FONT_HMI, 14, QFont.Weight.Bold))
         self._lbl_elapsed.setStyleSheet(
-            f"color: {W_TEXT_DIM}; letter-spacing: 2px; background: transparent;")
+            f"color: {_TX_DIM}; letter-spacing: 3px; background: transparent;")
         r1.addWidget(self._lbl_elapsed)
         lay.addLayout(r1)
 
         # Ligne 2 : filtres sources
         r2 = QHBoxLayout()
         r2.setSpacing(6)
-        lbl_s = QLabel("SRC")
+        lbl_s = QLabel("SOURCES")
         lbl_s.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
-        lbl_s.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        lbl_s.setStyleSheet(f"color: {_TX_DIM}; letter-spacing: 1px; background: transparent;")
         r2.addWidget(lbl_s)
 
         self._src_checks: dict[str, QCheckBox] = {}
@@ -1759,24 +1879,28 @@ class DataReplayPanel(QWidget):
             cb.setChecked(True)
             cb.setFont(QFont(_FONT_HMI, 8, QFont.Weight.Bold))
             cb.setStyleSheet(f"""
-                QCheckBox {{ color: {W_TEXT}; background: transparent; }}
+                QCheckBox {{ color: {_TX_PRI}; background: transparent; spacing: 5px; }}
                 QCheckBox::indicator {{
-                    width: 11px; height: 11px;
-                    border: 1px solid {_KG_GLOW};
-                    border-radius: 2px; background: {W_PANEL2};
+                    width: 13px; height: 13px;
+                    border: 1px solid {_CY_BORDER};
+                    border-radius: 3px; background: {_BG_INPUT};
                 }}
                 QCheckBox::indicator:checked {{
-                    background: {_KG}; border-color: {_KG};
+                    background: {_CY_DIM}; border-color: {_CY};
+                    image: none;
+                }}
+                QCheckBox::indicator:checked::after {{
+                    content: '✓';
                 }}
             """)
             cb.toggled.connect(lambda checked, s=src: self._rec.set_filter(s, checked))
             self._src_checks[src] = cb
             led = StatusLed(6)
-            led.set_state(False, _KG)
+            led.set_state(False, _CY)
             self._src_leds[src] = led
             cnt = QLabel("0")
             cnt.setFont(QFont(_FONT_HMI, 8, QFont.Weight.Bold))
-            cnt.setStyleSheet(f"color: {_KG}; background: transparent;")
+            cnt.setStyleSheet(f"color: {_CY}; background: transparent;")
             cnt.setFixedWidth(36)
             self._src_counts[src] = cnt
             grp = QHBoxLayout()
@@ -1789,30 +1913,31 @@ class DataReplayPanel(QWidget):
         r2.addStretch()
         self._lbl_total = QLabel("0 rows")
         self._lbl_total.setFont(QFont(_FONT_HMI, 9, QFont.Weight.Bold))
-        self._lbl_total.setStyleSheet(f"color: {W_TEXT}; background: transparent;")
+        self._lbl_total.setStyleSheet(f"color: {_TX_PRI}; background: transparent;")
         r2.addWidget(self._lbl_total)
         lay.addLayout(r2)
 
         # Barre buffer
         br = QHBoxLayout()
-        br.setSpacing(6)
-        bl = QLabel("BUF")
-        bl.setFont(QFont(_FONT_HMI, 7))
-        bl.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        br.setSpacing(8)
+        bl = QLabel("BUFFER")
+        bl.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
+        bl.setStyleSheet(f"color: {_TX_DIM}; letter-spacing: 1px; background: transparent;")
         br.addWidget(bl)
         self._prog_buf = QProgressBar()
         self._prog_buf.setRange(0, MAX_BUFFER)
         self._prog_buf.setValue(0)
-        self._prog_buf.setFixedHeight(5)
+        self._prog_buf.setFixedHeight(4)
         self._prog_buf.setTextVisible(False)
         self._prog_buf.setStyleSheet(
-            f"QProgressBar{{background:{W_PANEL3};border:1px solid {W_BORDER};border-radius:3px;}}"
-            f"QProgressBar::chunk{{background:{_KG};border-radius:3px;}}"
+            f"QProgressBar{{background:{_BG_CARD};border:none;border-radius:2px;}}"
+            f"QProgressBar::chunk{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            f"stop:0 {_CY},stop:1 {_GN});border-radius:2px;}}"
         )
         br.addWidget(self._prog_buf, 1)
         self._lbl_buf = QLabel(f"0 / {MAX_BUFFER:,}")
         self._lbl_buf.setFont(QFont(_FONT_HMI, 7))
-        self._lbl_buf.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        self._lbl_buf.setStyleSheet(f"color: {_TX_DIM}; background: transparent;")
         br.addWidget(self._lbl_buf)
         lay.addLayout(br)
 
@@ -1821,31 +1946,34 @@ class DataReplayPanel(QWidget):
 
         # Export
         er = QHBoxLayout()
-        er.setSpacing(5)
-        el = QLabel("EXP")
+        er.setSpacing(6)
+        el = QLabel("EXPORT")
         el.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
-        el.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        el.setStyleSheet(f"color: {_TX_DIM}; letter-spacing: 1px; background: transparent;")
         er.addWidget(el)
         self._exp_combo = QComboBox()
         self._exp_combo.addItems(["All (merged)", "MOTOR", "LIN", "CAN", "PUMP", "Split (4 files)"])
         self._exp_combo.setStyleSheet(f"""
             QComboBox {{
-                background: {W_PANEL2}; border: 1px solid {W_BORDER};
-                color: {W_TEXT}; border-radius: 4px; padding: 2px 5px;
+                background: {_BG_INPUT}; border: 1px solid {_BR_MAIN};
+                color: {_TX_PRI}; border-radius: 5px; padding: 3px 8px;
                 font-family: {_FONT_HMI}; font-size: 8pt;
             }}
-            QComboBox::drop-down {{ border: none; }}
+            QComboBox::drop-down {{ border: none; width: 16px; }}
             QComboBox QAbstractItemView {{
-                background: {W_PANEL2}; color: {W_TEXT};
-                border: 1px solid {W_BORDER};
+                background: {_BG_CARD}; color: {_TX_PRI};
+                border: 1px solid {_BR_MAIN}; outline: none;
+            }}
+            QComboBox QAbstractItemView::item:hover {{
+                background: {_CY_DIM};
             }}
         """)
-        self._exp_combo.setFixedWidth(120)
+        self._exp_combo.setFixedWidth(130)
         er.addWidget(self._exp_combo)
-        self._btn_csv = _pill("CSV", h=26, w=54, accent=True)
+        self._btn_csv = _pill("CSV", h=28, w=72, accent=True)
         self._btn_csv.clicked.connect(self._on_export_csv)
         er.addWidget(self._btn_csv)
-        self._btn_mdf = _pill("MDF4", h=26, w=56)
+        self._btn_mdf = _pill("MDF4", h=28, w=80)
         self._btn_mdf.clicked.connect(self._on_export_mdf)
         if not _MDF_AVAILABLE:
             self._btn_mdf.setEnabled(False)
@@ -1854,19 +1982,19 @@ class DataReplayPanel(QWidget):
         er.addStretch()
         self._lbl_export_status = QLabel("")
         self._lbl_export_status.setFont(QFont(_FONT_HMI, 7))
-        self._lbl_export_status.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        self._lbl_export_status.setStyleSheet(f"color: {_TX_DIM}; background: transparent;")
         self._lbl_export_status.setWordWrap(True)
         er.addWidget(self._lbl_export_status, 1)
         lay.addLayout(er)
 
         # Preview header
         ph = QHBoxLayout()
-        ph.addWidget(_lbl("PREVIEW", 8, bold=True, color=W_TEXT_DIM))
-        ph.addWidget(_lbl(f"(last {_PREVIEW_MAX})", 7, color=W_TEXT_DIM))
+        ph.addWidget(_lbl("LIVE PREVIEW", 7, bold=True, color=_TX_DIM))
+        ph.addWidget(_lbl(f"last {_PREVIEW_MAX} rows", 7, color=_TX_DIM))
         ph.addStretch()
         self._lbl_preview_cnt = QLabel("0 visible")
         self._lbl_preview_cnt.setFont(QFont(_FONT_HMI, 7))
-        self._lbl_preview_cnt.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        self._lbl_preview_cnt.setStyleSheet(f"color: {_TX_DIM}; background: transparent;")
         ph.addWidget(self._lbl_preview_cnt)
         lay.addLayout(ph)
 
@@ -1903,39 +2031,41 @@ class DataReplayPanel(QWidget):
         card.setObjectName("atcard")
         card.setStyleSheet(f"""
             QFrame#atcard {{
-                background: #1A1200;
-                border: 1px solid #B8860B;
-                border-left: 4px solid #E67E22;
+                background: #FFF3E0;
+                border: 1px solid rgba(255,184,48,0.25);
+                border-left: 3px solid {_WARN_AMB};
                 border-radius: 6px;
             }}
         """)
         vlay = QVBoxLayout(card)
-        vlay.setContentsMargins(10, 6, 10, 6)
-        vlay.setSpacing(5)
+        vlay.setContentsMargins(12, 8, 12, 8)
+        vlay.setSpacing(6)
 
         # ── Titre + Enable ────────────────────────────────────
         hdr = QHBoxLayout()
-        ico = QLabel("AT")
+        ico = QLabel("")
         ico.setFont(QFont(_FONT_HMI, 9, QFont.Weight.Bold))
-        ico.setStyleSheet("color:#E67E22;background:transparent;")
-        ico.setFixedWidth(24)
+        ico.setStyleSheet(f"color:{_WARN_AMB};background:transparent;")
+        ico.setFixedWidth(20)
         title_lbl = QLabel("AUTO-TRIGGER")
-        title_lbl.setFont(QFont(_FONT_HMI, 9, QFont.Weight.Bold))
-        title_lbl.setStyleSheet("color:#F0A030;letter-spacing:2px;background:transparent;")
+        title_lbl.setFont(QFont(_FONT_HMI, 8, QFont.Weight.Bold))
+        title_lbl.setStyleSheet(f"color:{_WARN_AMB};letter-spacing:2px;background:transparent;")
         hdr.addWidget(ico)
         hdr.addWidget(title_lbl)
         hdr.addStretch()
 
-        self._trig_cb = QCheckBox("Activer")
+        self._trig_cb = QCheckBox("Enable")
         self._trig_cb.setFont(QFont(_FONT_HMI, 8, QFont.Weight.Bold))
-        self._trig_cb.setStyleSheet("""
-            QCheckBox { color: #F0A030; background: transparent; }
-            QCheckBox::indicator {
+        self._trig_cb.setStyleSheet(f"""
+            QCheckBox {{ color: {_WARN_AMB}; background: transparent; spacing: 5px; }}
+            QCheckBox::indicator {{
                 width: 13px; height: 13px;
-                border: 2px solid #B8860B; border-radius: 3px;
-                background: #1A1200;
-            }
-            QCheckBox::indicator:checked { background: #E67E22; border-color: #E67E22; }
+                border: 1px solid rgba(255,184,48,0.40); border-radius: 3px;
+                background: #FFF3E0;
+            }}
+            QCheckBox::indicator:checked {{
+                background: {_WARN_DIM}; border-color: {_WARN_AMB};
+            }}
         """)
         self._trig_cb.toggled.connect(self._on_trig_enable)
         hdr.addWidget(self._trig_cb)
@@ -1951,17 +2081,18 @@ class DataReplayPanel(QWidget):
             sb.setValue(val)
             sb.setDecimals(1)
             sb.setSuffix(" A")
-            sb.setFixedWidth(68)
-            sb.setFixedHeight(22)
+            sb.setFixedWidth(70)
+            sb.setFixedHeight(24)
             sb.setFont(QFont(_FONT_HMI, 8))
             sb.setStyleSheet(f"""
                 QDoubleSpinBox {{
-                    background: #1A1200; color: #F0A030;
-                    border: 1px solid #B8860B; border-radius: 3px;
-                    padding: 1px 4px;
+                    background: #FFF8EC; color: {_WARN_AMB};
+                    border: 1px solid rgba(255,184,48,0.30); border-radius: 4px;
+                    padding: 2px 4px;
+                    background: #FFF3E0;
                 }}
                 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
-                    width: 14px; border: none; background: #2A2000;
+                    width: 14px; border: none; background: #FFE8B8;
                 }}
             """)
             return sb
@@ -1969,7 +2100,7 @@ class DataReplayPanel(QWidget):
         def _tag(t: str) -> QLabel:
             lb = QLabel(t)
             lb.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
-            lb.setStyleSheet("color:#888888;background:transparent;")
+            lb.setStyleSheet(f"color:{_TX_SEC};background:transparent;letter-spacing:1px;")
             return lb
 
         r2.addWidget(_tag("MTR >"))
@@ -1991,18 +2122,18 @@ class DataReplayPanel(QWidget):
         self._trig_mode_combo.addItems(
             ["Motor OU Pompe", "Motor seul", "Pompe seule", "Motor ET Pompe"])
         self._trig_mode_combo.setFont(QFont(_FONT_HMI, 7))
-        self._trig_mode_combo.setFixedHeight(22)
+        self._trig_mode_combo.setFixedHeight(24)
         self._trig_mode_combo.setFixedWidth(130)
         self._trig_mode_combo.setStyleSheet(f"""
             QComboBox {{
-                background: #1A1200; color: #F0A030;
-                border: 1px solid #B8860B; border-radius: 3px;
+                background: #FFF3E0; color: {_WARN_AMB};
+                border: 1px solid rgba(255,184,48,0.30); border-radius: 4px;
                 padding: 1px 5px; font-size: 7pt;
             }}
             QComboBox::drop-down {{ border: none; width: 14px; }}
             QComboBox QAbstractItemView {{
-                background: #1A1200; color: #F0A030;
-                border: 1px solid #B8860B;
+                background: #FFF3E0; color: {_WARN_AMB};
+                border: 1px solid rgba(255,184,48,0.30);
             }}
         """)
         self._trig_mode_combo.currentIndexChanged.connect(
@@ -2010,23 +2141,23 @@ class DataReplayPanel(QWidget):
         r2.addWidget(self._trig_mode_combo)
 
         r2.addSpacing(6)
-        r2.addWidget(_tag("STOP après"))
+        r2.addWidget(_tag("STOP"))
         self._trig_autostop_spin = QSpinBox()
         self._trig_autostop_spin.setRange(0, 300)
         self._trig_autostop_spin.setValue(0)
         self._trig_autostop_spin.setSuffix(" s")
         self._trig_autostop_spin.setSpecialValueText("∞")
-        self._trig_autostop_spin.setFixedWidth(60)
-        self._trig_autostop_spin.setFixedHeight(22)
+        self._trig_autostop_spin.setFixedWidth(62)
+        self._trig_autostop_spin.setFixedHeight(24)
         self._trig_autostop_spin.setFont(QFont(_FONT_HMI, 8))
         self._trig_autostop_spin.setStyleSheet(f"""
             QSpinBox {{
-                background: #1A1200; color: #F0A030;
-                border: 1px solid #B8860B; border-radius: 3px;
-                padding: 1px 4px;
+                background: #FFF3E0; color: {_WARN_AMB};
+                border: 1px solid rgba(255,184,48,0.30); border-radius: 4px;
+                padding: 2px 4px;
             }}
             QSpinBox::up-button, QSpinBox::down-button {{
-                width: 14px; border: none; background: #2A2000;
+                width: 14px; border: none; background: #FFE8B8;
             }}
         """)
         self._trig_autostop_spin.valueChanged.connect(
@@ -2037,23 +2168,23 @@ class DataReplayPanel(QWidget):
         vlay.addLayout(r2)
 
         # ── Bandeau ALARME ────────────────────────────────────
-        self._alarm_banner = QLabel("  [!]  OVERCURRENT — EN ATTENTE D'ÉVÉNEMENT  ")
-        self._alarm_banner.setFont(QFont(_FONT_HMI, 8, QFont.Weight.Bold))
+        self._alarm_banner = QLabel("  ○  MONITORING INACTIVE  ")
+        self._alarm_banner.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
         self._alarm_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._alarm_banner.setFixedHeight(22)
+        self._alarm_banner.setFixedHeight(20)
         self._alarm_banner.setStyleSheet(
-            "background:#1A1200;color:#666644;border-radius:3px;letter-spacing:1px;")
+            f"background:#FFF3E0;color:{_TX_DIM};border-radius:3px;letter-spacing:1px;")
         vlay.addWidget(self._alarm_banner)
 
         # ── Ligne status + ACK ────────────────────────────────
         r3 = QHBoxLayout(); r3.setSpacing(6)
         self._alarm_led = StatusLed(8)
-        self._alarm_led.set_state(False, "#E67E22")
+        self._alarm_led.set_state(False, _WARN_AMB)
         r3.addWidget(self._alarm_led)
 
-        self._alarm_info = QLabel("Auto-trigger désactivé")
+        self._alarm_info = QLabel("Auto-trigger disabled")
         self._alarm_info.setFont(QFont(_FONT_HMI, 7))
-        self._alarm_info.setStyleSheet("color:#666644;background:transparent;")
+        self._alarm_info.setStyleSheet(f"color:{_TX_DIM};background:transparent;")
         r3.addWidget(self._alarm_info, 1)
 
         self._btn_ack = QPushButton("ACK")
@@ -2061,11 +2192,12 @@ class DataReplayPanel(QWidget):
         self._btn_ack.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
         self._btn_ack.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_ack.setEnabled(False)
-        self._btn_ack.setStyleSheet("""
-            QPushButton { background:#E67E22; color:#FFFFFF;
-                          border:none; border-radius:3px; }
-            QPushButton:hover { background:#F0A030; }
-            QPushButton:disabled { background:#333333; color:#555555; }
+        self._btn_ack.setStyleSheet(f"""
+            QPushButton {{ background:{_WARN_AMB}; color:#000000;
+                          border:none; border-radius:4px; font-weight:900; }}
+            QPushButton:hover {{ background:#FFC840; }}
+            QPushButton:disabled {{ background:{_BG_INPUT}; color:{_TX_DIM};
+                                    border:1px solid {_BR_DIM}; }}
         """)
         self._btn_ack.clicked.connect(self._on_ack_alarm)
         r3.addWidget(self._btn_ack)
@@ -2091,7 +2223,7 @@ class DataReplayPanel(QWidget):
             self._btn_load_mdf.setToolTip("pip install asammdf")
             self._btn_load_mdf.setEnabled(True)   # on laisse cliquable pour afficher le msg
         self._btn_play  = _pill("PLAY",      h=34, w=80)
-        self._btn_pause = _pill("PAUSE",     h=34, w=72)
+        self._btn_pause = _pill("PAUSE",     h=34, w=80)
         self._btn_rstop = _pill("STOP",      h=34, w=72)
         self._btn_load.clicked.connect(self._on_load_csv)
         self._btn_load_mdf.clicked.connect(self._on_load_mdf4)
@@ -2107,19 +2239,20 @@ class DataReplayPanel(QWidget):
         tb1.addWidget(self._btn_rstop)
         tb1.addWidget(_vsep())
 
-        spd_lbl = QLabel("×")
-        spd_lbl.setFont(QFont(_FONT_HMI, 8))
-        spd_lbl.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        spd_lbl = QLabel("SPEED ×")
+        spd_lbl.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
+        spd_lbl.setStyleSheet(f"color: {_TX_DIM}; letter-spacing: 1px; background: transparent;")
         self._spd_spin = QDoubleSpinBox()
         self._spd_spin.setRange(0.1, 10.0)
         self._spd_spin.setSingleStep(0.5)
         self._spd_spin.setValue(1.0)
-        self._spd_spin.setFixedWidth(54)
+        self._spd_spin.setFixedWidth(60)
+        self._spd_spin.setFixedHeight(30)
         self._spd_spin.setFont(QFont(_FONT_HMI, 8))
         self._spd_spin.valueChanged.connect(lambda v: self._engine.set_speed(v))
         self._spd_spin.setStyleSheet(
-            f"background:{W_PANEL2};color:{W_TEXT};"
-            f"border:1px solid {W_BORDER};border-radius:4px;padding:1px 3px;")
+            f"background:{_BG_INPUT};color:{_TX_PRI};"
+            f"border:1px solid {_BR_MAIN};border-radius:5px;padding:2px 4px;")
         tb1.addWidget(spd_lbl)
         tb1.addWidget(self._spd_spin)
         tb1.addStretch()
@@ -2127,17 +2260,17 @@ class DataReplayPanel(QWidget):
         self._file_badge = QLabel("NO FILE")
         self._file_badge.setFont(QFont(_FONT_HMI, 7))
         self._file_badge.setStyleSheet(
-            f"color: {W_TEXT_DIM}; background: transparent;")
+            f"color: {_TX_DIM}; background: transparent;")
         tb1.addWidget(self._file_badge)
         lay.addLayout(tb1)
 
-        # ── Toolbar ligne 2 : FILTER checkboxes | ⚡ Virtual ECU ──
+        # ── Toolbar ligne 2 : FILTER checkboxes | Virtual ECU badge ──
         tb2 = QHBoxLayout()
-        tb2.setSpacing(5)
+        tb2.setSpacing(6)
 
         flt_lbl = QLabel("FILTER")
         flt_lbl.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
-        flt_lbl.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        flt_lbl.setStyleSheet(f"color: {_TX_DIM}; letter-spacing: 1px; background: transparent;")
         tb2.addWidget(flt_lbl)
 
         self._rpl_chk: dict[str, QCheckBox] = {}
@@ -2146,14 +2279,14 @@ class DataReplayPanel(QWidget):
             c.setChecked(True)
             c.setFont(QFont(_FONT_HMI, 8))
             c.setStyleSheet(f"""
-                QCheckBox {{ color: {W_TEXT}; background: transparent; }}
+                QCheckBox {{ color: {_TX_PRI}; background: transparent; spacing: 5px; }}
                 QCheckBox::indicator {{
-                    width: 11px; height: 11px;
-                    border: 1px solid {_KG_GLOW}; border-radius: 2px;
-                    background: {W_PANEL2};
+                    width: 13px; height: 13px;
+                    border: 1px solid {_CY_BORDER}; border-radius: 3px;
+                    background: {_BG_INPUT};
                 }}
                 QCheckBox::indicator:checked {{
-                    background: {_KG}; border-color: {_KG};
+                    background: {_CY_DIM}; border-color: {_CY};
                 }}
             """)
             self._rpl_chk[src] = c
@@ -2161,32 +2294,33 @@ class DataReplayPanel(QWidget):
 
         tb2.addStretch()
 
-        virt_badge = QLabel("Virtual ECU")
+        virt_badge = QLabel("◈ Virtual ECU")
         virt_badge.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
         virt_badge.setStyleSheet(
-            f"color: {_KG}; background: {_KG_DIM};"
-            f"border: 1px solid {_KG_GLOW}; border-radius: 3px;"
-            f"padding: 1px 6px;")
+            f"color: {_GN}; background: {_GN_DIM};"
+            f"border: 1px solid {_GN_GLOW}; border-radius: 4px;"
+            f"padding: 2px 8px; letter-spacing: 1px;")
         tb2.addWidget(virt_badge)
         lay.addLayout(tb2)
 
         # ── Progress bar ───────────────────────────────────────
         pr = QHBoxLayout()
-        pr.setSpacing(6)
+        pr.setSpacing(8)
         self._prog_replay = QProgressBar()
         self._prog_replay.setRange(0, 100)
         self._prog_replay.setValue(0)
-        self._prog_replay.setFixedHeight(5)
+        self._prog_replay.setFixedHeight(4)
         self._prog_replay.setTextVisible(False)
         self._prog_replay.setStyleSheet(
-            f"QProgressBar{{background:{W_PANEL2};border:none;border-radius:3px;}}"
-            f"QProgressBar::chunk{{background:{_KG};border-radius:3px;}}")
+            f"QProgressBar{{background:{_BG_CARD};border:none;border-radius:2px;}}"
+            f"QProgressBar::chunk{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            f"stop:0 {_GN},stop:1 {_CY});border-radius:2px;}}")
         self._lbl_rprog = QLabel("0 / 0")
         self._lbl_rprog.setFont(QFont(_FONT_HMI, 7))
-        self._lbl_rprog.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        self._lbl_rprog.setStyleSheet(f"color: {_TX_DIM}; background: transparent;")
         self._lbl_rtime = QLabel("0.0 s")
         self._lbl_rtime.setFont(QFont(_FONT_HMI, 7))
-        self._lbl_rtime.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        self._lbl_rtime.setStyleSheet(f"color: {_CY}; background: transparent; font-weight: bold;")
         pr.addWidget(self._prog_replay, 1)
         pr.addWidget(self._lbl_rprog)
         pr.addWidget(self._lbl_rtime)
@@ -2200,11 +2334,11 @@ class DataReplayPanel(QWidget):
         tl_frame.setStyleSheet("background: transparent;")
         tll = QVBoxLayout(tl_frame)
         tll.setContentsMargins(0, 0, 0, 0)
-        tll.setSpacing(3)
+        tll.setSpacing(4)
         tl_hdr = QLabel("TIMELINE")
         tl_hdr.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
         tl_hdr.setStyleSheet(
-            f"color: {W_TEXT_DIM}; background: transparent; letter-spacing: 1px;")
+            f"color: {_TX_DIM}; background: transparent; letter-spacing: 2px;")
         tll.addWidget(tl_hdr)
 
         self._tl_table = QTableWidget(0, 5)
@@ -2220,7 +2354,7 @@ class DataReplayPanel(QWidget):
         self._tl_table.setColumnWidth(2, 32)   # Src
         self._tl_table.setColumnWidth(4, 20)   # ✓
         self._tl_table.verticalHeader().setVisible(False)
-        self._tl_table.verticalHeader().setDefaultSectionSize(16)
+        self._tl_table.verticalHeader().setDefaultSectionSize(18)
         self._tl_table.cellDoubleClicked.connect(self._on_seek)
         tll.addWidget(self._tl_table, 1)
         vsp.addWidget(tl_frame)
@@ -2235,11 +2369,11 @@ class DataReplayPanel(QWidget):
         stat_hdr = QLabel("STATISTICS")
         stat_hdr.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
         stat_hdr.setStyleSheet(
-            f"color: {W_TEXT_DIM}; background: transparent; letter-spacing: 1px;")
+            f"color: {_TX_DIM}; background: transparent; letter-spacing: 2px;")
         rl.addWidget(stat_hdr)
         self._stat_lbl = QLabel("—")
         self._stat_lbl.setFont(QFont(_FONT_HMI, 7))
-        self._stat_lbl.setStyleSheet(f"color: {W_TEXT}; background: transparent;")
+        self._stat_lbl.setStyleSheet(f"color: {_TX_PRI}; background: transparent;")
         self._stat_lbl.setWordWrap(True)
         rl.addWidget(self._stat_lbl)
         rl.addWidget(_hsep_kpit())
@@ -2247,16 +2381,16 @@ class DataReplayPanel(QWidget):
         log_hdr = QLabel("EXECUTION LOG")
         log_hdr.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
         log_hdr.setStyleSheet(
-            f"color: {W_TEXT_DIM}; background: transparent; letter-spacing: 1px;")
+            f"color: {_TX_DIM}; background: transparent; letter-spacing: 2px;")
         rl.addWidget(log_hdr)
         self._log_edit = QTextEdit()
         self._log_edit.setReadOnly(True)
         self._log_edit.setFont(QFont(_FONT_HMI, 7))
         self._log_edit.setStyleSheet(
-            f"background: {W_PANEL2}; color: {W_TEXT}; border: 1px solid {W_BORDER};"
-            f"border-radius: 3px;")
+            f"background: {_BG_CARD}; color: {_TX_PRI}; border: 1px solid {_BR_MAIN};"
+            f"border-radius: 4px;")
         rl.addWidget(self._log_edit, 1)
-        btn_clr = _pill("Clear log", h=22, w=76)
+        btn_clr = _pill("Clear log", h=24, w=100)
         btn_clr.clicked.connect(self._log_edit.clear)
         rl.addWidget(btn_clr, alignment=Qt.AlignmentFlag.AlignRight)
 
@@ -2287,11 +2421,11 @@ class DataReplayPanel(QWidget):
             self._alarm_active = False
             self._alarm_led.set_state(False, "#CC3333")
             self._btn_ack.setEnabled(False)
-            self._alarm_info.setText("Auto-trigger désactivé")
+            self._alarm_info.setText("Auto-trigger disabled")
             self._alarm_info.setStyleSheet("color:#555555;background:transparent;")
-            self._alarm_banner.setText("  [!]  OVERCURRENT — EN ATTENTE D'ÉVÉNEMENT  ")
+            self._alarm_banner.setText("  [!]  OVERCURRENT — WAITING FOR EVENT  ")
             self._alarm_banner.setStyleSheet(
-                "background:#1A0A0A;color:#555555;border-radius:3px;letter-spacing:1px;")
+                "background:#FFF0F0;color:#AA5050;border-radius:3px;letter-spacing:1px;")
 
     def _check_trigger(self, source: str, current_A: float):
         """Vérifie si le seuil est dépassé et déclenche l'alarme si besoin."""
@@ -2337,7 +2471,7 @@ class DataReplayPanel(QWidget):
 
         # Bandeau rouge clignotant
         self._alarm_banner.setText(
-            f"  🔴  OVERCURRENT {src}  {current_A:.2f} A > seuil {thr:.1f} A  —  {ts}  ")
+            f"  🔴  OVERCURRENT {src}  {current_A:.2f} A > threshold {thr:.1f} A  —  {ts}  ")
         self._alarm_led.set_state(True, "#CC3333")
         self._btn_ack.setEnabled(True)
         self._alarm_info.setText(msg)
@@ -2376,7 +2510,7 @@ class DataReplayPanel(QWidget):
             self._on_stop_rec()
         ts = datetime.datetime.now().strftime("%H:%M:%S")
         self._alarm_info.setText(
-            f"[{ts}]  Auto-stop déclenché après {self._trig_autostop_s} s")
+            f"[{ts}]  Auto-stop triggered after {self._trig_autostop_s} s")
 
     def _on_ack_alarm(self):
         """Acquittement alarme : arrête le clignotement, remet en veille."""
@@ -2391,7 +2525,7 @@ class DataReplayPanel(QWidget):
         self._alarm_banner.setStyleSheet(
             "background:#2A0A0A;color:#FF8888;border-radius:3px;letter-spacing:1px;")
         self._alarm_info.setText(
-            f"Alarme acquittée — {len(self._alarm_events)} événement(s) enregistré(s)")
+            f"Alarm acknowledged — {len(self._alarm_events)} event(s) recorded")
         self._alarm_info.setStyleSheet("color:#888888;background:transparent;")
         if self._rec.is_active():
             self._title_status.setText("REC")
@@ -2400,7 +2534,7 @@ class DataReplayPanel(QWidget):
         else:
             self._title_status.setText("IDLE")
             self._title_status.setStyleSheet(
-                f"color:{W_TEXT_DIM};letter-spacing:1px;background:transparent;")
+                f"color:{_TX_DIM};letter-spacing:1px;background:transparent;")
 
         # Notifier la StatusBar
         self.trigger_cleared.emit()
@@ -2436,19 +2570,19 @@ class DataReplayPanel(QWidget):
                 border: 1px solid {_KG_GLOW}; border-radius: 4px;
                 padding: 0 14px; letter-spacing: 0.5px;
             }}
-            QPushButton:hover  {{ background: {_KG_DIM}; border-color: {_KG}; color: {W_TEXT}; }}
+            QPushButton:hover  {{ background: {_KG_DIM}; border-color: {_KG}; color: {_TX_PRI}; }}
             QPushButton:pressed{{ background: {_KG_GLOW}; }}
             QPushButton:disabled{{ color: #AAAAAA; border-color: #CCCCCC; }}
         """)
         for led in self._src_leds.values():
             led.set_state(False, _KG)
-        self._lbl_elapsed.setStyleSheet(f"color: {W_TEXT_DIM}; background: transparent;")
+        self._lbl_elapsed.setStyleSheet(f"color: {_TX_DIM}; background: transparent;")
         self._sb_rec.setText("REC  --  stopped")
         self._sb_rec.setStyleSheet(
-            f"color: {W_TEXT_DIM}; font-family: '{_FONT_HMI}'; font-size: 7pt; background: transparent;")
+            f"color: {_TX_DIM}; font-family: '{_FONT_HMI}'; font-size: 7pt; background: transparent;")
         self._title_status.setText("IDLE")
         self._title_status.setStyleSheet(
-            f"color: {W_TEXT_DIM}; letter-spacing: 1px; background: transparent;")
+            f"color: {_TX_DIM}; letter-spacing: 1px; background: transparent;")
 
     def _on_clear_rec(self):
         self._rec.clear()
@@ -2497,7 +2631,7 @@ class DataReplayPanel(QWidget):
         self._preview_table.insertRow(r)
         for ci, val in enumerate((ts, tag, k1, k2, k3)):
             item = QTableWidgetItem(str(val))
-            item.setForeground(QColor(W_TEXT if ci > 1 else _KG))
+            item.setForeground(QColor("_TX_PRI" if ci > 1 else _KG))
             self._preview_table.setItem(r, ci, item)
         while self._preview_table.rowCount() > _PREVIEW_MAX:
             self._preview_table.removeRow(0)
@@ -2556,7 +2690,7 @@ class DataReplayPanel(QWidget):
             self._show_export_status(f"MDF4 error : {e}", warn=True)
 
     def _show_export_status(self, msg: str, warn: bool = False):
-        c = W_TEXT_DIM if not warn else "#AA4400"
+        c = _TX_DIM if not warn else "#AA4400"
         self._lbl_export_status.setText(msg)
         self._lbl_export_status.setStyleSheet(
             f"color: {c}; background: transparent; font-family: '{_FONT_HMI}'; font-size: 7pt;")
@@ -2703,17 +2837,17 @@ class DataReplayPanel(QWidget):
             tag = _SRC_TAG.get(row.source, row.source.upper()[:3])
 
             def _item(text, align=Qt.AlignmentFlag.AlignLeft,
-                      c=W_TEXT) -> QTableWidgetItem:
+                      c="_TX_PRI") -> QTableWidgetItem:
                 it = QTableWidgetItem(str(text))
                 it.setForeground(QColor(c))
                 it.setTextAlignment(align | Qt.AlignmentFlag.AlignVCenter)
                 return it
 
-            self._tl_table.setItem(i, 0, _item(str(i), Qt.AlignmentFlag.AlignCenter, W_TEXT_DIM))
+            self._tl_table.setItem(i, 0, _item(str(i), Qt.AlignmentFlag.AlignCenter, _TX_DIM))
             self._tl_table.setItem(i, 1, _item(f"{row.t_rel:.3f}", Qt.AlignmentFlag.AlignRight))
             self._tl_table.setItem(i, 2, _item(tag, Qt.AlignmentFlag.AlignCenter, _KG))
             self._tl_table.setItem(i, 3, _item(row.summary))
-            self._tl_table.setItem(i, 4, _item("·", Qt.AlignmentFlag.AlignCenter, W_TEXT_DIM))
+            self._tl_table.setItem(i, 4, _item("·", Qt.AlignmentFlag.AlignCenter, _TX_DIM))
         self._tl_table.resizeRowsToContents()
 
     def _update_replay_stats(self, rows: list[ScenarioRow]):

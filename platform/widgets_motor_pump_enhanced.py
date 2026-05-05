@@ -3,9 +3,9 @@ WipeWash — Widgets visuels améliorés pour Motor/Pump page
 RestContactWidget, SystemStatusWidget, TimeoutFSRWidget
 
 Palette KPIT stricte : uniquement les couleurs de constants.py
-  W_BG=#FFFFFF  W_PANEL=#F5FFF0  W_PANEL2=#EDF9E3  W_PANEL3=#E0F5D0
-  W_TOOLBAR=#D6EFC0  W_TITLEBAR=#0F1A0A  W_BORDER=rgba(141,198,63,0.35)
-  W_TEXT=#1A1A1A  W_TEXT_DIM=#5A6A4A  KPIT_GREEN=#8DC63F
+  W_BG=#FFFFFF  W_PANEL=#FFFFFF  W_PANEL2=#F8FAFC  W_PANEL3=#F1F5F9
+  W_TOOLBAR=#F1F5F9  W_TITLEBAR=#0F1A0A  W_BORDER=rgba(100,116,139,0.25)
+  W_TEXT=#1A1A1A  W_TEXT_DIM=#64748B  KPIT_GREEN=#8DC63F
   A_TEAL=#007ACC  A_GREEN=#39FF14  A_RED=#C0392B
   A_ORANGE=#D35400  A_AMBER=#F39C12
 """
@@ -39,21 +39,32 @@ _TEAL         = QColor(A_TEAL)          # #007ACC
 _RED          = QColor(A_RED)           # #C0392B
 _ORANGE       = QColor(A_ORANGE)        # #D35400
 _AMBER        = QColor(A_AMBER)         # #F39C12
-_BORDER       = QColor(141, 198, 63, 90)
+_BORDER       = QColor(0, 0, 0, 255)          # contour noir unifié
 
 
 def _alpha(c: QColor, a: int) -> QColor:
     cc = QColor(c); cc.setAlpha(a); return cc
 
 
-def _draw_panel_bg(p: QPainter, W: int, H: int, r: int = 8) -> None:
+def _draw_panel_bg(p: QPainter, W: int, H: int, r: int = 6) -> None:
+    """Fond blanc professionnel — contour slate 1.5px, arrondi 6px."""
     path = QPainterPath()
     path.addRoundedRect(QRectF(1, 1, W - 2, H - 2), r, r)
-    bg = QLinearGradient(0, 0, 0, H)
-    bg.setColorAt(0, QColor(W_BG)); bg.setColorAt(1, QColor(W_PANEL2))
+    bg = QLinearGradient(0, 0, W, H)
+    bg.setColorAt(0.00, QColor("#FFFFFF"))
+    bg.setColorAt(0.50, QColor("#F8FAFC"))
+    bg.setColorAt(1.00, QColor("#F1F5F9"))
+    # Grille technique discrète
     p.setBrush(QBrush(bg))
-    p.setPen(QPen(_BORDER, 1.5))
+    p.setPen(QPen(QColor("#007ACC"), 1.5))
     p.drawPath(path)
+    p.save()
+    p.setClipPath(path)
+    p.setPen(QPen(QColor(200, 210, 225, 50), 0.5))
+    step = 20
+    for x in range(0, W, step): p.drawLine(x, 0, x, H)
+    for y in range(0, H, step): p.drawLine(0, y, W, y)
+    p.restore()
 
 
 def _draw_stripe(p: QPainter, H: int, color: QColor) -> None:
@@ -106,7 +117,7 @@ class RestContactWidget(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
 
-        accent = _KPIT if self._parked else _ORANGE
+        accent = _TEAL
         _draw_panel_bg(p, W, H)
         _draw_stripe(p, H, accent)
 
@@ -160,13 +171,13 @@ class RestContactWidget(QWidget):
             bx = track_x + int(pos * (track_w - bw))
             bp = QPainterPath()
             bp.addRoundedRect(QRectF(bx, track_y, bw, track_h), 5, 5)
-            p.setBrush(QBrush(_ORANGE)); p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QBrush(_TEAL)); p.setPen(Qt.PenStyle.NoPen)
             p.drawPath(bp)
             if bx > track_x + 4:
                 tr = QPainterPath()
                 tr.addRoundedRect(QRectF(track_x + 2, track_y + 3,
                                           bx - track_x - 2, track_h - 6), 2, 2)
-                p.setBrush(QBrush(_alpha(_ORANGE, 30)))
+                p.setBrush(QBrush(_alpha(_TEAL, 30)))
                 p.drawPath(tr)
 
         p.setFont(QFont(FONT_MONO, 7))
@@ -207,7 +218,7 @@ class SystemStatusWidget(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
 
-        bar_accent = _RED if self._fault else _KPIT
+        bar_accent = _RED if self._fault else _TEAL
         _draw_panel_bg(p, W, H)
         _draw_stripe(p, H, bar_accent)
 
@@ -225,7 +236,7 @@ class SystemStatusWidget(QWidget):
             cur_val = float(self._current.replace("A", "").strip())
         except Exception:
             cur_val = 0.0
-        cur_accent = _RED if self._fault else (_ORANGE if cur_val > 0.8 else _KPIT)
+        cur_accent = _RED if self._fault else (_ORANGE if cur_val > 0.8 else _TEAL)
 
         ITEMS = [
             ("FRONT",   self._front,
@@ -329,7 +340,7 @@ class TimeoutFSRWidget(QWidget):
         urgent = self._active and self._remaining < 1.5
 
         accent = _RED if urgent else (_AMBER if self._active and pct < 0.4
-                 else (_KPIT if self._active else _TEXT_DIM))
+                 else (_TEAL if self._active else _TEXT_DIM))
 
         _draw_panel_bg(p, W, H)
         _draw_stripe(p, H, accent)
@@ -469,7 +480,7 @@ class CurrentCurveWidget(QWidget):
         if channel == "PUMP":
             self._accent = _TEAL
         elif channel == "MOTOR_FRONT":
-            self._accent = QColor(A_GREEN)
+            self._accent = _TEAL
         else:
             self._accent = _TEAL
 
@@ -543,7 +554,7 @@ class CurrentCurveWidget(QWidget):
 
         # Fond graphe — très sombre
         graph_rect = QRectF(ox, oy, ow, oh)
-        p.setBrush(QBrush(QColor("#080E08")))
+        p.setBrush(QBrush(QColor("#0D1E0A")))
         p.setPen(QPen(QColor(141, 198, 63, 40), 1))
         p.drawRect(graph_rect)
 
@@ -684,7 +695,7 @@ class RestContactEdgeWidget(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
 
-        accent = _KPIT if self._state else _ORANGE
+        accent = _TEAL
 
         # Fond + bordure
         _draw_panel_bg(p, W, H)
@@ -722,7 +733,7 @@ class RestContactEdgeWidget(QWidget):
             return
 
         graph_rect = QRectF(ox, oy, ow, oh)
-        p.setBrush(QBrush(QColor("#080E08")))
+        p.setBrush(QBrush(QColor("#0D1E0A")))
         p.setPen(QPen(QColor(141, 198, 63, 40), 1))
         p.drawRect(graph_rect)
 
@@ -739,7 +750,7 @@ class RestContactEdgeWidget(QWidget):
         p.setPen(QPen(_KPIT))
         p.drawText(PAD - 2, int(y_high) - 8, 22, 14,
                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, "H")
-        p.setPen(QPen(_ORANGE))
+        p.setPen(QPen(_TEAL))
         p.drawText(PAD - 2, int(y_low) - 8, 22, 14,
                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, "L")
 
@@ -772,7 +783,7 @@ class RestContactEdgeWidget(QWidget):
                 if 0 <= edge_idx < n:
                     ex = ox + edge_idx * step
                     is_rise = edge_type == "rise"
-                    ec = _KPIT if is_rise else _ORANGE
+                    ec = _TEAL
                     arrow = "↑" if is_rise else "↓"
                     label = "LOW→HIGH" if is_rise else "HIGH→LOW"
 
@@ -807,7 +818,7 @@ class RestContactEdgeWidget(QWidget):
         p.drawText(ox, bar_y, ow // 2, 18,
                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                    f"↑ rises: {n_rise}")
-        p.setPen(QPen(_ORANGE))
+        p.setPen(QPen(_TEAL))
         p.drawText(ox + ow // 2, bar_y, ow // 2, 18,
                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                    f"falls: {n_fall} ↓")

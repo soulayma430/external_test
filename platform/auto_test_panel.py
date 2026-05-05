@@ -21,9 +21,10 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QTextEdit, QSplitter,
     QFileDialog, QMessageBox, QSizePolicy,
     QScrollArea, QGraphicsDropShadowEffect,
+    QDialog, QSpinBox, QDoubleSpinBox, QMenu,
 )
-from PySide6.QtCore import Qt, QMimeData, QByteArray, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QFont, QDrag, QPixmap, QPainter, QLinearGradient
+from PySide6.QtCore import Qt, QMimeData, QByteArray, QPropertyAnimation, QEasingCurve, QPoint
+from PySide6.QtGui import QColor, QFont, QDrag, QPixmap, QPainter, QLinearGradient, QPen, QBrush, QAction
 
 import matplotlib
 matplotlib.use("Qt5Agg")
@@ -74,20 +75,20 @@ STATUS_ACCENT = {
 CAT_FG = {
     "CYCLE"          : A_TEAL,
     "TIMEOUT"        : A_AMBER,
-    "FONCTIONNEL"    : A_ORANGE,
-    "FONCTIONNEL_BCM": "#8E24AA",
+    "FUNCTIONAL"     : A_ORANGE,
+    "FUNCTIONAL_BCM" : "#8E24AA",
 }
 CAT_ICON = {
     "CYCLE"          : "[C]",
     "TIMEOUT"        : "[T]",
-    "FONCTIONNEL"    : "[F]",
-    "FONCTIONNEL_BCM": "[B]",
+    "FUNCTIONAL"     : "[F]",
+    "FUNCTIONAL_BCM" : "[B]",
 }
 CAT_DESC = {
     "CYCLE"          : "Validates the number of wipe/wash cycles within timing constraints.",
     "TIMEOUT"        : "Ensures actuator response does not exceed maximum allowed timeout.",
-    "FONCTIONNEL"    : "Checks functional behaviour of wiper/washer under standard conditions.",
-    "FONCTIONNEL_BCM": "BCM-level functional check including body control module signal handling.",
+    "FUNCTIONAL"     : "Checks functional behaviour of wiper/washer under standard conditions.",
+    "FUNCTIONAL_BCM" : "BCM-level functional check including body control module signal handling.",
 }
 MIME_TEST_ID = "application/x-wipewash-test-id"
 
@@ -98,6 +99,367 @@ MPL_TIMEOUT = "#FFA726"
 MPL_LIMIT   = "#8DC63F"
 MPL_GRID    = "#E0E0E0"
 MPL_TEXT    = "#424242"
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  TestParamDialog — fenêtre de paramètres (clic droit sur un test)
+# ═══════════════════════════════════════════════════════════════════
+
+_DLG_BG      = "#FFFFFF"
+_DLG_SURFACE = "#F5FFF0"
+_DLG_SURFACE2= "#EDF9E3"
+_DLG_BORDER  = "#1A1A1A"
+_DLG_GREEN   = "#2E7003"
+_DLG_AMBER   = "#F39C12"
+_DLG_RED     = "#C0392B"
+_DLG_BLUE    = "#007ACC"
+_DLG_DIM     = "#5A6A4A"
+_DLG_TEXT    = "#1A1A1A"
+
+_CAT_COLOR_DLG = {
+    "CYCLE":           "#7A3100",
+    "TIMEOUT":         "#791F1F",
+    "FUNCTIONAL":      "#0C447C",
+    "FUNCTIONAL_BCM":  "#3C3489",
+    "FUNCTIONAL_WC":   "#085041",
+    "LIN_SECURITE":    "#633806",
+    "CAN_SECURITE":    "#444441",
+}
+_CAT_BG_DLG = {
+    "CYCLE":           "#FFF3E0",
+    "TIMEOUT":         "#FCEBEB",
+    "FUNCTIONAL":      "#E6F1FB",
+    "FUNCTIONAL_BCM":  "#EEEDFE",
+    "FUNCTIONAL_WC":   "#E1F5EE",
+    "LIN_SECURITE":    "#FAEEDA",
+    "CAN_SECURITE":    "#F1EFE8",
+}
+
+
+class _DeviationGaugeDlg(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._pct   = 0.0
+        self._color = _DLG_GREEN
+        self.setFixedSize(48, 48)
+        self.setStyleSheet("background: transparent;")
+
+    def set_deviation(self, original, current):
+        if original is None or current is None or original == 0:
+            self._pct = 0.0; self._color = _DLG_GREEN
+        else:
+            ratio = (current - original) / abs(original)
+            self._pct = max(-1.0, min(1.0, ratio))
+            self._color = (_DLG_GREEN if abs(self._pct) < 0.05
+                           else _DLG_AMBER if abs(self._pct) < 0.25
+                           else _DLG_RED)
+        self.update()
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        W, H = self.width(), self.height()
+        cx, cy, r = W // 2, H // 2, min(W, H) // 2 - 4
+        p.setPen(QPen(QColor(_DLG_BORDER), 1.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+        if abs(self._pct) > 0.01:
+            pen = QPen(QColor(self._color), 3.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            p.setPen(pen)
+            p.drawArc(cx - r, cy - r, r * 2, r * 2, 90 * 16, int(-self._pct * 180 * 16))
+        pct_int = int(abs(self._pct) * 100)
+        sign = "+" if self._pct > 0.01 else ("-" if self._pct < -0.01 else "")
+        txt  = f"{sign}{pct_int}%" if pct_int > 0 else "OK"
+        p.setPen(QColor(self._color))
+        p.setFont(QFont(FONT_MONO, 8, QFont.Weight.Bold))
+        p.drawText(0, 0, W, H, Qt.AlignmentFlag.AlignCenter, txt)
+
+
+class TestParamDialog(QDialog):
+    """
+    Fenêtre de paramétrage d'un test individuel.
+    Ouverte via clic droit sur un item de TestTreeWidget.
+    """
+
+    def __init__(self, cls, parent=None):
+        super().__init__(parent)
+        self._cls     = cls
+        self._spins:  dict[str, QWidget] = {}
+        self._gauges: dict[str, _DeviationGaugeDlg] = {}
+        self._origin  = {
+            "LIMIT_MS":       getattr(cls, "LIMIT_MS",       None),
+            "TOL_MS":         getattr(cls, "TOL_MS",         None),
+            "MIN_MS":         getattr(cls, "MIN_MS",         None),
+            "TEST_TIMEOUT_S": getattr(cls, "TEST_TIMEOUT_S", None),
+        }
+        self._current = dict(self._origin)
+
+        self.setWindowTitle(f"Paramètres — {cls.ID}  {cls.NAME}")
+        self.setModal(True)
+        self.setMinimumWidth(560)
+        self.setStyleSheet(f"background: {_DLG_BG};")
+        self._build()
+
+    # ── Construction ────────────────────────────────────────────────────
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # ── Header coloré ────────────────────────────────────────────────
+        cat  = getattr(self._cls, "CATEGORY", "")
+        cat_c  = _CAT_COLOR_DLG.get(cat, _DLG_DIM)
+        cat_bg = _CAT_BG_DLG.get(cat, "#F5FFF0")
+
+        hdr = QFrame()
+        hdr.setFixedHeight(72)
+        hdr.setStyleSheet(f"background: {cat_bg}; border-bottom: 1px solid #D0D0D0;")
+        hl = QHBoxLayout(hdr)
+        hl.setContentsMargins(20, 0, 20, 0); hl.setSpacing(14)
+
+        # Badge ID
+        id_badge = QLabel(getattr(self._cls, "ID", "??"))
+        id_badge.setFixedSize(52, 36)
+        id_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        id_badge.setStyleSheet(f"""
+            background: {_DLG_SURFACE2}; color: {_DLG_TEXT};
+            border: none; border-radius: 4px;
+            font-family: '{FONT_MONO}'; font-size: 11pt; font-weight: bold;
+        """)
+        hl.addWidget(id_badge)
+
+        # Titre + ref
+        col = QVBoxLayout(); col.setSpacing(2)
+        name_lbl = QLabel(getattr(self._cls, "NAME", ""))
+        name_lbl.setStyleSheet(
+            f"color: {_DLG_TEXT}; font-family: '{FONT_UI}'; font-size: 13pt;"
+            "font-weight: 700; background: transparent;")
+        ref_lbl = QLabel(getattr(self._cls, "REF", ""))
+        ref_lbl.setStyleSheet(
+            f"color: {_DLG_DIM}; font-family: '{FONT_MONO}'; font-size: 9pt;"
+            "background: transparent; letter-spacing: 1px;")
+        col.addWidget(name_lbl); col.addWidget(ref_lbl)
+        hl.addLayout(col, 1)
+
+        # Badge catégorie
+        cat_badge = QLabel(cat)
+        cat_badge.setStyleSheet(f"""
+            background: {cat_bg}; color: {cat_c};
+            border: none; border-radius: 3px;
+            font-family: '{FONT_MONO}'; font-size: 8pt; font-weight: bold;
+            padding: 3px 8px;
+        """)
+        hl.addWidget(cat_badge)
+
+        # Limit string
+        ls = getattr(self._cls, "LIMIT_STR", "")
+        if ls:
+            ls_lbl = QLabel(ls)
+            ls_lbl.setStyleSheet(
+                f"color: {_DLG_DIM}; font-family: '{FONT_MONO}'; font-size: 9.5pt;"
+                "background: transparent;")
+            hl.addWidget(ls_lbl)
+
+        root.addWidget(hdr)
+
+        # ── Corps : paramètres ───────────────────────────────────────────
+        body = QWidget(); body.setStyleSheet(f"background: {_DLG_BG};")
+        bl = QVBoxLayout(body); bl.setContentsMargins(24, 20, 24, 12); bl.setSpacing(14)
+
+        params = [
+            ("LIMIT_MS",       "LIMIT",   "ms",  1, 99999, "Durée limite de succès"),
+            ("TOL_MS",         "TOL ±",   "ms",  0,  9999, "Tolérance autour de la limite"),
+            ("MIN_MS",         "MIN",     "ms",  0, 99999, "Durée minimale attendue"),
+            ("TEST_TIMEOUT_S", "TIMEOUT", "s",   1,   300, "Timeout global du test"),
+        ]
+
+        has_any = False
+        for key, label, unit, mn, mx, desc in params:
+            val  = self._origin.get(key)
+            if val is None:
+                continue
+            has_any = True
+
+            row = QFrame()
+            row.setStyleSheet(f"""
+                QFrame {{
+                    background: {_DLG_SURFACE};
+                    border: 1px solid #CCCCCC;
+                    border-radius: 6px;
+                }}
+            """)
+            rl = QHBoxLayout(row); rl.setContentsMargins(16, 10, 16, 10); rl.setSpacing(16)
+
+            # Label + description
+            lcol = QVBoxLayout(); lcol.setSpacing(2)
+            lbl = QLabel(label)
+            lbl.setFixedWidth(68)
+            lbl.setStyleSheet(
+                f"color: {_DLG_TEXT}; font-family: '{FONT_MONO}'; font-size: 12pt;"
+                "font-weight: bold; background: transparent; letter-spacing: 2px;")
+            desc_lbl = QLabel(desc)
+            desc_lbl.setStyleSheet(
+                f"color: {_DLG_DIM}; font-family: '{FONT_UI}'; font-size: 9.5pt;"
+                "background: transparent;")
+            lcol.addWidget(lbl); lcol.addWidget(desc_lbl)
+            rl.addLayout(lcol, 1)
+
+            # Spinbox
+            if isinstance(val, float) and val != int(val):
+                spin = QDoubleSpinBox()
+                spin.setDecimals(1)
+                spin.setRange(float(mn), float(mx))
+                spin.setValue(float(val))
+            else:
+                spin = QSpinBox()
+                spin.setRange(mn, mx)
+                spin.setValue(int(val))
+
+            spin.setSuffix(f"  {unit}")
+            spin.setFixedSize(120, 36)
+            spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            spin.setStyleSheet(self._spin_style(False))
+
+            gauge = _DeviationGaugeDlg()
+            gauge.set_deviation(val, val)
+            self._gauges[key] = gauge
+            self._spins[key]  = spin
+
+            def _on_change(v, k=key, s=spin, orig=val):
+                self._current[k] = v
+                modified = (orig is not None and v != orig)
+                s.setStyleSheet(self._spin_style(modified))
+                if k in self._gauges:
+                    self._gauges[k].set_deviation(orig, v)
+                self._update_apply_btn()
+
+            spin.valueChanged.connect(_on_change)
+
+            rl.addWidget(gauge)
+            rl.addWidget(spin)
+            bl.addWidget(row)
+
+        if not has_any:
+            nl = QLabel("— Ce test n'a aucun paramètre numérique modifiable —")
+            nl.setStyleSheet(f"color: {_DLG_DIM}; font-size: 11pt; background: transparent;")
+            nl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            bl.addWidget(nl)
+
+        root.addWidget(body, 1)
+
+        # ── Barre de boutons ─────────────────────────────────────────────
+        btn_bar = QFrame()
+        btn_bar.setFixedHeight(56)
+        btn_bar.setStyleSheet(
+            f"background: {_DLG_SURFACE}; border-top: 1px solid #D0D0D0;")
+        bb = QHBoxLayout(btn_bar)
+        bb.setContentsMargins(20, 0, 20, 0); bb.setSpacing(10)
+
+        self._status_lbl = QLabel("")
+        self._status_lbl.setStyleSheet(
+            f"color: {_DLG_DIM}; font-family: '{FONT_MONO}'; font-size: 9.5pt;"
+            "background: transparent;")
+        bb.addWidget(self._status_lbl, 1)
+
+        self._reset_btn = self._mk_btn("RÉINITIALISER", _DLG_DIM)
+        self._reset_btn.clicked.connect(self._do_reset)
+        bb.addWidget(self._reset_btn)
+
+        self._apply_btn = self._mk_btn("APPLIQUER", _DLG_GREEN)
+        self._apply_btn.setEnabled(False)
+        self._apply_btn.clicked.connect(self._do_apply)
+        bb.addWidget(self._apply_btn)
+
+        close_btn = self._mk_btn("FERMER", _DLG_RED)
+        close_btn.clicked.connect(self.accept)
+        bb.addWidget(close_btn)
+
+        root.addWidget(btn_bar)
+
+    # ── Helpers ──────────────────────────────────────────────────────────
+    def _mk_btn(self, text: str, color: str) -> QPushButton:
+        b = QPushButton(text)
+        b.setFixedHeight(34)
+        b.setStyleSheet(f"""
+            QPushButton {{
+                background: {color}; color: #FFFFFF;
+                border: 1px solid {color}; border-radius: 5px;
+                font-family: '{FONT_MONO}'; font-size: 9pt; font-weight: bold;
+                padding: 0 14px; letter-spacing: 0.5px;
+            }}
+            QPushButton:hover {{ background: {_DLG_BG}; color: {color}; border: 1px solid {color}; }}
+            QPushButton:pressed {{ background: {_DLG_SURFACE}; color: {color}; }}
+            QPushButton:disabled {{ background: #EEEEEE; color: #BBBBBB; border-color: #DDDDDD; }}
+        """)
+        return b
+
+    def _spin_style(self, modified: bool) -> str:
+        border = _DLG_AMBER if modified else "#CCCCCC"
+        bg     = "#FFFDE7"  if modified else _DLG_SURFACE2
+        fg     = _DLG_AMBER if modified else _DLG_TEXT
+        return f"""
+            QSpinBox, QDoubleSpinBox {{
+                background: {bg}; color: {fg};
+                border: 1px solid {border}; border-radius: 3px;
+                font-family: '{FONT_MONO}'; font-size: 11pt; font-weight: bold;
+            }}
+            QSpinBox::up-button, QDoubleSpinBox::up-button,
+            QSpinBox::down-button, QDoubleSpinBox::down-button {{
+                background: {_DLG_SURFACE}; border: none; width: 14px;
+            }}
+        """
+
+    def _update_apply_btn(self):
+        modified = any(
+            self._current.get(k) != self._origin.get(k)
+            for k in ("LIMIT_MS", "TOL_MS", "MIN_MS", "TEST_TIMEOUT_S")
+            if self._origin.get(k) is not None
+        )
+        self._apply_btn.setEnabled(modified)
+        if modified:
+            self._status_lbl.setText("Modifications en attente")
+            self._status_lbl.setStyleSheet(
+                f"color: {_DLG_AMBER}; font-family: '{FONT_MONO}'; font-size: 9.5pt;"
+                "background: transparent; font-weight: bold;")
+        else:
+            self._status_lbl.setText("")
+
+    def _do_apply(self):
+        import time as _time
+        changed = 0
+        for attr, key in [("LIMIT_MS","LIMIT_MS"), ("TOL_MS","TOL_MS"),
+                           ("MIN_MS","MIN_MS"), ("TEST_TIMEOUT_S","TEST_TIMEOUT_S")]:
+            val = self._current.get(key)
+            if val is not None and getattr(self._cls, attr, None) != val:
+                setattr(self._cls, attr, val)
+                if attr == "LIMIT_MS":
+                    tol = getattr(self._cls, "TOL_MS", None)
+                    self._cls.LIMIT_STR = (f"{val} ms ± {tol} ms" if tol else f"≤ {val} ms")
+                changed += 1
+        ts = _time.strftime("%H:%M:%S")
+        self._status_lbl.setText(f"{changed} param(s) appliqué(s) à {ts}")
+        self._status_lbl.setStyleSheet(
+            f"color: {_DLG_GREEN}; font-family: '{FONT_MONO}'; font-size: 9.5pt;"
+            "background: transparent; font-weight: bold;")
+        self._apply_btn.setEnabled(False)
+
+    def _do_reset(self):
+        for key, spin in self._spins.items():
+            orig = self._origin.get(key)
+            if orig is not None:
+                spin.blockSignals(True)
+                if isinstance(spin, QDoubleSpinBox): spin.setValue(float(orig))
+                else:                                spin.setValue(int(orig))
+                spin.setStyleSheet(self._spin_style(False))
+                spin.blockSignals(False)
+                self._current[key] = orig
+                if key in self._gauges:
+                    self._gauges[key].set_deviation(orig, orig)
+        self._apply_btn.setEnabled(False)
+        self._status_lbl.setText("Valeurs réinitialisées")
+        self._status_lbl.setStyleSheet(
+            f"color: {_DLG_DIM}; font-family: '{FONT_MONO}'; font-size: 9.5pt;"
+            "background: transparent;")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -112,10 +474,13 @@ class TestTreeWidget(QTreeWidget):
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setAnimated(True)
         self.setIndentation(18)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
+        self._cls_map = {cls.ID: cls for cls in ALL_TESTS}
         self.setStyleSheet(f"""
             QTreeWidget {{
-                background: {W_PANEL};
-                color: {W_TEXT};
+                background: #1A1A1A;
+                color: #E0E0E0;
                 border: none;
                 font-family: "Segoe UI", {FONT_UI};
                 font-size: 10pt;
@@ -126,11 +491,11 @@ class TestTreeWidget(QTreeWidget):
                 border-radius: 4px;
             }}
             QTreeWidget::item:selected {{
-                background: rgba(141,198,63,0.22);
-                color: {W_TEXT};
+                background: rgba(141,198,63,0.30);
+                color: #FFFFFF;
             }}
             QTreeWidget::item:hover:!selected {{
-                background: rgba(141,198,63,0.08);
+                background: rgba(255,255,255,0.07);
             }}
         """)
         self._build_tree()
@@ -149,10 +514,47 @@ class TestTreeWidget(QTreeWidget):
             for cls in tests:
                 child = QTreeWidgetItem(root_item, [f"  {cls.ID}  —  {cls.NAME}"])
                 child.setFont(0, QFont(FONT_MONO, 9))
-                child.setForeground(0, QColor(W_TEXT))
+                child.setForeground(0, QColor("#D0D0D0"))
                 child.setData(0, Qt.ItemDataRole.UserRole, cls.ID)
-                child.setToolTip(0, f"[{cls.CATEGORY}] {cls.NAME}\n{cls.REF}\nLimit: {cls.LIMIT_STR}")
+                child.setToolTip(0, f"[{cls.CATEGORY}] {cls.NAME}\n{cls.REF}\nLimit: {cls.LIMIT_STR}\n\nClic droit -> Parametres")
             root_item.setExpanded(True)
+
+    def _show_context_menu(self, pos: QPoint):
+        item = self.itemAt(pos)
+        if item is None:
+            return
+        test_id = item.data(0, Qt.ItemDataRole.UserRole)
+        if not test_id:
+            return  # clic sur une catégorie
+        cls = self._cls_map.get(test_id)
+        if cls is None:
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background: #FFFFFF; color: #1A1A1A;
+                border: 2px solid #1A1A1A; border-radius: 4px;
+                font-family: '{FONT_UI}'; font-size: 10pt;
+                padding: 4px 0;
+            }}
+            QMenu::item {{ padding: 7px 24px; }}
+            QMenu::item:selected {{ background: #EDF9E3; color: #2E7003; }}
+            QMenu::separator {{ height: 1px; background: #1A1A1A; margin: 4px 8px; }}
+        """)
+
+        act_params = QAction(f"Parametres — {test_id}", self)
+        act_params.setFont(QFont(FONT_MONO, 10, QFont.Weight.Bold))
+        menu.addAction(act_params)
+        menu.addSeparator()
+        act_info = QAction(f"ℹ  {cls.NAME}", self)
+        act_info.setEnabled(False)
+        menu.addAction(act_info)
+
+        chosen = menu.exec(self.viewport().mapToGlobal(pos))
+        if chosen == act_params:
+            dlg = TestParamDialog(cls, self)
+            dlg.exec()
 
     def startDrag(self, supported_actions):
         items = self.selectedItems()
@@ -190,8 +592,8 @@ class TestInfoCard(QFrame):
         self.setMaximumHeight(180)
         self.setStyleSheet(f"""
             QFrame#testInfoCard {{
-                background: {W_PANEL2};
-                border-bottom: 2px solid {W_BORDER};
+                background: #1A1A1A;
+                border-bottom: 1px solid #333333;
             }}
         """)
         self._layout = QVBoxLayout(self)
@@ -204,7 +606,7 @@ class TestInfoCard(QFrame):
         ph = QLabel("Drop a test to view its specification")
         ph.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ph.setStyleSheet(
-            f"color:{W_TEXT_DIM};font-family:'Segoe UI',{FONT_UI};"
+            f"color:#555555;font-family:'Segoe UI',{FONT_UI};"
             f"font-size:10pt;background:transparent;font-style:italic;")
         self._layout.addWidget(ph)
 
@@ -253,13 +655,13 @@ class TestInfoCard(QFrame):
 
         name_lbl = QLabel(cls.NAME)
         name_lbl.setStyleSheet(
-            f"color:{W_TEXT};font-family:'Segoe UI',{FONT_UI};font-size:11pt;"
+            f"color:#E0E0E0;font-family:'Segoe UI',{FONT_UI};font-size:11pt;"
             f"font-weight:600;background:transparent;")
         name_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         badge = QLabel(f" {cat_icon} {cls.CATEGORY} ")
         badge.setStyleSheet(
-            f"color:{cat_color};background:rgba(0,0,0,0.06);"
+            f"color:{cat_color};background:rgba(255,255,255,0.07);"
             f"font-family:{FONT_MONO};font-size:8pt;font-weight:bold;"
             f"border:1px solid {cat_color};border-radius:10px;padding:0 6px;")
         row1.addWidget(id_lbl)
@@ -272,7 +674,7 @@ class TestInfoCard(QFrame):
         desc_lbl = QLabel(cat_desc)
         desc_lbl.setWordWrap(True)
         desc_lbl.setStyleSheet(
-            f"color:{W_TEXT_DIM};font-family:'Segoe UI',{FONT_UI};"
+            f"color:#777777;font-family:'Segoe UI',{FONT_UI};"
             f"font-size:9pt;background:transparent;font-style:italic;")
         self._layout.addWidget(desc_lbl)
 
@@ -284,11 +686,11 @@ class TestInfoCard(QFrame):
             col.setSpacing(1)
             k_lbl = QLabel(key.upper())
             k_lbl.setStyleSheet(
-                f"color:{W_TEXT_DIM};font-family:'Segoe UI',{FONT_UI};"
+                f"color:#555555;font-family:'Segoe UI',{FONT_UI};"
                 f"font-size:7pt;font-weight:bold;letter-spacing:1px;background:transparent;")
             v_lbl = QLabel(val or "—")
             v_lbl.setStyleSheet(
-                f"color:{W_TEXT};font-family:{FONT_MONO};font-size:10pt;"
+                f"color:#D0D0D0;font-family:{FONT_MONO};font-size:10pt;"
                 f"font-weight:bold;background:transparent;")
             col.addWidget(k_lbl)
             col.addWidget(v_lbl)
@@ -313,7 +715,7 @@ class TestInfoCard(QFrame):
         for cat, count in cats.items():
             badge = QLabel(f"{CAT_ICON.get(cat,'')} {cat}  ×{count}")
             badge.setStyleSheet(
-                f"color:{CAT_FG.get(cat, W_TEXT_DIM)};background:rgba(0,0,0,0.05);"
+                f"color:{CAT_FG.get(cat, W_TEXT_DIM)};background:rgba(255,255,255,0.06);"
                 f"font-family:{FONT_MONO};font-size:9pt;"
                 f"border:1px solid {CAT_FG.get(cat, W_BORDER)};border-radius:10px;padding:2px 10px;")
             row.addWidget(badge)
@@ -325,7 +727,7 @@ class TestInfoCard(QFrame):
             ids_str += f"  … +{len(classes)-8}"
         ids_lbl = QLabel(ids_str)
         ids_lbl.setStyleSheet(
-            f"color:{W_TEXT_DIM};font-family:{FONT_MONO};font-size:8pt;background:transparent;")
+            f"color:#555555;font-family:{FONT_MONO};font-size:8pt;background:transparent;")
         self._layout.addWidget(ids_lbl)
         self._layout.addStretch()
 
@@ -963,7 +1365,9 @@ class AutoTestPanel(QWidget):
         super().__init__(parent)
         self._factory   = runner_factory
         self._runner    = None
-        self._results   = []
+        self._results   = []        # résultats du run courant
+        self._all_results = []      # TOUS les résultats accumulés (tous runs)
+        self._runs      = []        # liste de runs: [{ids, t_start, t_end, results}]
         self._t_start   = None
         self._t_end     = None
         self._bench_id  = bench_id
@@ -987,15 +1391,18 @@ class AutoTestPanel(QWidget):
         tl.setContentsMargins(14, 0, 14, 0)
         tl.setSpacing(8)
 
-        self._btn_sel  = _cd_btn("RUN SELECTED", A_TEAL,    h=34, w=150)
-        self._btn_stop = _cd_btn("STOP",          A_RED,     h=34, w=100)
-        self._btn_report = _cd_btn("DOWNLOAD REPORT", A_ORANGE, h=34, w=200)
+        self._btn_sel    = _cd_btn("RUN SELECTED",    A_TEAL,    h=34, w=150)
+        self._btn_stop   = _cd_btn("STOP",            A_RED,     h=34, w=100)
+        self._btn_report = _cd_btn("DOWNLOAD REPORT", A_ORANGE,  h=34, w=200)
+        self._btn_clear  = _cd_btn("CLEAR RESULTS",   "#546E7A",  h=34, w=150)
         self._btn_stop.setEnabled(False)
         self._btn_report.setEnabled(False)
+        self._btn_clear.setEnabled(False)
 
         self._btn_sel.clicked.connect(self._run_selected)
         self._btn_stop.clicked.connect(self._stop)
         self._btn_report.clicked.connect(self._download_report)
+        self._btn_clear.clicked.connect(self._clear_results)
 
         self._prog = QProgressBar()
         self._prog.setRange(0, len(ALL_TESTS))
@@ -1012,6 +1419,7 @@ class AutoTestPanel(QWidget):
         tl.addWidget(self._btn_sel)
         tl.addWidget(self._btn_stop)
         tl.addWidget(self._btn_report)
+        tl.addWidget(self._btn_clear)
         tl.addSpacing(16)
         tl.addWidget(self._prog, 1)
         tl.addSpacing(10)
@@ -1092,7 +1500,8 @@ class AutoTestPanel(QWidget):
         if not ids:
             return
         self._t_start = datetime.datetime.now()
-        self._results = []
+        self._results = []          # résultats du run courant seulement
+        self._current_run_ids = ids
         self._exec_zone.reset_results(ids)
         self._btn_sel.setEnabled(False)
         self._btn_stop.setEnabled(True)
@@ -1110,6 +1519,7 @@ class AutoTestPanel(QWidget):
 
     def _on_result(self, r: TestResult):
         self._results.append(r)
+        self._all_results.append(r)
         self._exec_zone.update_result(r)
         self._exec_zone.update_all_charts(self._results)
 
@@ -1126,12 +1536,27 @@ class AutoTestPanel(QWidget):
         self._lbl_bot.setText("Campaign finished.")
         self._btn_sel.setEnabled(True)
         self._btn_stop.setEnabled(False)
-        if results:
+        # Enregistrer ce run dans la liste des runs accumulés
+        self._runs.append({
+            "run_index": len(self._runs) + 1,
+            "t_start":   self._t_start,
+            "t_end":     self._t_end,
+            "ids":       getattr(self, "_current_run_ids", []),
+            "results":   list(self._results),
+        })
+        if self._all_results:
             self._btn_report.setEnabled(True)
+            self._btn_clear.setEnabled(True)
+        n_total = len(self._all_results)
+        n_runs  = len(self._runs)
+        self._lbl_sum.setText(
+            f"Run #{n_runs} — PASS {n_p}  FAIL {n_f}  TIMEOUT {n_t}"
+            f"  |  Total accumulé: {n_total} test(s) sur {n_runs} run(s)"
+        )
         self._exec_zone.update_all_charts(self._results)
 
     def _download_report(self):
-        if not self._results:
+        if not self._all_results:
             QMessageBox.warning(self, "No Results", "No test results available to export.")
             return
         if not _REPORT_AVAILABLE:
@@ -1144,21 +1569,41 @@ class AutoTestPanel(QWidget):
         if not path:
             return
         try:
-            # Correction 1 : t_start / t_end vont dans generate(), pas dans __init__
             gen = ReportGenerator(
                 bench_id=self._bench_id,
                 project=self._project,
             )
-            # Correction 2 : output_path = chemin complet (plus output_dir + base_name séparés)
+            # t_start = début du 1er run, t_end = fin du dernier run
+            t_start = self._runs[0]["t_start"] if self._runs else self._t_start
+            t_end   = self._runs[-1]["t_end"]  if self._runs else self._t_end
             gen.generate(
-                self._results,
+                self._all_results,
                 output_path=path,
-                t_start=self._t_start,
-                t_end=self._t_end,
+                t_start=t_start,
+                t_end=t_end,
+                runs=self._runs,
             )
             QMessageBox.information(self, "Report Saved", f"Report saved to:\n{path}")
         except Exception as exc:
             QMessageBox.critical(self, "Export Error", str(exc))
+
+    def _clear_results(self):
+        reply = QMessageBox.question(
+            self, "Clear Results",
+            f"Supprimer tous les résultats accumulés ({len(self._all_results)} test(s) sur {len(self._runs)} run(s)) ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._results     = []
+        self._all_results = []
+        self._runs        = []
+        self._t_start     = None
+        self._t_end       = None
+        self._btn_report.setEnabled(False)
+        self._btn_clear.setEnabled(False)
+        self._lbl_sum.setText("Waiting…")
+        self._lbl_bot.setText("Results cleared.")
 
     # ── Redis ──────────────────────────────────────────────────────
 

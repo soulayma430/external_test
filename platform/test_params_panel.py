@@ -611,13 +611,13 @@ class TestParamsPanel(QWidget):
             btn.setFixedHeight(32)
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: {_C_SURFACE2}; color: {color};
-                    border: 2px solid {_C_BORDER}; border-radius: 2px;
+                    background: {color}; color: #FFFFFF;
+                    border: 1px solid {color}; border-radius: 5px;
                     font-family: '{FONT_MONO}'; font-size: 10.5pt;
                     font-weight: bold; padding: 0 12px; letter-spacing: 0.5px;
                 }}
-                QPushButton:hover {{ background: {_C_SURFACE}; border-color: {color}; color: {color}; }}
-                QPushButton:pressed {{ background: {_C_SURFACE2}; }}
+                QPushButton:hover {{ background: {_C_BG}; color: {color}; border: 1px solid {color}; }}
+                QPushButton:pressed {{ background: {_C_SURFACE2}; color: {color}; }}
             """)
             btn.clicked.connect(slot)
             tb.addWidget(btn)

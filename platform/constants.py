@@ -27,20 +27,20 @@ CAN_GRID     = "#D8DADC"
 #  PALETTE  — HTML vert KPIT / blanc (car_simulator.html unifié)
 # ═══════════════════════════════════════════════════════════
 W_BG        = "#FFFFFF"    # fond global : blanc pur (espace entre rectangles)
-W_PANEL     = "#F5FFF0"    # panneaux : blanc + touche verte
-W_PANEL2    = "#EDF9E3"    # panneaux secondaires
-W_PANEL3    = "#E0F5D0"    # panneaux tertiaires / alterné
-W_TOOLBAR   = "#D6EFC0"    # barre d'outils
+W_PANEL     = "#FFFFFF"    # panneaux : blanc pur
+W_PANEL2    = "#F8FAFC"    # panneaux secondaires
+W_PANEL3    = "#F1F5F9"    # panneaux tertiaires
+W_TOOLBAR   = "#F1F5F9"    # barre d'outils
 W_TITLEBAR  = "#0F1A0A"    # titres dark (palette HTML header)
 W_DOCK_HDR  = "#0F1A0A"    # headers panneaux dark vert
 
-W_BORDER    = "rgba(141,198,63,0.35)"   # vert KPIT semi-transparent
-W_BORDER2   = "rgba(141,198,63,0.55)"
-W_SEP       = "rgba(141,198,63,0.20)"
+W_BORDER    = "rgba(100,116,139,0.25)"  # slate semi-transparent
+W_BORDER2   = "rgba(100,116,139,0.40)"
+W_SEP       = "rgba(100,116,139,0.15)"
 
 W_TEXT      = "#1A1A1A"
 W_TEXT2     = "#2A2A2A"
-W_TEXT_DIM  = "#5A6A4A"    # gris-vert sombre
+W_TEXT_DIM  = "#64748B"    # slate gris
 W_TEXT_HDR  = "#FFFFFF"    # blanc sur header dark
 
 A_TEAL      = "#007ACC"

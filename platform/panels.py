@@ -25,13 +25,13 @@ try:
     from dbc_loader import load_dbc, unpack_frame as _dbc_unpack
     _DBC_CFG = load_dbc(os.path.join(_HERE, "wiperwash.dbc"))
 except Exception as _e:
-    print(f"[panels] DBC non chargé : {_e}")
+    print(f"[panels] DBC not loaded: {_e}")
 
 try:
     from ldf_loader import load_ldf
     _LDF_CFG = load_ldf(os.path.join(_HERE, "wiperwash.ldf"))
 except Exception as _e:
-    print(f"[panels] LDF non chargé : {_e}")
+    print(f"[panels] LDF not loaded: {_e}")
 
 def _dbc_signals_for(msg_id: int) -> list[str]:
     """Retourne la liste des noms de signaux pour un message CAN."""
@@ -169,6 +169,7 @@ _CAN_FRAME_COLORS = {
     0x301: CAN_RAIN_C,
 }
 from workers       import send_pump_cmd
+from car_comodo_3d import CarComodo3DReadOnly
 from widgets_base  import (
     StatusLed, InstrumentPanel, NumericDisplay, LinearBar,
     _lbl, _hsep, _cd_btn,
@@ -281,9 +282,11 @@ class MotorDashPanel(QWidget):
         self.motor_front.set_state(s.get("front", "OFF"), s.get("speed", "Speed1"))
         self.motor_rear.set_state(s.get("rear",  "OFF"), s.get("speed", "Speed1"))
         cur = float(s.get("current", 0))
-        # Arc gauges + sparklines (nouveaux widgets)
-        # Approximation : courant partagé 60/40 front/rear
-        cur_f = cur * 0.6; cur_r = cur * 0.4
+        front_on = s.get("front", "OFF") == "ON"
+        rear_on  = s.get("rear",  "OFF") == "ON"
+        # Arc gauges + sparklines : courant affiché uniquement si le moteur tourne
+        cur_f = cur if front_on else 0.0
+        cur_r = cur if rear_on  else 0.0
         self._gauge_mf.set_value(cur_f, fault)
         self._gauge_mr.set_value(cur_r, fault)
         self._spark_mf.push(cur_f)
@@ -309,7 +312,7 @@ class MotorDashPanel(QWidget):
         front_s = s.get("front", "?"); rear_s = s.get("rear", "?")
         speed_s = s.get("speed", "?")
         cur_str = f"{cur:.3f} A"
-        status_txt = ("⚠ FAULT FSR_003 — Overcurrent detected"
+        status_txt = ("FAULT FSR_003 — Overcurrent detected"
                       if fault else "System nominal")
         self._sys_status_widget.set_values(
             front_s, rear_s, speed_s, cur_str, fault, status_txt)
@@ -486,27 +489,29 @@ class _SpeedKnob(QWidget):
         self._build()
 
     def _build(self):
-        vl = QVBoxLayout(self); vl.setContentsMargins(0, 0, 0, 4); vl.setSpacing(4)
+        vl = QVBoxLayout(self); vl.setContentsMargins(0, 0, 0, 2); vl.setSpacing(3)
         self._arc = _SpeedArc(self)
         self._arc.setMinimumHeight(72)
         vl.addWidget(self._arc, 1)
-        row = QHBoxLayout(); row.setSpacing(6)
-        self._btn_a = QPushButton("▲  ACCEL"); self._btn_a.setFixedHeight(26)
-        self._btn_b = QPushButton("▼  BRAKE"); self._btn_b.setFixedHeight(26)
+        row = QHBoxLayout(); row.setSpacing(4)
+        self._btn_a = QPushButton("▲ ACCEL"); self._btn_a.setFixedHeight(20); self._btn_a.setFixedWidth(60)
+        self._btn_b = QPushButton("▼ BRAKE"); self._btn_b.setFixedHeight(20); self._btn_b.setFixedWidth(60)
         for btn, bg_col, txt_col, brd_col in [
-                (self._btn_a, "#0A1200", "#39FF14", "#39FF14"),
-                (self._btn_b, "#200000", "#FF4444", "#FF4444")]:
-            btn.setFont(QFont(FONT_UI, 9, QFont.Weight.Bold))
+                (self._btn_a, "#18100A", "#E8A020", "#A07010"),
+                (self._btn_b, "#18080A", "#FF3020", "#A02010")]:
+            btn.setFont(QFont(FONT_UI, 7, QFont.Weight.Bold))
             btn.setStyleSheet(
                 f"QPushButton{{background:{bg_col};color:{txt_col};"
-                f"border:1px solid {brd_col};border-radius:3px;padding:2px 8px;}}"
-                f"QPushButton:pressed{{background:{brd_col};color:#8DC63F;}}")
+                f"border:1px solid {brd_col};border-radius:3px;padding:0px 3px;"
+                f"letter-spacing:0.5px;}}"
+                f"QPushButton:hover{{background:{brd_col}40;color:{txt_col};}}"
+                f"QPushButton:pressed{{background:{brd_col}60;}}")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_a.pressed.connect(lambda: self._start(1))
         self._btn_a.released.connect(self._stop)
         self._btn_b.pressed.connect(lambda: self._start(-1))
         self._btn_b.released.connect(self._stop)
-        row.addWidget(self._btn_a, 1); row.addWidget(self._btn_b, 1)
+        row.addWidget(self._btn_a); row.addWidget(self._btn_b)
         vl.addLayout(row)
 
     def _start(self, direction):
@@ -545,40 +550,95 @@ class _SpeedArc(QWidget):
         import math
         p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
-        # Fond noir pour speed
-        p.fillRect(0, 0, W, H, QColor("#0A1200"))
-        cx = W // 2; cy = int(H * 0.78)
-        R = min(cx - 8, cy - 4, 52)
-        # Arc fond
-        pen_bg = QPen(QColor("#1A2A10"), 8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-        p.setPen(pen_bg); p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawArc(cx-R, cy-R, R*2, R*2, 210*16, -240*16)
-        # Arc rempli — vert fluo
+        # ── Fond Audi : noir profond avec vignette radiale ──
+        bg_grad = QRadialGradient(W/2, H/2, max(W, H)*0.7)
+        bg_grad.setColorAt(0, QColor("#0D0D0F"))
+        bg_grad.setColorAt(1, QColor("#050507"))
+        p.fillRect(0, 0, W, H, QBrush(bg_grad))
+
+        cx = W // 2; cy = int(H * 0.82)
+        R = min(cx - 6, cy - 4, 54)
         pct = self._val / 2000.0
-        if pct > 0:
-            nc = "#39FF14" if pct < 0.7 else ("#FFC107" if pct < 0.9 else "#FF4444")
-            pen_fill = QPen(QColor(nc), 8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-            p.setPen(pen_fill)
-            p.drawArc(cx-R, cy-R, R*2, R*2, 210*16, int(-240*16*pct))
-        # Aiguille
-        angle_deg = -120 + 240 * pct
-        angle_r = math.radians(angle_deg)
-        nx = cx + (R-10) * math.cos(angle_r)
-        ny = cy - (R-10) * math.sin(angle_r)
-        nc2 = QColor("#39FF14" if pct < 0.7 else ("#FFC107" if pct < 0.9 else "#FF4444")) if pct > 0 else QColor("#2A4010")
-        p.setPen(QPen(nc2, 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawLine(cx, cy, int(nx), int(ny))
-        p.setBrush(QColor("#8DC63F")); p.setPen(QPen(QColor("#39FF1444"), 1))
-        p.drawEllipse(cx-4, cy-4, 8, 8)
-        # Valeur numérique — vert fluo
         spd = self._val / 10.0
-        p.setFont(QFont(FONT_MONO, 12, QFont.Weight.Bold))
-        p.setPen(QPen(QColor("#39FF14")))
+
+        # ── Anneau extérieur chromé ──
+        chrome = QLinearGradient(cx-R-6, cy-R-6, cx+R+6, cy+R+6)
+        chrome.setColorAt(0, QColor("#3A3A42")); chrome.setColorAt(0.5, QColor("#888890"))
+        chrome.setColorAt(1, QColor("#2A2A30"))
+        p.setPen(QPen(QBrush(chrome), 1.5)); p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(cx-R-5, cy-R-5, (R+5)*2, (R+5)*2)
+
+        # ── Arc fond épais ──
+        pen_bg = QPen(QColor("#1A1A22"), 9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        p.setPen(pen_bg); p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawArc(cx-R, cy-R, R*2, R*2, 225*16, -270*16)
+
+        # ── Arc rempli — orange Audi puis rouge danger ──
+        if pct > 0:
+            nc = "#E8A020" if pct < 0.65 else ("#FF6010" if pct < 0.85 else "#FF2020")
+            pen_fill = QPen(QColor(nc), 9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            p.setPen(pen_fill)
+            p.drawArc(cx-R, cy-R, R*2, R*2, 225*16, int(-270*16*pct))
+
+        # ── Graduations style Audi ──
+        for i in range(21):
+            a_deg = -225 + 270 * i / 20
+            a_rad = math.radians(a_deg)
+            is_major = (i % 4 == 0)
+            outer_r = R + 2
+            inner_r = R - (7 if is_major else 4)
+            x1 = cx + outer_r * math.cos(a_rad); y1 = cy - outer_r * math.sin(a_rad)
+            x2 = cx + inner_r * math.cos(a_rad); y2 = cy - inner_r * math.sin(a_rad)
+            if is_major:
+                tick_col = "#E8A020" if (i / 20 <= pct) else "#404048"
+                p.setPen(QPen(QColor(tick_col), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            else:
+                tick_col = "#C07010" if (i / 20 <= pct) else "#252530"
+                p.setPen(QPen(QColor(tick_col), 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawLine(int(x1), int(y1), int(x2), int(y2))
+
+        # ── Labels vitesse (0 50 100 150 200) ──
+        p.setFont(QFont(FONT_MONO, 5, QFont.Weight.Bold))
+        for i, label in enumerate([0, 50, 100, 150, 200]):
+            a_deg = -225 + 270 * (i * 4) / 20
+            a_rad = math.radians(a_deg)
+            lx = int(cx + (R - 14) * math.cos(a_rad))
+            ly = int(cy - (R - 14) * math.sin(a_rad))
+            p.setPen(QPen(QColor("#8888A0")))
+            p.drawText(lx - 8, ly - 5, 16, 10, Qt.AlignmentFlag.AlignCenter, str(label))
+
+        # ── Aiguille rouge Audi — fine et lumineuse ──
+        angle_deg = -225 + 270 * pct
+        angle_r = math.radians(angle_deg)
+        needle_len = R - 7
+        nx = cx + needle_len * math.cos(angle_r)
+        ny = cy - needle_len * math.sin(angle_r)
+        back_len = 9
+        bx = cx - back_len * math.cos(angle_r)
+        by = cy + back_len * math.sin(angle_r)
+        # Halo rouge derrière l'aiguille
+        glow_pen = QPen(QColor("#FF200040"), 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        p.setPen(glow_pen); p.drawLine(int(bx), int(by), int(nx), int(ny))
+        # Aiguille principale rouge vif
+        p.setPen(QPen(QColor("#FF2020"), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(int(bx), int(by), int(nx), int(ny))
+        # Pivot central chromé
+        grad_c = QRadialGradient(cx, cy, 6)
+        grad_c.setColorAt(0, QColor("#C0C0CC")); grad_c.setColorAt(0.5, QColor("#707080"))
+        grad_c.setColorAt(1, QColor("#202028"))
+        p.setBrush(QBrush(grad_c)); p.setPen(QPen(QColor("#90909860"), 1))
+        p.drawEllipse(cx-5, cy-5, 10, 10)
+        p.setBrush(QBrush(QColor("#FF202080"))); p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(cx-2, cy-2, 4, 4)
+
+        # ── Affichage numérique style Audi MMI ──
+        p.setFont(QFont(FONT_MONO, 14, QFont.Weight.Bold))
+        p.setPen(QPen(QColor("#F0F0FF")))
         txt = f"{spd:.0f}"
-        p.drawText(cx-28, cy-R+8, 56, 22, Qt.AlignmentFlag.AlignCenter, txt)
-        p.setFont(QFont(FONT_MONO, 8))
-        p.setPen(QPen(QColor("#5A8040")))
-        p.drawText(cx-20, cy-R+28, 40, 14, Qt.AlignmentFlag.AlignCenter, "km/h")
+        p.drawText(cx-32, cy-R+2, 64, 22, Qt.AlignmentFlag.AlignCenter, txt)
+        p.setFont(QFont(FONT_MONO, 6))
+        p.setPen(QPen(QColor("#606070")))
+        p.drawText(cx-20, cy-R+23, 40, 11, Qt.AlignmentFlag.AlignCenter, "km/h")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -604,23 +664,24 @@ class _RainKnob(QWidget):
         self._arc = _RainArc(self)
         self._arc.setMinimumHeight(72)
         vl.addWidget(self._arc, 1)
-        row = QHBoxLayout(); row.setSpacing(6)
-        self._btn_p = QPushButton("▲  +"); self._btn_p.setFixedHeight(26)
-        self._btn_m = QPushButton("▼  −"); self._btn_m.setFixedHeight(26)
+        row = QHBoxLayout(); row.setSpacing(4)
+        self._btn_p = QPushButton("＋"); self._btn_p.setFixedHeight(20); self._btn_p.setFixedWidth(38)
+        self._btn_m = QPushButton("－"); self._btn_m.setFixedHeight(20); self._btn_m.setFixedWidth(38)
         for btn, bg_col, txt_col, brd_col in [
-                (self._btn_p, "#0A1525", "#1E90FF", "#1E90FF"),
-                (self._btn_m, "#0A1525", "#1E90FF", "#1E90FF")]:
+                (self._btn_p, "#080E1A", "#3090E8", "#1860A8"),
+                (self._btn_m, "#080E1A", "#3090E8", "#1860A8")]:
             btn.setFont(QFont(FONT_UI, 9, QFont.Weight.Bold))
             btn.setStyleSheet(
                 f"QPushButton{{background:{bg_col};color:{txt_col};"
-                f"border:1px solid {brd_col};border-radius:3px;padding:2px 8px;}}"
-                f"QPushButton:pressed{{background:{brd_col};color:#8DC63F;}}")
+                f"border:1px solid {brd_col};border-radius:3px;padding:0px 2px;}}"
+                f"QPushButton:hover{{background:{brd_col}40;color:#60B0F0;}}"
+                f"QPushButton:pressed{{background:{brd_col}60;}}")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_p.pressed.connect(lambda: self._start(1))
         self._btn_p.released.connect(self._stop)
         self._btn_m.pressed.connect(lambda: self._start(-1))
         self._btn_m.released.connect(self._stop)
-        row.addWidget(self._btn_p, 1); row.addWidget(self._btn_m, 1)
+        row.addWidget(self._btn_p); row.addWidget(self._btn_m)
         vl.addLayout(row)
 
     def _start(self, d):
@@ -654,68 +715,120 @@ class _RainArc(QWidget):
         import math
         p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
-        p.fillRect(0, 0, W, H, QColor("#0D1520"))  # fond noir/bleu nuit pour rain
-        cx = W // 2; cy = int(H * 0.72)
-        R = min(cx - 8, cy - 4, 48)
-        # Cercle orbite extérieur
-        pen_orb = QPen(QColor("#1A2A3A"), 1, Qt.PenStyle.SolidLine)
-        p.setPen(pen_orb); p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawEllipse(cx-R-6, cy-R-6, (R+6)*2, (R+6)*2)
-        # Arc fond
-        pen_bg = QPen(QColor("#1A2830"), 7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-        p.setPen(pen_bg); p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawArc(cx-R, cy-R, R*2, R*2, 150*16, -300*16)
-        # Arc rempli
+        # ── Fond Audi noir ──
+        bg_grad = QRadialGradient(W/2, H/2, max(W, H)*0.7)
+        bg_grad.setColorAt(0, QColor("#0D0D0F")); bg_grad.setColorAt(1, QColor("#050507"))
+        p.fillRect(0, 0, W, H, QBrush(bg_grad))
+
+        cx = W // 2; cy = int(H * 0.80)
+        R = min(cx - 6, cy - 4, 50)
         pct = self._val / 100.0
+
+        # ── Anneau chromé ──
+        chrome = QLinearGradient(cx-R-5, cy-R-5, cx+R+5, cy+R+5)
+        chrome.setColorAt(0, QColor("#3A3A42")); chrome.setColorAt(0.5, QColor("#888890"))
+        chrome.setColorAt(1, QColor("#2A2A30"))
+        p.setPen(QPen(QBrush(chrome), 1.5)); p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(cx-R-4, cy-R-4, (R+4)*2, (R+4)*2)
+
+        # ── Arc fond ──
+        pen_bg = QPen(QColor("#1A1A22"), 9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        p.setPen(pen_bg); p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawArc(cx-R, cy-R, R*2, R*2, 225*16, -270*16)
+
+        # ── Arc rempli — bleu MMI progressif ──
         if pct > 0:
-            rc = "#1E90FF" if pct < 0.6 else ("#0050DD" if pct < 0.85 else "#3399FF")
-            pen_fill = QPen(QColor(rc), 7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            rc = "#3090E8" if pct < 0.5 else ("#1060C0" if pct < 0.80 else "#0040A0")
+            pen_fill = QPen(QColor(rc), 9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
             p.setPen(pen_fill)
-            p.drawArc(cx-R, cy-R, R*2, R*2, 150*16, int(-300*16*pct))
-        # Cercle intérieur
-        ir = R - 12
+            p.drawArc(cx-R, cy-R, R*2, R*2, 225*16, int(-270*16*pct))
+
+        # ── Graduations ──
+        for i in range(11):
+            a_deg = -225 + 270 * i / 10
+            a_rad = math.radians(a_deg)
+            is_major = (i % 5 == 0) or i == 10
+            outer_r = R + 2
+            inner_r = R - (7 if is_major else 4)
+            x1 = cx + outer_r * math.cos(a_rad); y1 = cy - outer_r * math.sin(a_rad)
+            x2 = cx + inner_r * math.cos(a_rad); y2 = cy - inner_r * math.sin(a_rad)
+            if is_major:
+                tick_col = "#3090E8" if (i / 10 <= pct) else "#404048"
+                p.setPen(QPen(QColor(tick_col), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            else:
+                tick_col = "#2060A8" if (i / 10 <= pct) else "#252530"
+                p.setPen(QPen(QColor(tick_col), 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawLine(int(x1), int(y1), int(x2), int(y2))
+
+        # ── Cercle intérieur sombre ──
+        ir = R - 13
         glow = QRadialGradient(cx, cy, ir)
-        glow.setColorAt(0, QColor(0, 30, 55) if pct > 0 else QColor(20, 25, 32))
-        glow.setColorAt(1, QColor(5, 15, 25) if pct > 0 else QColor(15, 18, 22))
-        p.setBrush(QBrush(glow)); p.setPen(QPen(QColor("#0A1520"), 1))
+        glow.setColorAt(0, QColor("#0C1018")); glow.setColorAt(1, QColor("#060810"))
+        p.setBrush(QBrush(glow)); p.setPen(QPen(QColor("#10182A"), 1))
         p.drawEllipse(cx-ir, cy-ir, ir*2, ir*2)
-        # Goutte d'eau
-        ds = int(ir * 0.52)
-        dc = QColor("#1E90FF") if pct > 0 else QColor("#334455")
+
+        # ── Goutte d'eau style Audi ──
+        ds = int(ir * 0.46)
+        dc = QColor("#3090E8") if pct > 0 else QColor("#20304A")
         drop = QPainterPath()
         drop.moveTo(cx, cy - ds)
-        drop.cubicTo(cx + ds*0.55, cy - ds*0.25, cx + ds*0.55, cy + ds*0.38, cx, cy + ds*0.55)
-        drop.cubicTo(cx - ds*0.55, cy + ds*0.38, cx - ds*0.55, cy - ds*0.25, cx, cy - ds)
-        dg = QRadialGradient(cx - ds*0.2, cy - ds*0.2, ds*0.9)
-        dg.setColorAt(0, dc.lighter(170)); dg.setColorAt(1, dc.darker(120))
-        p.setBrush(QBrush(dg)); p.setPen(QPen(dc.darker(140), 1))
+        drop.cubicTo(cx + ds*0.55, cy - ds*0.2, cx + ds*0.55, cy + ds*0.4, cx, cy + ds*0.52)
+        drop.cubicTo(cx - ds*0.55, cy + ds*0.4, cx - ds*0.55, cy - ds*0.2, cx, cy - ds)
+        dg = QRadialGradient(cx - ds*0.25, cy - ds*0.25, ds*0.85)
+        dg.setColorAt(0, QColor("#90C8F0") if pct > 0 else QColor("#2A3A50"))
+        dg.setColorAt(0.5, dc); dg.setColorAt(1, dc.darker(150))
+        p.setBrush(QBrush(dg)); p.setPen(QPen(dc.darker(180), 1))
         p.drawPath(drop)
-        # Valeur — bleu clair lisible sur fond noir
-        p.setFont(QFont(FONT_MONO, 10, QFont.Weight.Bold))
-        p.setPen(QPen(QColor("#4DB8FF")))
-        p.drawText(cx-20, cy-8, 40, 18, Qt.AlignmentFlag.AlignCenter, f"{self._val}")
-        p.setFont(QFont(FONT_MONO, 7))
-        p.setPen(QPen(QColor(W_TEXT_DIM)))
-        p.drawText(cx-16, cy+9, 32, 12, Qt.AlignmentFlag.AlignCenter, "%")
+
+        # ── Aiguille rouge Audi ──
+        angle_deg = -225 + 270 * pct
+        angle_r = math.radians(angle_deg)
+        nx = cx + (R - 8) * math.cos(angle_r)
+        ny = cy - (R - 8) * math.sin(angle_r)
+        bx = cx - 8 * math.cos(angle_r)
+        by = cy + 8 * math.sin(angle_r)
+        # Halo
+        p.setPen(QPen(QColor("#FF202040"), 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(int(bx), int(by), int(nx), int(ny))
+        # Aiguille
+        p.setPen(QPen(QColor("#FF2020"), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(int(bx), int(by), int(nx), int(ny))
+        # Pivot chromé
+        grad_c = QRadialGradient(cx, cy, 5)
+        grad_c.setColorAt(0, QColor("#C0C0CC")); grad_c.setColorAt(0.5, QColor("#707080"))
+        grad_c.setColorAt(1, QColor("#202028"))
+        p.setBrush(QBrush(grad_c)); p.setPen(QPen(QColor("#90909860"), 1))
+        p.drawEllipse(cx-4, cy-4, 8, 8)
+
+        # ── Valeur numérique ──
+        p.setFont(QFont(FONT_MONO, 12, QFont.Weight.Bold))
+        p.setPen(QPen(QColor("#F0F0FF")))
+        p.drawText(cx-22, cy-ir+2, 44, 18, Qt.AlignmentFlag.AlignCenter, f"{self._val}")
+        p.setFont(QFont(FONT_MONO, 6))
+        p.setPen(QPen(QColor("#606070")))
+        p.drawText(cx-14, cy-ir+19, 28, 10, Qt.AlignmentFlag.AlignCenter, "%")
 
 
 class IgnitionToggle(QWidget):
     changed = Signal(str)
     STATES  = ["OFF", "ACC", "ON"]
+    # Couleurs Audi MMI : OFF=gris, ACC=ambre, ON=rouge lumineux
     COLORS  = {
-        "OFF": ("#9AA3AF", W_PANEL3),   # gris clair visible
-        "ACC": (A_ORANGE,  A_ORANGE_BG),
-        "ON":  ("#39FF14", "#0A2000"),  # vert fluo sur fond noir
+        "OFF": ("#9090A0", "#18181E", "#50505A"),
+        "ACC": ("#E8A020", "#2A1A00", "#C08010"),
+        "ON":  ("#FF3020", "#2A0800", "#D02010"),
     }
+    ICONS = {"OFF": "○", "ACC": "◑", "ON": "●"}
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._s = "OFF"
-        lay = QHBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(3)
+        lay = QHBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(4)
         self._btns: dict[str, QPushButton] = {}
         for s in self.STATES:
-            b = QPushButton(s); b.setFixedHeight(22)
-            b.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
+            b = QPushButton(f"{self.ICONS[s]}  {s}")
+            b.setFixedHeight(26)
+            b.setFont(QFont(FONT_MONO, 8, QFont.Weight.Bold))
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(lambda _, st=s: self._sel(st))
             lay.addWidget(b); self._btns[s] = b
@@ -726,18 +839,20 @@ class IgnitionToggle(QWidget):
 
     def _refresh(self) -> None:
         for s, b in self._btns.items():
-            fg, bg = self.COLORS[s]
+            fg, bg, brd = self.COLORS[s]
             if s == self._s:
                 b.setStyleSheet(
                     f"QPushButton{{background:{bg};color:{fg};"
                     f"border:1.5px solid {fg};"
-                    f"border-radius:2px;padding:2px 10px;font-weight:bold;}}")
+                    f"border-radius:3px;padding:2px 6px;font-weight:bold;"
+                    f"letter-spacing:1px;}}"
+                    f"QPushButton:hover{{background:{brd}30;color:{fg};}}")
             else:
-                # Inactif : gris moyen lisible
                 b.setStyleSheet(
-                    f"QPushButton{{background:#C8C8C8;color:#505050;"
-                    f"border:1px solid #A0A0A0;border-radius:2px;padding:2px 10px;}}"
-                    f"QPushButton:hover{{background:#D8D8D8;color:#303030;}}")
+                    f"QPushButton{{background:#141418;color:#404050;"
+                    f"border:1px solid #303038;border-radius:3px;padding:2px 6px;}}"
+                    f"QPushButton:hover{{background:#1E1E26;color:#707080;"
+                    f"border-color:#505060;}}")
 
     def get(self) -> str: return self._s
 
@@ -753,13 +868,13 @@ class VehicleRainPanel(QWidget):
         self._sensor_ok = True
         self._tx        = 0
         self._pump_ref  = None   # référence PumpPanel pour sync rain gauge
-        self.setStyleSheet(f"background:{W_BG};")
+        self.setStyleSheet("background:#08080C;")
         self._build()
 
     def _build(self) -> None:
         scroll = QScrollArea(self); scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(f"QScrollArea{{border:none;background:{W_BG};}}")
-        c = QWidget(); c.setStyleSheet(f"background:{W_BG};"); scroll.setWidget(c)
+        scroll.setStyleSheet("QScrollArea{border:none;background:#08080C;}")
+        c = QWidget(); c.setStyleSheet("background:#08080C;"); scroll.setWidget(c)
         vl = QVBoxLayout(self); vl.setContentsMargins(0, 0, 0, 0); vl.addWidget(scroll)
         root = QVBoxLayout(c); root.setContentsMargins(5, 3, 5, 3); root.setSpacing(3)
 
@@ -810,15 +925,33 @@ class VehicleRainPanel(QWidget):
         self.sld_rain = self._rain_knob
         pan_r.body().addWidget(self._rain_knob)
         pan_r.body().addWidget(_hsep())
-        pan_r.body().addWidget(_lbl("SENSOR\nSTATUS", 9, True, W_TEXT_DIM))
+        pan_r.body().addWidget(_lbl("SENSOR STATUS", 9, True, W_TEXT_DIM))
 
-        rs = QHBoxLayout(); rs.setSpacing(2)
-        self._led_sens = StatusLed(8); self._led_sens.set_state(True, A_GREEN)
-        self.lbl_sens  = _lbl("OK", 8, True, A_GREEN)
-        self.btn_sens  = _cd_btn("SIMULATE\nERROR", A_RED, h=5)
+        rs = QHBoxLayout(); rs.setSpacing(6)
+        self._led_sens = StatusLed(8); self._led_sens.set_state(True, A_GREEN)  # kept for logic only, not in layout
+        # Badge statut style Audi MMI
+        self.lbl_sens = QPushButton("● OK")
+        self.lbl_sens.setEnabled(False)
+        self.lbl_sens.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
+        self.lbl_sens.setFixedHeight(24)
+        self.lbl_sens.setStyleSheet(
+            "QPushButton{background:#0A1E0A;color:#40C040;"
+            "border:1.5px solid #306030;border-radius:3px;padding:1px 8px;"
+            "letter-spacing:1px;}")
+        # Bouton simulation
+        self.btn_sens = QPushButton("⚠ SIMULATE ERR")
+        self.btn_sens.setFont(QFont(FONT_MONO, 7, QFont.Weight.Bold))
+        self.btn_sens.setFixedHeight(24)
+        self.btn_sens.setStyleSheet(
+            "QPushButton{background:#1E0808;color:#C04040;"
+            "border:1px solid #803030;border-radius:3px;padding:1px 6px;}"
+            "QPushButton:hover{background:#2A0C0C;color:#E05050;"
+            "border-color:#A04040;}"
+            "QPushButton:pressed{background:#FF202020;}")
+        self.btn_sens.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_sens.clicked.connect(self._toggle_sens)
-        rs.addWidget(self._led_sens); rs.addWidget(self.lbl_sens)
-        rs.addStretch(); rs.addWidget(self.btn_sens)
+        rs.addWidget(self.lbl_sens, 1)
+        rs.addWidget(self.btn_sens, 1)
         pan_r.body().addLayout(rs); pan_r.body().addStretch()
         main_row.addWidget(pan_r, 3)
         root.addLayout(main_row)
@@ -893,14 +1026,32 @@ class VehicleRainPanel(QWidget):
         self._sensor_ok = not self._sensor_ok
         if self._sensor_ok:
             self._led_sens.set_state(True, A_GREEN)
-            self.lbl_sens.setText("OK")
-            self.lbl_sens.setStyleSheet(f"color:{A_GREEN};font-weight:bold;background:transparent;")
-            self.btn_sens.setText("SIMULATE\nERR")
+            self.lbl_sens.setText("● OK")
+            self.lbl_sens.setStyleSheet(
+                "QPushButton{background:#0A1E0A;color:#40C040;"
+                "border:1.5px solid #306030;border-radius:3px;padding:1px 8px;"
+                "letter-spacing:1px;}")
+            self.btn_sens.setText("⚠ SIMULATE ERR")
+            self.btn_sens.setStyleSheet(
+                "QPushButton{background:#1E0808;color:#C04040;"
+                "border:1px solid #803030;border-radius:3px;padding:1px 6px;}"
+                "QPushButton:hover{background:#2A0C0C;color:#E05050;"
+                "border-color:#A04040;}"
+                "QPushButton:pressed{background:#FF202020;}")
         else:
             self._led_sens.set_state(True, A_RED)
-            self.lbl_sens.setText("ERROR")
-            self.lbl_sens.setStyleSheet(f"color:{A_RED};font-weight:bold;background:transparent;")
-            self.btn_sens.setText("RESTORE\nOK")
+            self.lbl_sens.setText("⚠ ERROR")
+            self.lbl_sens.setStyleSheet(
+                "QPushButton{background:#200808;color:#FF4040;"
+                "border:1.5px solid #A02020;border-radius:3px;padding:1px 8px;"
+                "letter-spacing:1px;}")
+            self.btn_sens.setText("✓ RESTORE OK")
+            self.btn_sens.setStyleSheet(
+                "QPushButton{background:#0A1A0A;color:#40A040;"
+                "border:1px solid #306030;border-radius:3px;padding:1px 6px;}"
+                "QPushButton:hover{background:#0C220C;color:#50C050;"
+                "border-color:#408040;}"
+                "QPushButton:pressed{background:#20FF2020;}")
         self._sr()
 
     # ── Envoi JSON ───────────────────────────────────────────
@@ -965,11 +1116,9 @@ class LINOscilloscope(QWidget):
         W, H = self.width(), self.height(); now = time.time()
         # Fond avec reflet vert KPIT (même style que car_simulator.html)
         bg = QLinearGradient(0, 0, W, H)
-        bg.setColorAt(0, QColor("#FFFFFF")); bg.setColorAt(0.5, QColor("#F5FFF0")); bg.setColorAt(1, QColor("#EBF9E0"))
+        bg.setColorAt(0, QColor("#FFFFFF")); bg.setColorAt(0.5, QColor("#F8FAFC")); bg.setColorAt(1, QColor("#F1F5F9"))
         p.fillRect(0, 0, W, H, QBrush(bg))
-        glow = QRadialGradient(W * 0.5, H * 0.55, min(W, H) * 0.65)
-        glow.setColorAt(0, QColor(141, 198, 63, 35)); glow.setColorAt(1, QColor(141, 198, 63, 0))
-        p.fillRect(0, 0, W, H, QBrush(glow))
+        # no color overlay — fond blanc pur
         ML, MR, MT, MB = 44, 10, 8, 26
         cw = W - ML - MR; ch = H - MT - MB
         if cw < 10 or ch < 10: return
@@ -1352,7 +1501,7 @@ class CRSLINPanel(QWidget):
     def _make_op_btn(self, op: int) -> QFrame:
         d = WOP[op]; f = QFrame(); f.setMinimumHeight(50); f.setFixedHeight(50)
         f.setStyleSheet(
-            f"QFrame{{background:{W_PANEL2};border:1px solid {W_BORDER};border-radius:3px;}}"
+            f"QFrame{{background:{W_PANEL2};border:1.5px solid #CBD5E1;border-radius:6px;}}"
             f"QFrame:hover{{background:{W_PANEL};border-color:{d['color']};border-width:2px;}}")
         f.setCursor(Qt.CursorShape.PointingHandCursor)
         lay = QHBoxLayout(f); lay.setContentsMargins(8, 4, 10, 4); lay.setSpacing(8)
@@ -1364,7 +1513,7 @@ class CRSLINPanel(QWidget):
             f"border:1px solid {d['color']};padding:3px 4px;border-radius:3px;font-weight:bold;")
         info = QVBoxLayout(); info.setSpacing(1)
         nm = _lbl(d["label"], 11, True, W_TEXT)
-        ds = _lbl(d["desc"],   9, False, W_TEXT_DIM)
+        ds = _lbl(d["desc"],   7, False, W_TEXT_DIM)
         info.addWidget(nm); info.addWidget(ds)
         led = StatusLed(10)
         lay.addWidget(hex_l); lay.addLayout(info, 1); lay.addWidget(led)
@@ -1386,7 +1535,7 @@ class CRSLINPanel(QWidget):
             if o == op:
                 btn.setStyleSheet(
                     f"QFrame{{background:{W_PANEL};"
-                    f"border:1.5px solid {d['color']};border-left:3px solid {d['color']};"
+                    f"border:1.5px solid #CBD5E1;border-left:4px solid {d['color']};"
                     f"border-radius:2px;}}")
                 btn._nm.setStyleSheet(f"color:{d['color']};font-weight:bold;background:transparent;")   # type: ignore[attr-defined]
                 btn._led.set_state(True, d["color"])
@@ -1395,7 +1544,7 @@ class CRSLINPanel(QWidget):
                     f"border:1px solid {d['color']};padding:3px 4px;border-radius:3px;font-weight:bold;")
             else:
                 btn.setStyleSheet(
-                    f"QFrame{{background:{W_PANEL2};border:1px solid {W_BORDER};border-radius:2px;}}"
+                    f"QFrame{{background:{W_PANEL2};border:1.5px solid #CBD5E1;border-radius:4px;}}"
                     f"QFrame:hover{{background:{W_PANEL};border-color:{c};}}")
                 btn._nm.setStyleSheet(f"color:{W_TEXT};font-weight:bold;background:transparent;")   # type: ignore[attr-defined]
                 btn._led.set_state(False)
@@ -1618,7 +1767,7 @@ class CRSLINPanel(QWidget):
                     w.writerow(row)
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(self, "Export LIN CSV",
-                                    f"✓ Fichier exporté :\n{path}")
+                                    f"✓ File exported:\n{path}")
         except Exception as e:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Export LIN CSV", f"Erreur export :\n{e}")
@@ -1724,11 +1873,9 @@ class CANOscilloscope(QWidget):
         now = time.time()
         # Fond avec reflet vert KPIT
         bg = QLinearGradient(0, 0, W, H)
-        bg.setColorAt(0, QColor("#FFFFFF")); bg.setColorAt(0.5, QColor("#F5FFF0")); bg.setColorAt(1, QColor("#EBF9E0"))
+        bg.setColorAt(0, QColor("#FFFFFF")); bg.setColorAt(0.5, QColor("#F8FAFC")); bg.setColorAt(1, QColor("#F1F5F9"))
         p.fillRect(0, 0, W, H, QBrush(bg))
-        glow = QRadialGradient(W * 0.5, H * 0.55, min(W, H) * 0.65)
-        glow.setColorAt(0, QColor(141, 198, 63, 35)); glow.setColorAt(1, QColor(141, 198, 63, 0))
-        p.fillRect(0, 0, W, H, QBrush(glow))
+        # no color overlay — fond blanc pur
 
         ML, MR, MT, MB = 6, 10, 6, 20
         cw = W - ML - MR; ch = H - MT - MB
@@ -2038,28 +2185,11 @@ class CANBusPanel(QWidget):
             pan_cmd.body().addLayout(row)
         pan_cmd.body().addWidget(_hsep())
         pan_cmd.body().addWidget(_lbl("WiperOp", 10, True, W_TEXT_DIM))
-        self._wc_op_btns: dict[int, QFrame] = {}
-        for op in range(8):
-            d   = WOP[op]
-            frm = QFrame(); frm.setMinimumHeight(36); frm.setFixedHeight(36)
-            frm.setStyleSheet(
-                f"QFrame{{background:{W_PANEL2};border:1px solid {W_BORDER};border-radius:3px;}}"
-                f"QFrame:hover{{background:{W_PANEL};border-color:{d['color']};border-width:2px;}}")
-            fl  = QHBoxLayout(frm); fl.setContentsMargins(6, 3, 8, 3); fl.setSpacing(6)
-            hex_l = _lbl(f"0x{op:02X}", 9, True, "#FFFFFF", True); hex_l.setFixedWidth(34)
-            hex_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            hex_l.setStyleSheet(
-                f"color:#FFFFFF;background:{d['color']};"
-                f"border:1px solid {d['color']};padding:2px 3px;border-radius:2px;font-weight:bold;")
-            info = QVBoxLayout(); info.setSpacing(0)
-            nm   = _lbl(d["label"], 9, True, W_TEXT)
-            ds   = _lbl(d["desc"],  8, False, W_TEXT_DIM)
-            info.addWidget(nm); info.addWidget(ds)
-            led = StatusLed(7)
-            fl.addWidget(hex_l); fl.addLayout(info, 1); fl.addWidget(led)
-            frm._nm  = nm; frm._led = led; frm._hex = hex_l  # type: ignore[attr-defined]
-            pan_cmd.body().addWidget(frm)
-            self._wc_op_btns[op] = frm
+        # ── Comodo 3D read-only (affichage CAN, pas d'interaction) ────────
+        self._wc_op_btns: dict[int, QFrame] = {}   # conservé vide pour compat backend
+        self._comodo_widget = CarComodo3DReadOnly()
+        self._comodo_widget.setFixedSize(302, 350)
+        pan_cmd.body().addWidget(self._comodo_widget)
         pan_cmd.body().addStretch()
         # 0x200 prend stretch=7 (large)
         lay.addWidget(pan_cmd, 7)
@@ -2359,7 +2489,7 @@ class CANBusPanel(QWidget):
                     ])
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(self, "Export CAN CSV",
-                                    f"✓ Fichier exporté :\n{path}")
+                                    f"✓ File exported:\n{path}")
         except Exception as e:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Export CAN CSV", f"Erreur export :\n{e}")
@@ -2380,22 +2510,13 @@ class CANBusPanel(QWidget):
             if hasattr(self, lbl_attr):
                 getattr(self, lbl_attr).setText(str(self._cnt[cid]))
 
-        # Mise à jour WC tab + émission Wiper_Ack
+        # Mise à jour WC tab
+        # NOTE architectural : 0x202 n'est plus construit ici.
+        # Il est émis directement par bcmcan.py (_build_0x202_from_state)
+        # depuis l'état interne du WC simulateur, sans dépendance à _last_201.
         if cid == 0x200:
             self._last_200 = ev
             self._update_wc_cmd(ev)
-            # Dès réception d'un 0x200 valide → émettre 0x202 en réponse
-            f    = ev.get("fields", {})
-            alive = f.get("alive", 0)
-            if isinstance(alive, int):
-                # Fault réel issu de la dernière trame 0x201 (Wiper_Status)
-                # Cas 0 fault : AckStatus=0, ErrorCode=0
-                # Cas 1 fault : AckStatus=1, ErrorCode=1
-                # AliveCounter = même valeur que reçue dans 0x200
-                fault      = bool(self._last_201.get("fields", {}).get("fault", False))
-                ack_status = 1 if fault else 0
-                error_code = 1 if fault else 0
-                self.ack_needed.emit(ack_status, error_code, alive)
         elif cid == 0x201:
             self._last_201 = ev
             self._update_wc_sta(ev)
@@ -2484,30 +2605,9 @@ class CANBusPanel(QWidget):
         self._cmd_widgets["crc_ok"].setStyleSheet(
             f"color:{crc_color};font-weight:bold;background:transparent;")
 
-        # Highlight op button
-        for op, btn in self._wc_op_btns.items():
-            if op == mode:
-                d = WOP[op]
-                btn.setStyleSheet(
-                    f"QFrame{{background:{W_PANEL};"
-                    f"border:1.5px solid {d['color']};border-left:3px solid {d['color']};"
-                    f"border-radius:2px;}}")
-                btn._nm.setStyleSheet(f"color:{d['color']};font-weight:bold;background:transparent;")  # type: ignore
-                btn._led.set_state(True, d["color"])  # type: ignore
-                if hasattr(btn, '_hex'):
-                    btn._hex.setStyleSheet(  # type: ignore
-                        f"color:#FFFFFF;background:{d['color']};"
-                        f"border:1px solid {d['color']};padding:2px 3px;border-radius:2px;font-weight:bold;")
-            else:
-                c2 = WOP[op]['color']
-                btn.setStyleSheet(
-                    f"QFrame{{background:{W_PANEL2};border:1px solid {W_BORDER};border-radius:2px;}}")
-                btn._nm.setStyleSheet(f"color:{W_TEXT};font-weight:bold;background:transparent;")  # type: ignore
-                btn._led.set_state(False)  # type: ignore
-                if hasattr(btn, '_hex'):
-                    btn._hex.setStyleSheet(  # type: ignore
-                        f"color:#FFFFFF;background:{c2};"
-                        f"border:1px solid {c2};padding:2px 3px;border-radius:2px;font-weight:bold;")
+        # Piloter le comodo 3D read-only (affichage CAN)
+        if hasattr(self, "_comodo_widget"):
+            self._comodo_widget.set_op(mode)
 
         # Sync voiture HTML (si disponible)
         if getattr(self, "_car_html", None):
@@ -2553,6 +2653,17 @@ class CANBusPanel(QWidget):
         self.lbl_can_status.setText(msg.upper())
         self.lbl_can_status.setStyleSheet(
             f"color:{A_GREEN if ok else A_RED};background:transparent;")
+
+    def reset_wc_state(self) -> None:
+        """
+        Réinitialise l'état interne WC entre deux tests.
+        Remet _last_201 à {} pour que panels.py ne calcule pas
+        mode_mismatch ni FaultStatus à partir d'une trame résiduelle
+        du test précédent lors de la 1ère réception de 0x200.
+        Appelé par TestRunner au début du setup de chaque test ERR0x.
+        """
+        self._last_201 = {}
+        self._last_200 = {}
 
     def set_car_widget(self, w) -> None:
         """Reçoit la référence au CarHTMLWidget central (appelé depuis main_window)."""

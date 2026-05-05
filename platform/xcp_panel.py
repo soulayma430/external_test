@@ -60,16 +60,15 @@ from collections import deque
 from typing import Any
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QFrame, QScrollArea,
     QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit,
-    QSizePolicy, QMessageBox, QFileDialog, QCheckBox,
-    QToolButton,
+    QSizePolicy, QMessageBox, QFileDialog, QSlider,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QObject, QPointF
+from PySide6.QtCore import Qt, Signal, QTimer, QObject, QPointF, QRectF
 from PySide6.QtGui  import (
     QColor, QFont, QPainter, QPen, QBrush,
-    QPainterPath, QLinearGradient,
+    QPainterPath, QLinearGradient, QRadialGradient, QConicalGradient,
 )
 
 from constants import (
@@ -77,36 +76,35 @@ from constants import (
     W_BG, W_PANEL, W_PANEL2, W_TOOLBAR, W_TITLEBAR,
     W_BORDER, W_TEXT, W_TEXT_DIM, W_TEXT_HDR,
     KPIT_GREEN, KPIT_GREEN, KPIT_GREEN, KPIT_GREEN,
+    A_TEAL, A_TEAL2, A_ORANGE,
 )
 from xcp_master import XCPMaster, XCPError
 
 # Palette locale
-_C_BG      = W_BG
-_C_SURF    = W_PANEL
-_C_TEXT    = W_TEXT
-_C_DIM     = W_TEXT_DIM
-_C_GREEN   = "#2E7003"
-_C_GREEN   = KPIT_GREEN
-_C_GREEN     = KPIT_GREEN
-_C_GREEN    = KPIT_GREEN
+_C_BG      = "#0A100A"          # fond très sombre vert-noir
+_C_SURF    = "#0F180F"          # surface carte
+_C_SURF2   = "#141E14"          # surface alternate
+_C_TEXT    = "#C8E8C0"          # texte principal
+_C_DIM     = "#5A7A5A"          # texte dim
+_C_GREEN   = KPIT_GREEN         # #8DC63F
 _C_KPIT    = KPIT_GREEN
 
-# Couleur par catégorie
+# Palette par catégorie — chaque catégorie a sa propre couleur accent
 _CAT = {
-    "TIMING":     {"hdr": "#2E7003", "bg": "#E8F5E0", "plot": "#2E7003"},
-    "PUMP":       {"hdr": "#1A4A0A", "bg": "#E8F5E0", "plot": "#2E7003"},
-    "WASH":       {"hdr": "#2E7003", "bg": "#E8F5E0", "plot": "#2E7003"},
-    "RAIN":       {"hdr": "#2E7003", "bg": "#E8F5E0", "plot": "#2E7003"},
-    "PROTECTION": {"hdr": "#2E7003", "bg": "#E8F5E0", "plot": "#2E7003"},
-    "WATCHDOG":   {"hdr": "#2E7003", "bg": "#E8F5E0", "plot": "#2E7003"},
+    "TIMING":     {"hdr": "#8DC63F", "bg": "#0F180F", "plot": "#8DC63F",  "accent": "#8DC63F"},
+    "PUMP":       {"hdr": "#00C8FF", "bg": "#0A1520", "plot": "#00C8FF",  "accent": "#00C8FF"},
+    "WASH":       {"hdr": "#00E5CC", "bg": "#0A1A18", "plot": "#00E5CC",  "accent": "#00E5CC"},
+    "RAIN":       {"hdr": "#4FC3F7", "bg": "#0A1520", "plot": "#4FC3F7",  "accent": "#4FC3F7"},
+    "PROTECTION": {"hdr": "#FF6B35", "bg": "#1A0F0A", "plot": "#FF6B35",  "accent": "#FF6B35"},
+    "WATCHDOG":   {"hdr": "#FFB830", "bg": "#1A1400", "plot": "#FFB830",  "accent": "#FFB830"},
 }
 _CAT_DEFAULT = _CAT["TIMING"]
 
-# Couleurs oscilloscope (une par paramètre, jusqu'à 14)
+# Palette oscilloscope — couleurs vives distinctes
 _PLOT_PALETTE = [
-    "#2E7003", "#2E7003", "#2E7003", "#2E7003", "#2E7003",
-    "#2E7003", "#2E7003", "#4CAF50", "#2E7003", "#2E7003",
-    "#2E7003", "#2E7003", "#8DC63F", "#4CAF50",
+    "#8DC63F", "#00C8FF", "#FF6B35", "#FFB830", "#00E5CC",
+    "#E040FB", "#4FC3F7", "#69F0AE", "#FF4081", "#FFEB3B",
+    "#F48FB1", "#80DEEA", "#CCFF90", "#FF8A65",
 ]
 
 # Mapping catégories (fallback statique)
@@ -141,6 +139,70 @@ else:
 
 
 # XCPBridge — pont thread-safe -> signaux Qt
+# ══════════════════════════════════════════════════════════════
+#  HELPER — boîtes de dialogue claires et professionnelles
+# ══════════════════════════════════════════════════════════════
+_DIALOG_STYLE = """
+QMessageBox, QInputDialog {
+    background-color: #FFFFFF;
+    color: #1A1A1A;
+}
+QMessageBox QLabel, QInputDialog QLabel {
+    color: #1A1A1A;
+    background-color: transparent;
+    font-size: 13px;
+}
+QMessageBox QPushButton, QInputDialog QPushButton {
+    background-color: #F0F0F0;
+    color: #1A1A1A;
+    border: 1px solid #BDBDBD;
+    border-radius: 4px;
+    padding: 5px 18px;
+    min-width: 72px;
+    font-size: 12px;
+}
+QMessageBox QPushButton:hover, QInputDialog QPushButton:hover {
+    background-color: #F8FAFC;
+    border-color: #8DC63F;
+    color: #1A1A1A;
+}
+QMessageBox QPushButton:default, QInputDialog QPushButton:default {
+    background-color: #8DC63F;
+    color: #FFFFFF;
+    border-color: #6AAF2A;
+}
+QMessageBox QPushButton:default:hover, QInputDialog QPushButton:default:hover {
+    background-color: #7ABB30;
+}
+QInputDialog QLineEdit {
+    background-color: #F5F5F5;
+    color: #1A1A1A;
+    border: 1px solid #BDBDBD;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 13px;
+}
+QInputDialog QLineEdit:focus {
+    border-color: #8DC63F;
+}
+"""
+
+def _apply_light_style(dlg) -> None:
+    """Applique un style clair et professionnel à un QMessageBox ou QInputDialog."""
+    dlg.setStyleSheet(_DIALOG_STYLE)
+
+
+def _ask(parent, title: str, text: str) -> bool:
+    """QMessageBox.question stylé clair — retourne True si l'utilisateur clique Oui."""
+    mb = QMessageBox(parent)
+    mb.setWindowTitle(title)
+    mb.setText(text)
+    mb.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    mb.setDefaultButton(QMessageBox.StandardButton.Yes)
+    _apply_light_style(mb)
+    return mb.exec() == QMessageBox.StandardButton.Yes
+
+
 class XCPBridge(QObject):
     response_received = Signal(str, str, object, object)
     get_a2l_err       = Signal(str)
@@ -150,232 +212,155 @@ class XCPBridge(QObject):
     poll_values       = Signal(object)
 
 
-# DeltaArc — jauge arc déviation
-class DeltaArc(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._pct   = 0.0
-        self._color = _C_GREEN
-        self.setFixedSize(40, 40)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
-    def set_deviation(self, default_val, current_val, warn_pct=25):
-        if default_val is None or current_val is None or default_val == 0:
-            self._pct = 0.0; self._color = _C_GREEN
-        else:
-            ratio = (current_val - default_val) / abs(default_val)
-            self._pct = max(-1.0, min(1.0, ratio))
-            thresh    = warn_pct / 100
-            if abs(self._pct) < thresh * 0.5: self._color = _C_GREEN
-            elif abs(self._pct) < thresh:      self._color = _C_GREEN
-            else:                              self._color = _C_GREEN
-        self.update()
+# ═══════════════════════════════════════════════════════════════════════
+#  XCPParamTile — tuile instrument carrée (nouveau design)
+#  Remplace DeltaArc + PendingBadge + XCPParamCard + XCPOscilloscope
+# ═══════════════════════════════════════════════════════════════════════
 
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        W, H = self.width(), self.height()
-        cx, cy, r = W//2, H//2, min(W, H)//2 - 3
-        p.setPen(QPen(QColor("#CCCCCC"), 1.2))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawEllipse(cx-r, cy-r, r*2, r*2)
-        if abs(self._pct) > 0.005:
-            p.setPen(QPen(QColor(self._color), 3.5,
-                          Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            p.drawArc(cx-r, cy-r, r*2, r*2, 90*16, int(-self._pct*180*16))
-        pct = int(abs(self._pct)*100)
-        sgn = "+" if self._pct > 0.005 else ("-" if self._pct < -0.005 else "")
-        txt = f"{sgn}{pct}%" if pct > 0 else "DEF"
-        p.setPen(QColor(self._color))
-        p.setFont(QFont(FONT_MONO, 7, QFont.Weight.Bold))
-        p.drawText(0, 0, W, H, Qt.AlignmentFlag.AlignCenter, txt)
-
-
-# PendingBadge — badge animé "PENDING" (dirty indicator)
-class PendingBadge(QLabel):
-    """Badge amber pulsant affiché quand spin != BCM live."""
-
-    def __init__(self, parent=None):
-        super().__init__(" PENDING ", parent)
-        self.setFont(QFont(FONT_MONO, 7, QFont.Weight.Bold))
-        self._visible_state = False
-        self._pulse = False
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._blink)
-        self._timer.setInterval(700)
-        self.hide()
-
-    def set_pending(self, on: bool):
-        if on == self._visible_state:
-            return
-        self._visible_state = on
-        if on:
-            self.show()
-            self._timer.start()
-        else:
-            self._timer.stop()
-            self.hide()
-
-    def _blink(self):
-        self._pulse = not self._pulse
-        alpha = "FF" if self._pulse else "AA"
-        self.setStyleSheet(
-            f"color:#{alpha}6600; background:#E8F5E0;"
-            f"border:1px solid {_C_GREEN}; border-radius:3px; padding:1px 4px;"
-        )
-
-
-# XCPParamCard — carte paramètre (dirty + oscillo checkbox)
-class XCPParamCard(QFrame):
+class XCPParamTile(QWidget):
+    """
+    Tuile carrée style ControlDesk — chaque paramètre = une tuile.
+    Centre : jauge arc radiale + valeur live.
+    Bas    : slider + boutons DL / Reset.
+    Design : fond vert KPIT, contour noir 2px, accent par catégorie.
+    """
     download_requested = Signal(str, object)
-    plot_toggled       = Signal(str, bool, str)   # key, checked, plot_color
-    dirty_changed      = Signal(str, bool)         # key, is_dirty
+    dirty_changed      = Signal(str, bool)
 
-    def __init__(self, key: str, meta: dict, plot_color: str = "#2E7003",
-                 parent=None):
+    _TILE_W = 200   # largeur minimale
+    _TILE_H = 230   # hauteur fixe
+
+    def __init__(self, key: str, meta: dict, parent=None):
         super().__init__(parent)
         self._key       = key
         self._meta      = meta
         self._live_val  = meta["default"]
-        self._plot_col  = plot_color
         self._is_dirty  = False
+        self._pulse     = 0.0
+        self._pulse_dir = 1
+        self._anim_val  = float(meta["default"])  # valeur animée pour la jauge
 
         cat   = meta.get("category") or _PARAM_CAT.get(key, "TIMING")
-        theme = _CAT.get(cat, _CAT_DEFAULT)
+        self._theme = _CAT.get(cat, _CAT_DEFAULT)
+        self._accent = QColor(self._theme["accent"])
+        self._cat    = cat
 
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        self._base_style = (
-            f"XCPParamCard {{"
-            f"  background:{theme['bg']};"
-            f"  border:1px solid #CCC;"
-            f"  border-left:4px solid {theme['hdr']};"
-            f"  border-radius:4px;"
-            f"}}"
-        )
-        self.setStyleSheet(self._base_style)
+        self.setMinimumSize(self._TILE_W, self._TILE_H)
+        self.setFixedHeight(self._TILE_H)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setStyleSheet("background:transparent;")
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(8, 6, 8, 6)
-        lay.setSpacing(8)
+        # Timer animation pulse dirty + jauge
+        self._t = QTimer(self)
+        self._t.timeout.connect(self._tick)
+        self._t.start(40)
 
-        # Oscillo checkbox
-        self._plot_cb = QCheckBox()
-        self._plot_cb.setToolTip("Tracer dans l'oscilloscope")
-        self._plot_cb.setFixedSize(18, 18)
-        self._plot_cb.setStyleSheet(
-            f"QCheckBox::indicator {{ width:14px; height:14px; }}"
-            f"QCheckBox::indicator:checked {{ background:{plot_color}; "
-            f"border:2px solid {plot_color}; border-radius:2px; }}"
-            f"QCheckBox::indicator:unchecked {{ background:#EEE; "
-            f"border:1px solid #BBB; border-radius:2px; }}"
-        )
-        self._plot_cb.stateChanged.connect(
-            lambda s: self.plot_toggled.emit(
-                self._key, s == Qt.CheckState.Checked.value, self._plot_col
-            )
-        )
-        lay.addWidget(self._plot_cb)
-
-        # Arc gauge
-        self._gauge = DeltaArc()
-        lay.addWidget(self._gauge)
-
-        # Info colonne
-        info = QVBoxLayout(); info.setSpacing(2)
-
-        name_row = QHBoxLayout(); name_row.setSpacing(6)
-        name_lbl = QLabel(key.replace("_", " "))
-        name_lbl.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
-        name_lbl.setStyleSheet(f"color:{theme['hdr']};")
-        name_row.addWidget(name_lbl)
-
-        badge = QLabel(f" {cat} ")
-        badge.setFont(QFont(FONT_UI, 7))
-        badge.setStyleSheet(
-            f"background:{theme['hdr']};color:white;"
-            f"border-radius:3px;padding:1px 4px;"
-        )
-        name_row.addWidget(badge)
-
-        # Pending badge (dirty indicator)
-        self._pending_badge = PendingBadge()
-        name_row.addWidget(self._pending_badge)
-        name_row.addStretch()
-        info.addLayout(name_row)
-
-        desc = QLabel(meta["desc"])
-        desc.setFont(QFont(FONT_UI, 8))
-        desc.setStyleSheet(f"color:{_C_DIM};")
-        info.addWidget(desc)
-
-        # Status line avec min/max/avg
-        self._status = QLabel(
-            f"BCM: {meta['default']} {meta['unit']}  |  "
-            f"DEF: {meta['default']} {meta['unit']}  |  "
-            f"[{meta['min']} ... {meta['max']}]"
-        )
-        self._status.setFont(QFont(FONT_MONO, 8))
-        self._status.setStyleSheet(f"color:{_C_DIM};")
-        info.addWidget(self._status)
-        lay.addLayout(info, 1)
-
-        # Spinbox
+        # Spin caché (logique inchangée)
         if meta["type"] == "float":
-            self._spin = QDoubleSpinBox()
+            self._spin = QDoubleSpinBox(self)
             self._spin.setDecimals(3)
             self._spin.setSingleStep(meta.get("step", 0.1))
         else:
-            self._spin = QSpinBox()
+            self._spin = QSpinBox(self)
             self._spin.setSingleStep(meta.get("step", 1))
-
         self._spin.setRange(meta["min"], meta["max"])
         self._spin.setValue(meta["default"])
-        self._spin.setSuffix(f" {meta['unit']}")
-        self._spin.setFixedWidth(120)
-        self._spin.setFont(QFont(FONT_MONO, 10))
         self._spin.setEnabled(False)
-        # Dirty detection
+        self._spin.hide()
         self._spin.valueChanged.connect(self._check_dirty)
-        lay.addWidget(self._spin)
 
-        # Bouton DOWNLOAD (devient amber quand dirty)
-        self._dl_btn = QPushButton("DOWNLOAD")
-        self._dl_btn.setFixedSize(100, 30)
-        self._dl_btn.setFont(QFont(FONT_UI, 8, QFont.Weight.Bold))
+        # Slider visible
+        self._slider = QSlider(Qt.Orientation.Horizontal, self)
+        rng = meta["max"] - meta["min"]
+        if meta["type"] == "float":
+            self._slider_scale = max(1, int(1000 / max(rng, 1e-9)))
+        else:
+            self._slider_scale = 1
+        self._slider.setRange(
+            int(meta["min"] * self._slider_scale),
+            int(meta["max"] * self._slider_scale)
+        )
+        self._slider.setValue(int(meta["default"] * self._slider_scale))
+        self._slider.setEnabled(False)
+        self._slider.setStyleSheet(self._slider_style())
+        self._slider.valueChanged.connect(self._on_slider_changed)
+
+        # Bouton DL
+        self._dl_btn = QPushButton("DL", self)
+        self._dl_btn.setFixedSize(36, 26)
+        self._dl_btn.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
         self._dl_btn.setEnabled(False)
-        self._dl_style_clean = (
-            f"QPushButton {{ background:{_C_GREEN};color:white;"
-            f"border:none;border-radius:4px; }}"
-            f"QPushButton:hover {{ background:#3A8A0A; }}"
-            f"QPushButton:disabled {{ background:#AAAAAA; }}"
-        )
-        self._dl_style_dirty = (
-            f"QPushButton {{ background:{_C_GREEN};color:white;"
-            f"border:none;border-radius:4px; }}"
-            f"QPushButton:hover {{ background:#3A8A0A; }}"
-            f"QPushButton:disabled {{ background:#AAAAAA; }}"
-        )
-        self._dl_btn.setStyleSheet(self._dl_style_clean)
         self._dl_btn.clicked.connect(self._on_download)
-        lay.addWidget(self._dl_btn)
+        self._update_dl_style(False)
 
-        # Reset défaut
-        self._reset_btn = QPushButton("R")
-        self._reset_btn.setFixedSize(28, 30)
-        self._reset_btn.setFont(QFont(FONT_UI, 11))
-        self._reset_btn.setEnabled(False)
-        self._reset_btn.setToolTip(f"Défaut: {meta['default']} {meta['unit']}")
-        self._reset_btn.setStyleSheet(
-            f"QPushButton {{ background:{W_TOOLBAR};border:1px solid #BBB;border-radius:4px; }}"
-            f"QPushButton:hover {{ background:{_C_GREEN};color:white; }}"
-            f"QPushButton:disabled {{ background:#EEE;color:#AAA; }}"
+        # Bouton Reset
+        self._rst_btn = QPushButton("RST", self)
+        self._rst_btn.setFixedSize(36, 26)
+        self._rst_btn.setFont(QFont(FONT_MONO, 9))
+        self._rst_btn.setEnabled(False)
+        self._rst_btn.setStyleSheet(
+            f"QPushButton{{background:#0A1200;color:#2A4A2A;"
+            f"border:1px solid #1E3A1E;border-radius:3px;}}"
+            f"QPushButton:hover{{color:{self._theme['accent']};border-color:{self._theme['accent']};}}"
+            f"QPushButton:disabled{{color:#0F1A0F;border-color:#0A1000;}}"
         )
-        self._reset_btn.clicked.connect(
-            lambda: self._spin.setValue(self._meta["default"]))
-        lay.addWidget(self._reset_btn)
+        self._rst_btn.clicked.connect(lambda: self._set_value(self._meta["default"]))
+        self._reposition_children()
 
-    # Dirty detection
+    def _reposition_children(self):
+        """Repositionne slider et boutons selon la largeur réelle de la tuile."""
+        W = self.width() or self._TILE_W
+        H = self._TILE_H
+        self._slider.setGeometry(10, H - 50, W - 20, 16)
+        self._dl_btn.setGeometry(W - 80, H - 28, 36, 26)
+        self._rst_btn.setGeometry(W - 40, H - 28, 36, 26)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._reposition_children()
+
+    def _slider_style(self):
+        acc = self._theme["accent"]
+        return (
+            f"QSlider::groove:horizontal{{height:4px;background:#1E3A1E;border-radius:2px;}}"
+            f"QSlider::sub-page:horizontal{{background:{acc};border-radius:2px;}}"
+            f"QSlider::handle:horizontal{{width:10px;height:10px;margin:-3px 0;"
+            f"background:{acc};border-radius:5px;border:1px solid #000000;}}"
+            f"QSlider:disabled::groove:horizontal{{background:#0F1A0F;}}"
+            f"QSlider:disabled::sub-page:horizontal{{background:#1E2E1E;}}"
+            f"QSlider:disabled::handle:horizontal{{background:#1E2E1E;}}"
+        )
+
+    def _tick(self):
+        # Animation jauge vers valeur live
+        target = float(self._live_val)
+        self._anim_val += (target - self._anim_val) * 0.12
+        # Pulse dirty
+        if self._is_dirty:
+            self._pulse += self._pulse_dir * 0.06
+            if self._pulse >= 1.0: self._pulse = 1.0; self._pulse_dir = -1
+            elif self._pulse <= 0.0: self._pulse = 0.0; self._pulse_dir = 1
+        else:
+            self._pulse = 0.0
+        self.update()
+
+    def _on_slider_changed(self, v):
+        if not self._slider.isEnabled():
+            return
+        val = v / self._slider_scale
+        self._spin.blockSignals(True)
+        self._spin.setValue(val)
+        self._spin.blockSignals(False)
+        self._check_dirty()
+        self.update()
+
+    def _set_value(self, val):
+        self._slider.setValue(int(val * self._slider_scale))
+        self._spin.setValue(val)
+
     def _check_dirty(self, _=None):
         if not self._spin.isEnabled():
             return
@@ -388,57 +373,182 @@ class XCPParamCard(QFrame):
         dirty = abs(spin_val - live) > 1e-9
         if dirty != self._is_dirty:
             self._is_dirty = dirty
-            self._pending_badge.set_pending(dirty)
-            self._dl_btn.setStyleSheet(
-                self._dl_style_dirty if dirty else self._dl_style_clean
-            )
+            self._update_dl_style(dirty)
             self.dirty_changed.emit(self._key, dirty)
+        self.update()
 
-    # API publique
+    def _update_dl_style(self, dirty: bool):
+        if dirty:
+            self._dl_btn.setStyleSheet(
+                "QPushButton{background:#1A0E00;color:#FFB830;"
+                "border:1px solid #FFB830;border-radius:3px;}"
+                "QPushButton:hover{background:#2A1800;}")
+        else:
+            acc = self._theme["accent"]
+            self._dl_btn.setStyleSheet(
+                f"QPushButton{{background:#0A1200;color:#2A4A2A;"
+                f"border:1px solid #1E3A1E;border-radius:3px;}}"
+                f"QPushButton:hover{{color:{acc};border-color:{acc};}}"
+                f"QPushButton:disabled{{color:#0F1A0F;border-color:#0A1000;}}")
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        W, H = self.width(), self.height()
+
+        # ── Fond tuile ─────────────────────────────────────────────────
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(1, 1, W-2, H-2), 6, 6)
+        bg = QLinearGradient(0, 0, 0, H)
+        bg.setColorAt(0, QColor("#FFFFFF"))
+        bg.setColorAt(1, QColor("#FFFFFF"))
+        p.setBrush(QBrush(bg))
+        # Contour noir 2px — dirty = amber pulsant
+        if self._is_dirty:
+            amber = QColor(255, 184, 48, int(100 + 155 * self._pulse))
+            p.setPen(QPen(amber, 2))
+        else:
+            p.setPen(QPen(QColor("#000000"), 2))
+        p.drawPath(path)
+
+        # Barre catégorie haut (6px)
+        bar = QPainterPath()
+        bar.addRoundedRect(QRectF(1, 1, W-2, 5), 5, 5)
+        bar.addRect(QRectF(1, 4, W-2, 3))
+        p.fillPath(bar, QBrush(self._accent))
+
+        # ── Nom paramètre ──────────────────────────────────────────────
+        short = self._key.replace("_", " ")
+        p.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
+        p.setPen(QPen(self._accent))
+        p.drawText(6, 8, W-12, 16, Qt.AlignmentFlag.AlignLeft
+                   | Qt.AlignmentFlag.AlignVCenter, short)
+
+        # Badge catégorie
+        p.setFont(QFont(FONT_MONO, 8))
+        p.setPen(QPen(QColor(self._theme["accent"])))
+        badge_r = QRectF(W - 52, 10, 46, 14)
+        bp = QPainterPath(); bp.addRoundedRect(badge_r, 2, 2)
+        cat_bg = QColor(self._accent); cat_bg.setAlpha(25)
+        p.fillPath(bp, QBrush(cat_bg))
+        p.setPen(QPen(self._accent))
+        p.drawText(badge_r.toRect(), Qt.AlignmentFlag.AlignCenter, self._cat[:5])
+
+        # ── Jauge radiale centrale ─────────────────────────────────────
+        cx, cy = W // 2, 108
+        R = 48
+        vmin = float(self._meta["min"])
+        vmax = float(self._meta["max"])
+        vrange = vmax - vmin if vmax != vmin else 1.0
+        pct = max(0.0, min(1.0, (self._anim_val - vmin) / vrange))
+        spin_pct = max(0.0, min(1.0, (self._spin.value() - vmin) / vrange))
+
+        START  = 220   # degrés (depuis 3h)
+        SPAN   = 280   # amplitude totale
+
+        # Track fond sombre
+        p.setPen(QPen(QColor("#1E3A1E"), 7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawArc(int(cx-R), int(cy-R), R*2, R*2,
+                  int(-(START - SPAN//2 + 90) * 16),
+                  int(-(SPAN) * 16))
+
+        # Arc valeur spin (cible)
+        if self._is_dirty and spin_pct > 0:
+            p.setPen(QPen(QColor(255, 184, 48, 80), 7,
+                          Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(int(cx-R), int(cy-R), R*2, R*2,
+                      int(-(START - SPAN//2 + 90) * 16),
+                      int(-(SPAN * spin_pct) * 16))
+
+        # Arc valeur live animée
+        if pct > 0.005:
+            arc_col = self._accent if not self._is_dirty else QColor("#8DC63F")
+            # Glow
+            glow_c = QColor(arc_col); glow_c.setAlpha(45)
+            p.setPen(QPen(glow_c, 13, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(int(cx-R), int(cy-R), R*2, R*2,
+                      int(-(START - SPAN//2 + 90) * 16),
+                      int(-(SPAN * pct) * 16))
+            # Principal
+            p.setPen(QPen(arc_col, 7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(int(cx-R), int(cy-R), R*2, R*2,
+                      int(-(START - SPAN//2 + 90) * 16),
+                      int(-(SPAN * pct) * 16))
+
+        # Fond intérieur jauge
+        inner_g = QRadialGradient(cx, cy, R - 10)
+        inner_g.setColorAt(0, QColor("#1A2E0A"))
+        inner_g.setColorAt(1, QColor("#0F1A08"))
+        p.setBrush(QBrush(inner_g))
+        p.setPen(QPen(QColor("#1E3A1E"), 1))
+        p.drawEllipse(int(cx - R + 9), int(cy - R + 9), (R-9)*2, (R-9)*2)
+
+        # Valeur live au centre
+        v_str = f"{self._live_val:.1f}" if self._meta["type"] == "float" else str(int(self._live_val))
+        p.setFont(QFont(FONT_MONO, 16, QFont.Weight.Bold))
+        txt_col = QColor(self._accent) if not self._is_dirty else QColor("#FFB830")
+        p.setPen(QPen(txt_col))
+        p.drawText(cx-R+10, cy-14, (R-10)*2, 20,
+                   Qt.AlignmentFlag.AlignCenter, v_str)
+
+        # Unité
+        p.setFont(QFont(FONT_MONO, 9))
+        p.setPen(QPen(QColor("#3A6A3A")))
+        p.drawText(cx-R+10, cy+4, (R-10)*2, 14,
+                   Qt.AlignmentFlag.AlignCenter, self._meta["unit"])
+
+        # Valeur spin (si dirty)
+        if self._is_dirty:
+            sp_str = f">{self._spin.value():.1f}" if self._meta["type"]=="float" \
+                     else f">{int(self._spin.value())}"
+            p.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
+            p.setPen(QPen(QColor("#FFB830")))
+            p.drawText(cx-R+10, cy+18, (R-10)*2, 14,
+                       Qt.AlignmentFlag.AlignCenter, sp_str)
+
+        # Description (bas jauge)
+        desc = self._meta.get("desc", "")[:32]
+        p.setFont(QFont(FONT_UI, 8))
+        p.setPen(QPen(QColor("#5A7A5A")))
+        p.drawText(4, H - 66, W-8, 14,
+                   Qt.AlignmentFlag.AlignCenter, desc)
+
+    # ── API publique (inchangée) ──────────────────────────────────────
     def set_session_active(self, active: bool = True):
         self._spin.setEnabled(True)
+        self._slider.setEnabled(True)
         self._dl_btn.setEnabled(True)
-        self._reset_btn.setEnabled(True)
+        self._rst_btn.setEnabled(True)
 
-    def update_live(self, val: Any):
+    def update_live(self, val):
         try:
             v = float(val) if self._meta["type"] == "float" else int(float(val))
         except (TypeError, ValueError):
             return
         self._live_val = v
-        self._status.setText(
-            f"BCM: {v} {self._meta['unit']}  |  "
-            f"DEF: {self._meta['default']} {self._meta['unit']}  |  "
-            f"[{self._meta['min']} ... {self._meta['max']}]"
-        )
-        self._gauge.set_deviation(self._meta["default"], v)
-        if self._spin.value() == self._meta["default"]:
+        if not self._is_dirty:
+            self._slider.blockSignals(True)
+            self._slider.setValue(int(v * self._slider_scale))
+            self._slider.blockSignals(False)
             self._spin.blockSignals(True)
             self._spin.setValue(v)
             self._spin.blockSignals(False)
-        # Recheck dirty après mise à jour BCM
         self._check_dirty()
 
     def flash_ack(self):
-        orig = self._spin.styleSheet()
-        self._spin.setStyleSheet(
-            "QSpinBox,QDoubleSpinBox{background:#C8F7C5;"
-            "border:1.5px solid #2E7003;border-radius:3px;padding:3px;}")
-        QTimer.singleShot(700, lambda: self._spin.setStyleSheet(""))
-        # On efface le dirty après confirmation BCM
         self._is_dirty = False
-        self._pending_badge.set_pending(False)
-        self._dl_btn.setStyleSheet(self._dl_style_clean)
+        self._pulse = 0.0
+        self._update_dl_style(False)
         self.dirty_changed.emit(self._key, False)
+        self.update()
 
     def get_spin_value(self):
         v = self._spin.value()
         return int(v) if self._meta["type"] == "int" else v
 
     def set_spin_value(self, val):
-        self._spin.blockSignals(True)
-        self._spin.setValue(val)
-        self._spin.blockSignals(False)
+        self._set_value(val)
         self._check_dirty()
 
     def is_dirty(self) -> bool:
@@ -449,165 +559,19 @@ class XCPParamCard(QFrame):
         self.download_requested.emit(self._key, val)
 
 
-# XCPOscilloscope — mini-oscilloscope multi-courbes
+# Alias pour compatibilité avec _build_cards
+XCPParamCard = XCPParamTile
+
+
+# Stub XCPOscilloscope conservé pour compatibilité _apply_poll
 class XCPOscilloscope(QWidget):
-    """
-    Mini-oscilloscope alimenté par les polls XCP (500ms).
-    Affiche jusqu'à 6 paramètres simultanément.
-    Chaque courbe est normalisée sur [min, max] A2L.
-    """
-
-    WINDOW_SECS = 60   # fenêtre temporelle visible
-    MAX_PTS     = 120  # 60s x 2Hz
-
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._traces: dict[str, dict] = {}   # key -> {color, meta, buf: deque}
-        self._t0    = time.time()
-        self.setMinimumHeight(180)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding,
-                           QSizePolicy.Policy.Expanding)
-        self.setStyleSheet(f"background:{W_TITLEBAR}; border-radius:4px;")
-
-        # Timer repaint 500ms (synchro avec poll BCM)
-        self._repaint_timer = QTimer(self)
-        self._repaint_timer.timeout.connect(self.update)
-        self._repaint_timer.start(500)
-
-    def add_trace(self, key: str, color: str, meta: dict):
-        if key not in self._traces:
-            self._traces[key] = {
-                "color": color,
-                "meta":  meta,
-                "buf":   deque(maxlen=self.MAX_PTS),
-            }
-
-    def remove_trace(self, key: str):
-        self._traces.pop(key, None)
-        self.update()
-
-    def push_value(self, key: str, val: float):
-        if key in self._traces:
-            t = time.time() - self._t0
-            self._traces[key]["buf"].append((t, val))
-
-    def clear_all(self):
-        for tr in self._traces.values():
-            tr["buf"].clear()
-        self._t0 = time.time()
-        self.update()
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        W, H = self.width(), self.height()
-
-        # Fond
-        grad = QLinearGradient(0, 0, 0, H)
-        grad.setColorAt(0.0, QColor("#0F1A0A"))
-        grad.setColorAt(1.0, QColor("#0A1200"))
-        p.fillRect(0, 0, W, H, grad)
-
-        # Marges
-        ML, MR, MT, MB = 42, 12, 14, 26
-
-        # Grille
-        p.setPen(QPen(QColor("rgba(141,198,63,0.12)"), 0.8))
-        for i in range(1, 5):
-            y = MT + (H - MT - MB) * i // 4
-            p.drawLine(ML, y, W - MR, y)
-        for i in range(1, 7):
-            x = ML + (W - ML - MR) * i // 6
-            p.drawLine(x, MT, x, H - MB)
-
-        now = time.time() - self._t0
-
-        # Axe temps (bas)
-        p.setPen(QPen(QColor("#5A6A4A"), 0.8))
-        p.setFont(QFont(FONT_MONO, 7))
-        for i in range(7):
-            x = ML + (W - ML - MR) * i // 6
-            t_label = now - self.WINDOW_SECS * (6 - i) / 6
-            if t_label >= 0:
-                p.drawText(x - 10, H - 6, f"{t_label:.0f}s")
-
-        # Courbes
-        if not self._traces:
-            p.setPen(QColor("#3A4A30"))
-            p.setFont(QFont(FONT_UI, 9))
-            p.drawText(0, 0, W, H, Qt.AlignmentFlag.AlignCenter,
-                       "Cochez un paramètre pour le tracer ici")
-            return
-
-        legend_y = MT + 4
-        for key, tr in self._traces.items():
-            buf   = tr["buf"]
-            meta  = tr["meta"]
-            color = QColor(tr["color"])
-
-            if len(buf) < 2:
-                # Légende seule
-                p.setPen(color)
-                p.setFont(QFont(FONT_MONO, 7, QFont.Weight.Bold))
-                p.drawText(ML + 4, legend_y + 10, f"-- {key}")
-                legend_y += 14
-                continue
-
-            vmin = meta["min"]; vmax = meta["max"]
-            vrange = vmax - vmin if vmax != vmin else 1.0
-
-            # Construire path
-            path = QPainterPath()
-            first = True
-            for (t, v) in buf:
-                x = ML + (W - ML - MR) * (t - (now - self.WINDOW_SECS)) / self.WINDOW_SECS
-                y = MT + (H - MT - MB) * (1.0 - (v - vmin) / vrange)
-                x = max(ML, min(W - MR, x))
-                y = max(MT, min(H - MB, y))
-                if first:
-                    path.moveTo(x, y); first = False
-                else:
-                    path.lineTo(x, y)
-
-            # Glow effect (2 passes)
-            glow = QPen(QColor(color.red(), color.green(), color.blue(), 40), 5,
-                        Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-            p.setPen(glow)
-            p.drawPath(path)
-
-            main_pen = QPen(color, 1.8, Qt.PenStyle.SolidLine,
-                            Qt.PenCapStyle.RoundCap)
-            p.setPen(main_pen)
-            p.drawPath(path)
-
-            # Point live (dernière valeur)
-            last_t, last_v = buf[-1]
-            lx = ML + (W - ML - MR) * (last_t - (now - self.WINDOW_SECS)) / self.WINDOW_SECS
-            ly = MT + (H - MT - MB) * (1.0 - (last_v - vmin) / vrange)
-            lx = max(ML, min(W - MR, lx))
-            ly = max(MT, min(H - MB, ly))
-            p.setBrush(QBrush(color))
-            p.setPen(QPen(QColor("#0F1A0A"), 1.2))
-            p.drawEllipse(QPointF(lx, ly), 4, 4)
-
-            # Légende + valeur live
-            p.setPen(color)
-            p.setFont(QFont(FONT_MONO, 7, QFont.Weight.Bold))
-            short = key.replace("_", " ")
-            unit  = meta.get("unit", "")
-            p.drawText(ML + 4, legend_y + 10,
-                       f"-- {short}  {last_v:.2f} {unit}")
-            legend_y += 14
-
-        # Bord KPIT
-        p.setPen(QPen(QColor("rgba(141,198,63,0.30)"), 1))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawRoundedRect(1, 1, W-2, H-2, 4, 4)
-
-        # Label "OSCILLOSCOPE"
-        p.setPen(QColor(_C_KPIT))
-        p.setFont(QFont(FONT_MONO, 7, QFont.Weight.Bold))
-        p.drawText(W - 100, MT + 2, "OSCILLOSCOPE")
+        self.hide()
+    def add_trace(self, key, color, meta): pass
+    def remove_trace(self, key): pass
+    def push_value(self, key, val): pass
+    def clear_all(self): pass
 
 
 # XCPPanel — panneau principal
@@ -625,6 +589,7 @@ class XCPPanel(QWidget):
         self._cards: dict[str, XCPParamCard] = {}
         self._a2l:   dict = {}
         self._dirty_keys: set[str] = set()
+        self._last_cols: int = 0   # pour détecter les changements de colonnes
 
         # Historique profils
         self._profiles: list[dict] = []   # [{name, values, ts}]
@@ -649,223 +614,188 @@ class XCPPanel(QWidget):
 
     # Construction UI
     def _build_ui(self):
+        self.setStyleSheet(f"background:{_C_BG};")
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Header dark
+        # ── HEADER ─────────────────────────────────────────────────────────
         hdr = QFrame()
-        hdr.setFixedHeight(40)
-        hdr.setStyleSheet(f"background:{W_TITLEBAR};")
+        hdr.setFixedHeight(46)
+        hdr.setStyleSheet(
+            "background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "stop:0 #0F1A0A, stop:1 #070A04);"
+            "border-bottom:2px solid #000000;"
+        )
         hdr_lay = QHBoxLayout(hdr)
-        hdr_lay.setContentsMargins(12, 0, 12, 0)
+        hdr_lay.setContentsMargins(14, 0, 12, 0)
+        hdr_lay.setSpacing(10)
 
-        ttl = QLabel("XCP CALIBRATION  —  PARAMETRES BCM LIVE")
-        ttl.setFont(QFont(FONT_MONO, 10, QFont.Weight.Bold))
-        ttl.setStyleSheet(f"color:{W_TEXT_HDR};")
+        bar = QFrame(); bar.setFixedSize(3, 28)
+        bar.setStyleSheet(f"background:{_C_GREEN}; border-radius:1px;")
+        hdr_lay.addWidget(bar)
+
+        ttl = QLabel("XCP CALIBRATION")
+        ttl.setFont(QFont(FONT_MONO, 11, QFont.Weight.Bold))
+        ttl.setStyleSheet(f"color:{_C_GREEN}; background:transparent;")
         hdr_lay.addWidget(ttl)
+
+        sub = QLabel("BCM LIVE PARAMETERS")
+        sub.setFont(QFont(FONT_MONO, 8))
+        sub.setStyleSheet("color:#3A5A3A; background:transparent;")
+        hdr_lay.addWidget(sub)
         hdr_lay.addStretch()
 
-        # Badge connexion Redis
-        self._conn_badge = QLabel("  O OFFLINE  ")
+        ip_lbl = QLabel("BCM ▸")
+        ip_lbl.setFont(QFont(FONT_MONO, 8))
+        ip_lbl.setStyleSheet("color:#3A6A3A; background:transparent;")
+        hdr_lay.addWidget(ip_lbl)
+
+        self._ip_edit = QLineEdit()
+        self._ip_edit.setPlaceholderText("10.20.0.x")
+        self._ip_edit.setFixedWidth(110); self._ip_edit.setFixedHeight(28)
+        self._ip_edit.setFont(QFont(FONT_MONO, 9))
+        self._ip_edit.setStyleSheet(
+            f"QLineEdit{{background:#0A1A08;color:{_C_GREEN};"
+            f"border:1px solid #1E3A1E;border-radius:3px;padding:0 8px;}}"
+            f"QLineEdit:focus{{border:1px solid {_C_GREEN};}}")
+        self._ip_edit.returnPressed.connect(self._on_connect_clicked)
+        hdr_lay.addWidget(self._ip_edit)
+
+        from widgets_base import _cd_btn as _mk_btn_cd
+        self._connect_btn = _mk_btn_cd("CONNECT", _C_GREEN, h=34, w=120)
+        self._connect_btn.setFont(QFont(FONT_MONO, 10, QFont.Weight.Bold))
+        self._connect_btn.clicked.connect(self._on_connect_clicked)
+        hdr_lay.addWidget(self._connect_btn)
+
+        self._conn_badge = QLabel("◌ OFFLINE")
         self._conn_badge.setFont(QFont(FONT_MONO, 8, QFont.Weight.Bold))
-        self._conn_badge.setStyleSheet(
-            f"color:#AAA; background:#1E2A18; border:1px solid #333;"
-            f"border-radius:3px; padding:1px 6px;"
-        )
+        self._conn_badge.setStyleSheet("color:#2A4A2A;background:transparent;padding:0 4px;")
         hdr_lay.addWidget(self._conn_badge)
         root.addWidget(hdr)
 
-        # Barre actions
+        # ── BARRE ACTIONS ──────────────────────────────────────────────────
         act_bar = QFrame()
-        act_bar.setFixedHeight(44)
-        act_bar.setStyleSheet(
-            f"background:{W_TOOLBAR};border-bottom:1px solid #CCC;")
+        act_bar.setFixedHeight(52)
+        act_bar.setStyleSheet("background:#080E08;border-bottom:1px solid #1E2E1E;")
         act_lay = QHBoxLayout(act_bar)
-        act_lay.setContentsMargins(12, 0, 12, 0)
-        act_lay.setSpacing(8)
+        act_lay.setContentsMargins(12, 0, 12, 0); act_lay.setSpacing(8)
 
-        # Filtre texte
+        _inp = (f"background:#0A1400;color:#8DC63F;"
+                f"border:1px solid #1E3A1E;border-radius:3px;padding:0 8px;")
+
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Rechercher...")
-        self._search.setFixedWidth(150)
-        self._search.setFixedHeight(28)
-        self._search.setFont(QFont(FONT_UI, 8))
-        self._search.setStyleSheet(
-            f"QLineEdit {{ background:#fff; border:1px solid #BBB;"
-            f"border-radius:4px; padding:0 8px; }}"
-        )
+        self._search.setPlaceholderText("Search…")
+        self._search.setFixedWidth(180); self._search.setFixedHeight(34)
+        self._search.setFont(QFont(FONT_MONO, 9))
+        self._search.setStyleSheet(f"QLineEdit{{{_inp}}}QLineEdit:focus{{border-color:{_C_GREEN};}}")
         self._search.textChanged.connect(self._apply_filter)
         act_lay.addWidget(self._search)
 
-        # Filtre catégorie
         self._cat_filter = QComboBox()
-        self._cat_filter.addItem("Toutes catégories")
-        for cat in _CAT:
-            self._cat_filter.addItem(cat)
-        self._cat_filter.setFixedWidth(140)
-        self._cat_filter.setFixedHeight(28)
-        self._cat_filter.setFont(QFont(FONT_UI, 8))
+        self._cat_filter.addItem("ALL CATEGORIES")
+        for cat in _CAT: self._cat_filter.addItem(cat)
+        self._cat_filter.setFixedWidth(160); self._cat_filter.setFixedHeight(34)
+        self._cat_filter.setFont(QFont(FONT_MONO, 9))
         self._cat_filter.setStyleSheet(
-            f"QComboBox {{ background:#fff; border:1px solid #BBB;"
-            f"border-radius:4px; padding:0 6px; }}"
-        )
+            f"QComboBox{{{_inp}}}QComboBox::drop-down{{border:none;width:18px;}}"
+            f"QComboBox QAbstractItemView{{background:#0A1400;color:{_C_GREEN};"
+            f"border:1px solid #1E3A1E;selection-background-color:#1E3A1E;}}")
         self._cat_filter.currentIndexChanged.connect(self._apply_filter)
         act_lay.addWidget(self._cat_filter)
-
         act_lay.addStretch()
 
-        # Apply pending
-        self._apply_btn = QPushButton("Apply  0  pending")
-        self._apply_btn.setFixedHeight(28)
-        self._apply_btn.setFont(QFont(FONT_UI, 8, QFont.Weight.Bold))
+        from widgets_base import _cd_btn as _mk_cd
+        self._apply_btn = _mk_cd("0 PENDING", A_TEAL, h=34)
+        self._apply_btn.setFixedHeight(34)
+        self._apply_btn.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
         self._apply_btn.setEnabled(False)
-        self._apply_btn.setStyleSheet(
-            f"QPushButton {{ background:#CCCCCC; color:#888;"
-            f"border:none; border-radius:4px; padding:0 12px; }}"
-        )
         self._apply_btn.clicked.connect(self._on_apply_all)
         act_lay.addWidget(self._apply_btn)
 
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("color:#CCC;"); sep.setFixedWidth(1)
+        sep.setStyleSheet("color:#1E2E1E;"); sep.setFixedWidth(1)
         act_lay.addWidget(sep)
 
-        # Save profil
-        self._save_btn = QPushButton("Sauvegarder")
-        self._save_btn.setFixedHeight(28)
-        self._save_btn.setFont(QFont(FONT_UI, 8))
-        self._save_btn.setStyleSheet(
-            f"QPushButton {{ background:{_C_GREEN};color:white;"
-            f"border:none;border-radius:4px;padding:0 10px; }}"
-            f"QPushButton:hover {{ background:#3A8A0A; }}"
-        )
+        from widgets_base import _cd_btn as _mk_cd2
+        self._save_btn = _mk_cd2("SAVE", _C_GREEN, h=34)
+        self._save_btn.setFont(QFont(FONT_MONO, 9))
         self._save_btn.clicked.connect(self._on_save_profile)
         act_lay.addWidget(self._save_btn)
 
-        # Load profil
         self._load_combo = QComboBox()
-        self._load_combo.addItem("Charger profil...")
-        self._load_combo.setFixedWidth(170)
-        self._load_combo.setFixedHeight(28)
-        self._load_combo.setFont(QFont(FONT_UI, 8))
+        self._load_combo.addItem("LOAD PROFILE…")
+        self._load_combo.setFixedWidth(180); self._load_combo.setFixedHeight(34)
+        self._load_combo.setFont(QFont(FONT_MONO, 9))
         self._load_combo.setStyleSheet(
-            f"QComboBox {{ background:{W_PANEL2}; border:1px solid #BBB;"
-            f"border-radius:4px; padding:0 6px; }}"
-        )
+            f"QComboBox{{{_inp}}}QComboBox::drop-down{{border:none;width:18px;}}"
+            f"QComboBox QAbstractItemView{{background:#0A1400;color:{_C_GREEN};"
+            f"border:1px solid #1E3A1E;selection-background-color:#1E3A1E;}}")
         self._load_combo.activated.connect(self._on_load_profile)
         act_lay.addWidget(self._load_combo)
 
-        # Reset all
-        self._reset_all_btn = QPushButton("Defauts")
-        self._reset_all_btn.setFixedHeight(28)
-        self._reset_all_btn.setFont(QFont(FONT_UI, 8))
-        self._reset_all_btn.setStyleSheet(
-            f"QPushButton {{ background:{_C_GREEN};color:white;"
-            f"border:none;border-radius:4px;padding:0 10px; }}"
-            f"QPushButton:hover {{ background:#3A8A0A; }}"
-        )
+        self._reset_all_btn = _mk_cd2("DEFAULTS", "#546E7A", h=34)
+        self._reset_all_btn.setFont(QFont(FONT_MONO, 9))
         self._reset_all_btn.clicked.connect(self._on_reset_all)
         act_lay.addWidget(self._reset_all_btn)
-
         root.addWidget(act_bar)
 
-        # Zone centrale : splitter H (cartes | oscillo)
-        center_split = QSplitter(Qt.Orientation.Horizontal)
-        center_split.setStyleSheet("QSplitter::handle{background:#DDD; width:3px;}")
+        # ── ZONE TUILES — scroll + grille ──────────────────────────────────
+        self._scroll_w = QWidget()
+        self._scroll_w.setStyleSheet(
+            f"background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f"stop:0 #FFFFFF, stop:1 #FFFFFF);")
+        self._grid_lay = QGridLayout(self._scroll_w)
+        self._grid_lay.setContentsMargins(12, 12, 12, 12)
+        self._grid_lay.setSpacing(10)
+        self._grid_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # Colonne gauche : scroll cartes
-        scroll_w = QWidget()
-        scroll_w.setStyleSheet(f"background:{_C_BG};")
-        self._cards_lay = QVBoxLayout(scroll_w)
-        self._cards_lay.setContentsMargins(10, 8, 10, 8)
-        self._cards_lay.setSpacing(5)
-
-        self._no_session_lbl = QLabel("En attente de connexion Redis au BCM...")
-        self._no_session_lbl.setFont(QFont(FONT_UI, 11))
-        self._no_session_lbl.setStyleSheet(f"color:{_C_DIM};")
+        # Message "en attente"
+        self._no_session_lbl = QLabel("")
+        self._no_session_lbl.setFont(QFont(FONT_MONO, 11))
+        self._no_session_lbl.setStyleSheet("color:#3A5A3A;background:transparent;")
         self._no_session_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._cards_lay.addWidget(self._no_session_lbl)
-        self._cards_lay.addStretch()
+        self._grid_lay.addWidget(self._no_session_lbl, 0, 0, 1, 6)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(scroll_w)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        center_split.addWidget(scroll)
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setWidget(self._scroll_w)
+        self._scroll.setStyleSheet(
+            f"QScrollArea{{border:none;background:#FFFFFF;}}"
+            f"QScrollBar:vertical{{background:#E2E8F0;width:6px;border:none;}}"
+            f"QScrollBar::handle:vertical{{background:#8DC63F;border-radius:3px;}}"
+            f"QScrollBar:horizontal{{background:#E2E8F0;height:6px;border:none;}}"
+            f"QScrollBar::handle:horizontal{{background:#8DC63F;border-radius:3px;}}")
+        root.addWidget(self._scroll, 1)
 
-        # Colonne droite : oscilloscope + légende
-        right_w = QWidget()
-        right_w.setStyleSheet(f"background:{W_TITLEBAR}; border-radius:4px;")
-        right_w.setMinimumWidth(280)
-        right_lay = QVBoxLayout(right_w)
-        right_lay.setContentsMargins(6, 6, 6, 6)
-        right_lay.setSpacing(4)
-
-        # Header oscillo
-        osc_hdr = QHBoxLayout()
-        osc_lbl = QLabel("  OSCILLOSCOPE  XCP")
-        osc_lbl.setFont(QFont(FONT_MONO, 8, QFont.Weight.Bold))
-        osc_lbl.setStyleSheet(f"color:{_C_KPIT};")
-        osc_hdr.addWidget(osc_lbl)
-        osc_hdr.addStretch()
-
-        clr_btn = QToolButton()
-        clr_btn.setText("Clear")
-        clr_btn.setFont(QFont(FONT_UI, 7))
-        clr_btn.setStyleSheet(
-            f"QToolButton {{ color:#8DC63F; background:transparent;"
-            f"border:1px solid #333; border-radius:3px; padding:2px 5px; }}"
-            f"QToolButton:hover {{ background:#1E2A18; }}"
-        )
-        clr_btn.clicked.connect(self._on_osc_clear)
-        osc_hdr.addWidget(clr_btn)
-        right_lay.addLayout(osc_hdr)
-
-        # Widget oscilloscope
+        # Stub oscillo pour compatibilité
         self._osc = XCPOscilloscope()
-        right_lay.addWidget(self._osc, 1)
 
-        # Hint
-        hint = QLabel("Cochez sur une carte pour tracer le paramètre")
-        hint.setFont(QFont(FONT_UI, 7))
-        hint.setStyleSheet(f"color:#3A4A30; padding:2px 4px;")
-        hint.setWordWrap(True)
-        right_lay.addWidget(hint)
-
-        center_split.addWidget(right_w)
-        center_split.setSizes([560, 300])
-        center_split.setStretchFactor(0, 2)
-        center_split.setStretchFactor(1, 1)
-
-        root.addWidget(center_split, 1)
-
-        # Log bas
+        # ── LOG BAS ────────────────────────────────────────────────────────
         log_frame = QFrame()
-        log_frame.setFixedHeight(72)
-        log_frame.setStyleSheet(f"background:{W_TITLEBAR};")
-        log_lay = QVBoxLayout(log_frame)
-        log_lay.setContentsMargins(10, 4, 10, 4)
+        log_frame.setFixedHeight(30)
+        log_frame.setStyleSheet("background:#0F1A0A;border-top:2px solid #000000;")
+        log_lay = QHBoxLayout(log_frame)
+        log_lay.setContentsMargins(10, 0, 10, 0)
 
-        log_hdr = QLabel("  XCP LOG")
-        log_hdr.setFont(QFont(FONT_MONO, 8, QFont.Weight.Bold))
-        log_hdr.setStyleSheet(f"color:{_C_KPIT};")
-        log_lay.addWidget(log_hdr)
+        log_tag = QLabel("LOG ▸")
+        log_tag.setFont(QFont(FONT_MONO, 7, QFont.Weight.Bold))
+        log_tag.setStyleSheet(f"color:{_C_GREEN};background:transparent;")
+        log_lay.addWidget(log_tag)
 
-        self._log_lbl = QLabel("En attente de connexion...")
+        self._log_lbl = QLabel("En attente de connexion…")
         self._log_lbl.setFont(QFont(FONT_MONO, 8))
-        self._log_lbl.setStyleSheet("color:#AAAAAA;")
-        self._log_lbl.setWordWrap(True)
-        log_lay.addWidget(self._log_lbl)
-
+        self._log_lbl.setStyleSheet("color:#5A8A3A;background:transparent;")
+        log_lay.addWidget(self._log_lbl, 1)
         root.addWidget(log_frame)
 
-    # Construction cartes
+    # Construction tuiles en grille
     def _build_cards(self, a2l: dict):
         self._a2l = a2l
 
-        while self._cards_lay.count():
-            item = self._cards_lay.takeAt(0)
+        # Vider la grille
+        while self._grid_lay.count():
+            item = self._grid_lay.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
@@ -878,36 +808,59 @@ class XCPPanel(QWidget):
             cat = a2l[key].get("category") or _PARAM_CAT.get(key, "TIMING")
             groups.setdefault(cat, []).append(key)
 
-        # Couleur oscillo par index global
-        color_idx = 0
+        # Calcul dynamique du nombre de colonnes selon la largeur disponible
+        tile_w    = XCPParamTile._TILE_W
+        spacing   = 10
+        margins   = 24   # 12px de chaque côté
+        avail_w   = self._scroll.width() - 12  # largeur visible
+        if avail_w < tile_w + margins:
+            avail_w = self.width() - 12
+        COLS = max(1, (avail_w - margins + spacing) // (tile_w + spacing))
+        self._last_cols = COLS
+        row = 0
+
         for cat, keys in groups.items():
             theme = _CAT.get(cat, _CAT_DEFAULT)
-            grp_hdr = QLabel(f"  {cat}")
-            grp_hdr.setFixedHeight(22)
-            grp_hdr.setFont(QFont(FONT_MONO, 8, QFont.Weight.Bold))
-            grp_hdr.setStyleSheet(
-                f"background:{theme['hdr']};color:white;"
-                f"border-radius:3px;padding-left:6px;"
+            acc   = theme["accent"]
+
+            # En-tête de catégorie — barre pleine largeur
+            sep = QLabel(f"  ▸  {cat}  —  {len(keys)} paramètre(s)")
+            sep.setFixedHeight(24)
+            sep.setFont(QFont(FONT_MONO, 8, QFont.Weight.Bold))
+            sep.setStyleSheet(
+                f"background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+                f"stop:0 #0F1A0A, stop:1 #070A04);"
+                f"color:{acc};"
+                f"border-left:3px solid {acc};"
+                f"border-top:1px solid #000000;"
+                f"border-bottom:1px solid #000000;"
+                f"padding-left:8px;"
             )
-            self._cards_lay.addWidget(grp_hdr)
+            self._grid_lay.addWidget(sep, row, 0, 1, COLS)
+            row += 1
 
+            # Tuiles de la catégorie
+            col = 0
             for key in keys:
-                plot_col = _PLOT_PALETTE[color_idx % len(_PLOT_PALETTE)]
-                color_idx += 1
-                card = XCPParamCard(key, a2l[key], plot_color=plot_col)
-                card.download_requested.connect(self._on_download)
-                card.plot_toggled.connect(self._on_plot_toggle)
-                card.dirty_changed.connect(self._on_dirty_changed)
-                self._cards[key] = card
-                self._cards_lay.addWidget(card)
+                tile = XCPParamTile(key, a2l[key])
+                tile.download_requested.connect(self._on_download)
+                tile.dirty_changed.connect(self._on_dirty_changed)
+                self._cards[key] = tile
+                self._grid_lay.addWidget(tile, row, col)
+                col += 1
+                if col >= COLS:
+                    col = 0; row += 1
+            if col > 0:
+                row += 1
 
-        self._cards_lay.addStretch()
+        # Colonnes égales — chaque colonne s'étire uniformément
+        for c in range(COLS):
+            self._grid_lay.setColumnStretch(c, 1)
 
         # Mettre à jour le conn badge
-        self._conn_badge.setText(f"  LIVE  {len(a2l)} params  ")
+        self._conn_badge.setText(f"● LIVE  {len(a2l)} params")
         self._conn_badge.setStyleSheet(
-            f"color:#39FF14; background:#0A1200; border:1px solid #2E7003;"
-            f"border-radius:3px; padding:1px 6px;"
+            f"color:{_C_GREEN}; background:transparent; padding:0 4px;"
         )
 
     # Feature 1 : Dirty indicator
@@ -918,19 +871,19 @@ class XCPPanel(QWidget):
             self._dirty_keys.discard(key)
         n = len(self._dirty_keys)
         if n > 0:
-            self._apply_btn.setText(f"Apply  {n}  pending")
+            self._apply_btn.setText(f"{n} PENDING")
             self._apply_btn.setEnabled(True)
             self._apply_btn.setStyleSheet(
-                f"QPushButton {{ background:{_C_GREEN};color:white;"
-                f"border:none;border-radius:4px;padding:0 12px; }}"
-                f"QPushButton:hover {{ background:#3A8A0A; }}"
+                f"QPushButton {{ background:#1A0E00; color:#FFB830;"
+                f"border:1px solid #FFB830; border-radius:3px; padding:0 12px; }}"
+                f"QPushButton:hover {{ background:#2A1800; }}"
             )
         else:
-            self._apply_btn.setText("Apply  0  pending")
+            self._apply_btn.setText("0 PENDING")
             self._apply_btn.setEnabled(False)
             self._apply_btn.setStyleSheet(
-                f"QPushButton {{ background:#CCCCCC;color:#888;"
-                f"border:none;border-radius:4px;padding:0 12px; }}"
+                "QPushButton { background:#0A0E08; color:#2A3A2A;"
+                "border:1px solid #1A2A1A; border-radius:3px; padding:0 12px; }"
             )
 
     def _on_apply_all(self):
@@ -938,12 +891,11 @@ class XCPPanel(QWidget):
         dirty = list(self._dirty_keys)
         if not dirty:
             return
-        reply = QMessageBox.question(
+        reply = _ask(
             self, "Apply All Pending",
             f"Appliquer {len(dirty)} paramètre(s) modifié(s) vers le BCM ?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if not reply:
             return
 
         for key in dirty:
@@ -1006,7 +958,7 @@ class XCPPanel(QWidget):
         if not path:
             # Demander un fichier
             path, _ = QFileDialog.getOpenFileName(
-                self, "Charger profil XCP", "",
+                self, "Load XCP Profile", "",
                 "JSON Calibration (*.json)"
             )
             if not path:
@@ -1035,13 +987,11 @@ class XCPPanel(QWidget):
         )
 
         # Proposer d'envoyer vers le BCM
-        reply = QMessageBox.question(
+        if _ask(
             self, "Envoyer vers BCM ?",
             f"Profil chargé ({n_applied} paramètres).\n"
             f"Envoyer maintenant vers le BCM (DOWNLOAD batch) ?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply == QMessageBox.StandardButton.Yes:
+        ):
             for key, val in values.items():
                 if key in self._cards and self._master:
                     self._on_download(key, val)
@@ -1049,44 +999,34 @@ class XCPPanel(QWidget):
 
         self._load_combo.setCurrentIndex(0)
 
-    # Feature 3 : Oscilloscope toggle + push
     def _on_plot_toggle(self, key: str, checked: bool, color: str):
-        if checked:
-            meta = self._a2l.get(key, {})
-            self._osc.add_trace(key, color, meta)
-            self._log(f"Oscillo : + {key}")
-        else:
-            self._osc.remove_trace(key)
-            self._log(f"Oscillo : - {key}")
+        pass   # oscilloscope supprimé
 
     def _on_osc_clear(self):
-        self._osc.clear_all()
-        self._log("Oscilloscope réinitialisé")
+        pass   # oscilloscope supprimé
 
     # Filtre recherche / catégorie
     def _apply_filter(self):
         text = self._search.text().lower().strip()
         cat_filter = self._cat_filter.currentText()
-        if cat_filter == "Toutes catégories":
+        if cat_filter == "ALL CATEGORIES":
             cat_filter = ""
 
-        for i in range(self._cards_lay.count()):
-            item = self._cards_lay.itemAt(i)
+        for i in range(self._grid_lay.count()):
+            item = self._grid_lay.itemAt(i)
             if not item or not item.widget():
                 continue
             w = item.widget()
 
-            # Headers catégorie
-            if isinstance(w, QLabel):
-                hdr_cat = w.text().strip()
+            if isinstance(w, QLabel):   # séparateur catégorie
                 if cat_filter:
+                    hdr_cat = w.text().split("▸")[-1].split("—")[0].strip()
                     w.setVisible(hdr_cat == cat_filter)
                 else:
                     w.setVisible(True)
                 continue
 
-            # Cartes
-            if isinstance(w, XCPParamCard):
+            if isinstance(w, XCPParamTile):
                 key = w._key
                 meta = self._a2l.get(key, {})
                 card_cat = meta.get("category") or _PARAM_CAT.get(key, "")
@@ -1146,12 +1086,10 @@ class XCPPanel(QWidget):
 
     # Reset all
     def _on_reset_all(self):
-        reply = QMessageBox.question(
+        if not _ask(
             self, "Reset All",
             "Remettre TOUS les paramètres BCM aux valeurs A2L par défaut ?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+        ):
             return
 
         def _do():
@@ -1166,32 +1104,61 @@ class XCPPanel(QWidget):
         threading.Thread(target=_do, daemon=True).start()
 
     # Response handler / Log
+    def resizeEvent(self, event):
+        """Recrée la grille si le nombre de colonnes change."""
+        super().resizeEvent(event)
+        if not self._a2l:
+            return
+        tile_w  = XCPParamTile._TILE_W
+        spacing = 10
+        margins = 24
+        avail_w = self._scroll.width() - 12
+        if avail_w < tile_w + margins:
+            avail_w = self.width() - 12
+        new_cols = max(1, (avail_w - margins + spacing) // (tile_w + spacing))
+        if new_cols != self._last_cols:
+            self._last_cols = new_cols
+            self._build_cards(self._a2l)
+
     def _on_response(self, cmd: str, status: str,
                      data: object, error: object):
         pass
 
     def _log(self, msg: str, error: bool = False):
+        # Sentinel interne pour réactiver le bouton CONNECT depuis un thread bg
+        if msg == "__restore_btn__":
+            self._restore_connect_btn()
+            return
         ts  = time.strftime("%H:%M:%S")
-        col = _C_GREEN if error else "#AAAAAA"
-        self._log_lbl.setStyleSheet(f"color:{col};")
+        col = "#FF6B35" if error else "#3A6A3A"
+        self._log_lbl.setStyleSheet(f"color:{col}; background:transparent;")
         self._log_lbl.setText(f"[{ts}]  {msg}")
 
-    # API publique — INCHANGEE
-    def set_host(self, host: str):
-        """
-        Appelé depuis main_window quand la connexion BCM est établie.
-        Interface identique à v1.
-        """
+    def _on_connect_clicked(self) -> None:
+        """Bouton CONNECT dans le header — lance la connexion XCP vers le BCM."""
+        host = self._ip_edit.text().strip()
+        if not host:
+            self._log("Entrez une adresse IP BCM avant de connecter.", error=True)
+            return
+
+        # Déjà connecté au même host
         if self._host == host and self._master is not None:
+            self._log(f"Already connected to {host}.")
             return
 
         self._host = host
+        self._connect_btn.setEnabled(False)
+        self._connect_btn.setText("...")
+        self._conn_badge.setText("◌ CONNECTING…")
+        self._conn_badge.setStyleSheet(
+            f"color:#FFB830; background:transparent; padding:0 4px;"
+        )
+        self._log(f"Connecting XCP → {host}…")
 
         def _on_resp(cmd, status, data, error):
             self._bridge.response_received.emit(cmd, status or "", data, error)
 
         self._master = XCPMaster(host, on_response=_on_resp)
-        self._log(f"BCM host: {host} — chargement A2L...")
 
         def _load():
             try:
@@ -1208,5 +1175,14 @@ class XCPPanel(QWidget):
                     pass
             except Exception as e:
                 self._bridge.get_a2l_err.emit(str(e))
+            finally:
+                # Réactiver le bouton dans le thread Qt
+                self._bridge.log_msg.emit("__restore_btn__", False)
 
         threading.Thread(target=_load, daemon=True).start()
+
+    def _restore_connect_btn(self) -> None:
+        """Réactive le bouton CONNECT après tentative (succès ou échec)."""
+        self._connect_btn.setEnabled(True)
+        self._connect_btn.setText("CONNECT")
+

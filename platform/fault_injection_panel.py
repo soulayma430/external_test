@@ -56,6 +56,69 @@ from widgets_base import (
     _lbl, _hsep, _cd_btn,
 )
 
+
+# ══════════════════════════════════════════════════════════════
+#  HELPER — boîtes de dialogue claires et professionnelles
+# ══════════════════════════════════════════════════════════════
+_DIALOG_STYLE = """
+QMessageBox, QInputDialog {
+    background-color: #FFFFFF;
+    color: #1A1A1A;
+}
+QMessageBox QLabel, QInputDialog QLabel {
+    color: #1A1A1A;
+    background-color: transparent;
+    font-size: 13px;
+}
+QMessageBox QPushButton, QInputDialog QPushButton {
+    background-color: #F0F0F0;
+    color: #1A1A1A;
+    border: 1px solid #BDBDBD;
+    border-radius: 4px;
+    padding: 5px 18px;
+    min-width: 72px;
+    font-size: 12px;
+}
+QMessageBox QPushButton:hover, QInputDialog QPushButton:hover {
+    background-color: #E0EED0;
+    border-color: #8DC63F;
+    color: #1A1A1A;
+}
+QMessageBox QPushButton:default, QInputDialog QPushButton:default {
+    background-color: #8DC63F;
+    color: #FFFFFF;
+    border-color: #6AAF2A;
+}
+QMessageBox QPushButton:default:hover, QInputDialog QPushButton:default:hover {
+    background-color: #7ABB30;
+}
+"""
+
+def _light_msg(parent, title: str, text: str, kind: str = "info") -> None:
+    """Affiche un QMessageBox clair (information ou warning)."""
+    mb = QMessageBox(parent)
+    mb.setWindowTitle(title)
+    mb.setText(text)
+    if kind == "warning":
+        mb.setIcon(QMessageBox.Icon.Warning)
+    else:
+        mb.setIcon(QMessageBox.Icon.Information)
+    mb.setStandardButtons(QMessageBox.StandardButton.Ok)
+    mb.setStyleSheet(_DIALOG_STYLE)
+    mb.exec()
+
+def _ask_light(parent, title: str, text: str) -> bool:
+    """QMessageBox.question stylé clair — retourne True si Oui/Yes."""
+    mb = QMessageBox(parent)
+    mb.setWindowTitle(title)
+    mb.setText(text)
+    mb.setIcon(QMessageBox.Icon.Question)
+    mb.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    mb.setDefaultButton(QMessageBox.StandardButton.Yes)
+    mb.setStyleSheet(_DIALOG_STYLE)
+    return mb.exec() == QMessageBox.StandardButton.Yes
+
+
 # ══════════════════════════════════════════════════════════════
 #  PALETTE KPIT — ControlDesk / Scalexio style
 # ══════════════════════════════════════════════════════════════
@@ -76,17 +139,17 @@ _TEXT_DIM       = W_TEXT_DIM
 _TEXT_HDR       = W_TEXT_HDR
 
 # Mode accents
-_COL_NORMAL     = "#8DC63F"
+_COL_NORMAL     = "#3A7A10"
 _COL_OPENLOAD   = "#D35400"
 _COL_SHORTVCC   = "#C0392B"
 _COL_VLOAD      = "#007ACC"
 _COL_SHORTGND   = "#6A1B9A"
 _COL_SEQ        = "#F39C12"   # amber  — séquenceur
 _COL_PROF       = "#00BCD4"   # cyan   — profils
-_COL_SAVE       = "#8DC63F"   # KPIT   — sauvegarde
+_COL_SAVE       = "#3A7A10"   # KPIT   — sauvegarde
 
 _MODE_COLORS = {
-    "NORMAL":        (_COL_NORMAL,    "#6FA030", "#E0F5D0"),
+    "NORMAL":        (_COL_NORMAL,    "#2A5A08", "#F4FFEF"),
     "OPEN LOAD":     (_COL_OPENLOAD,  "#A84200", "#FEF5E7"),
     "SHORT TO VCC":  (_COL_SHORTVCC,  "#962D22", "#FDEDEC"),
     "VARIABLE LOAD": (_COL_VLOAD,     "#005F9E", "#E0F0FF"),
@@ -367,7 +430,7 @@ class FaultSceneWidget(QWidget):
         badge = self._mode + (f"  {self._duty:.0f}%" if self._mode == "VARIABLE LOAD" else "")
         p.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
         p.setPen(QPen(QColor(accent)))
-        p.drawText(0, 4, w - 6, 14, Qt.AlignmentFlag.AlignRight, f"[{tag}]  {badge}")
+        p.drawText(0, 4, w - 6, 14, Qt.AlignmentFlag.AlignRight, badge)
 
     def _draw_wire(self, p, x1, y1, x2, y2, col, width=2.0, dashed=False, glow=False):
         """Draw a wire segment, optionally with glow halo."""
@@ -668,25 +731,25 @@ def _kpit_btn(text, accent, h=24):
     btn.setFixedHeight(h)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
-    tc = "#1a1a1a"
+    tc = W_TEXT
     btn.setStyleSheet(f"""
         QPushButton {{
             background: {QColor(c.red(),c.green(),c.blue(),25).name()};
             color: {tc};
-            border: 2px solid #000;
+            border: 1px solid {_BORDER};
             border-left: 3px solid {accent};
             border-radius: 3px;
             padding: 0 8px;
         }}
         QPushButton:hover {{
             background: {QColor(c.red(),c.green(),c.blue(),55).name()};
-            border: 2px solid #000;
+            border: 1px solid {accent};
             border-left: 3px solid {accent};
             color: {tc};
         }}
         QPushButton:pressed {{
             background: {QColor(c.red(),c.green(),c.blue(),80).name()};
-            border: 2px solid #000;
+            border: 1px solid {accent};
             border-left: 3px solid {accent};
         }}
     """)
@@ -711,7 +774,7 @@ class _StepEditorDialog(QDialog):
             QWidget {{ background: {_PANEL}; color: {_TEXT}; font-family: '{_FONT_HMI}'; }}
             QComboBox, QSpinBox, QDoubleSpinBox {{
                 background: {_PANEL2}; color: {_TEXT};
-                border: 2px solid #000; border-radius: 3px; padding: 1px 4px;
+                border: 1px solid {_BORDER}; border-radius: 3px; padding: 1px 4px;
             }}
             QLabel {{ background: transparent; }}
         """)
@@ -786,7 +849,7 @@ class _SeqProgressBar(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
-        p.setBrush(QColor(_PANEL2)); p.setPen(QPen(QColor("#000"), 1.5))
+        p.setBrush(QColor(_PANEL2)); p.setPen(QPen(QColor(_KPIT), 1.0))
         p.drawRoundedRect(0, 0, w-1, h-1, 3, 3)
         if self._frac > 0:
             fw = int((w-2) * self._frac)
@@ -854,7 +917,7 @@ class FaultSequencerWidget(QWidget):
         self._table.setMaximumHeight(150)
         self._table.setStyleSheet(f"""
             QTableWidget {{
-                background: {_PANEL}; border: 2px solid #000;
+                background: {_PANEL}; border: 1px solid {_BORDER};
                 gridline-color: rgba(141,198,63,0.25); color: {_TEXT};
             }}
             QHeaderView::section {{
@@ -1038,7 +1101,7 @@ class ScenarioLibraryWidget(QWidget):
         self._list.setMaximumHeight(90)
         self._list.setFont(QFont(_FONT_HMI, 6))
         self._list.setStyleSheet(f"""
-            QListWidget {{ background: {_PANEL}; border: 2px solid #000; color: {_TEXT}; }}
+            QListWidget {{ background: {_PANEL}; border: 1px solid {_BORDER}; color: {_TEXT}; }}
             QListWidget::item:selected {{ background: rgba(141,198,63,0.25); }}
         """)
         self._list.itemSelectionChanged.connect(self._on_select)
@@ -1067,7 +1130,7 @@ class ScenarioLibraryWidget(QWidget):
         self._name_edit.setFont(QFont(_FONT_HMI, 7))
         self._name_edit.setStyleSheet(f"""
             QLineEdit {{ background: {_PANEL2}; color: {_TEXT};
-                border: 2px solid #000; border-radius: 3px; padding: 0 6px; }}
+                border: 1px solid {_BORDER}; border-radius: 3px; padding: 0 6px; }}
         """)
         self._btn_save = _kpit_btn("Save", _COL_PROF, 22)
         row2.addWidget(self._name_edit, 1); row2.addWidget(self._btn_save)
@@ -1125,14 +1188,13 @@ class ScenarioLibraryWidget(QWidget):
                 d = json.load(f)
             self.scenario_loaded.emit(name, d.get("steps", []))
         except Exception as e:
-            QMessageBox.warning(self, "Load Error", str(e))
+            _light_msg(self, "Load Error", str(e), kind="warning")
 
     def _delete(self):
         items = self._list.selectedItems()
         if not items: return
         name = items[0].data(Qt.ItemDataRole.UserRole)
-        rep = QMessageBox.question(self, "Delete", f"Delete '{name}'?")
-        if rep == QMessageBox.StandardButton.Yes:
+        if _ask_light(self, "Delete", f"Delete '{name}'?"):
             try: os.remove(self._scenario_path(name))
             except OSError: pass
             self._refresh_list()
@@ -1140,7 +1202,7 @@ class ScenarioLibraryWidget(QWidget):
     def save_steps(self, steps: list, name: str = ""):
         if not name: name = self._name_edit.text().strip()
         if not name:
-            QMessageBox.warning(self, "Name required", "Enter a scenario name."); return
+            _light_msg(self, "Name required", "Enter a scenario name.", kind="warning"); return
         data = {"name": name, "description": name,
                 "saved_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), "steps": steps}
         with open(self._scenario_path(name), "w") as f:
@@ -1169,11 +1231,11 @@ class FaultProfileWidget(QWidget):
         self.setStyleSheet(f"""
             QDoubleSpinBox, QSpinBox, QComboBox {{
                 background: {_PANEL2}; color: {_TEXT};
-                border: 2px solid #000; border-radius: 3px; padding: 1px 4px;
+                border: 1px solid {_BORDER}; border-radius: 3px; padding: 1px 4px;
                 font-size: 7pt;
             }}
             QCheckBox {{ color: {_TEXT}; font-size: 7pt; background: transparent; }}
-            QLineEdit {{ background: {_PANEL2}; color: {_TEXT}; border: 2px solid #000;
+            QLineEdit {{ background: {_PANEL2}; color: {_TEXT}; border: 1px solid {_BORDER};
                 border-radius: 3px; padding: 0 4px; font-size: 6pt; }}
         """)
 
@@ -1232,7 +1294,7 @@ class FaultProfileWidget(QWidget):
     def _export(self):
         p = self._collect(); path = os.path.expanduser("~/fault_profile.json")
         with open(path, "w") as f: json.dump(p, f, indent=2)
-        QMessageBox.information(self, "Export", f"Saved to:\n{path}")
+        _light_msg(self, "Export", f"Saved to:\n{path}")
 
     def _reset(self):
         self._profile = dict(self.DEFAULT)
@@ -1302,7 +1364,7 @@ class FaultInjectionPanel(QWidget):
                 border-radius: 2px;
             }}
             QScrollBar::handle:vertical {{
-                background: {_KPIT};
+                background: transparent;
                 border-radius: 2px;
                 min-height: 20px;
             }}
@@ -1332,7 +1394,7 @@ class FaultInjectionPanel(QWidget):
         """)
         hlay = QHBoxLayout(hdr); hlay.setContentsMargins(8, 0, 8, 0)
         if tag:
-            tag_lbl = QLabel(f"[{tag}]")
+            tag_lbl = QLabel(tag)
             tag_lbl.setFont(QFont(_FONT_HMI, 6, QFont.Weight.Bold))
             tag_lbl.setStyleSheet(f"color: {accent}; background: transparent;")
             hlay.addWidget(tag_lbl); hlay.addSpacing(3)
@@ -1352,19 +1414,17 @@ class FaultInjectionPanel(QWidget):
         btn.setMaximumHeight(36)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         c = QColor(accent)
-        tag = _MODE_TAGS.get(mode, "---")
-        duty_str = f" {duty}%" if mode == "VARIABLE LOAD" and duty > 0 else ""
-        btn.setText(f"[{tag}] {label}{duty_str}")
+        btn.setText(f"{label}")
         btn.setFont(QFont(_FONT_HMI, 8, QFont.Weight.Bold))
         
-        text_color = "#1a1a1a"
+        text_color = W_TEXT
         bg_a = QColor(c.red(), c.green(), c.blue(), 30).name()
         
         btn.setStyleSheet(f"""
             QPushButton {{
                 background: {bg_a}; 
                 color: {text_color};
-                border: 2px solid #000000;
+                border: 1px solid {_BORDER};
                 border-left: 3px solid {accent};
                 border-radius: 3px; 
                 text-align: center; 
@@ -1372,13 +1432,13 @@ class FaultInjectionPanel(QWidget):
             }}
             QPushButton:hover {{
                 background: {QColor(c.red(), c.green(), c.blue(), 55).name()};
-                border: 2px solid #000000;
+                border: 1px solid {accent};
                 border-left: 3px solid {accent}; 
                 color: {text_color};
             }}
             QPushButton:pressed {{ 
                 background: {QColor(c.red(), c.green(), c.blue(), 70).name()}; 
-                border: 2px solid #000000;
+                border: 1px solid {accent};
                 border-left: 3px solid {accent};
             }}
         """)
@@ -1386,12 +1446,12 @@ class FaultInjectionPanel(QWidget):
 
     def _mode_card_active(self, btn, accent):
         c = QColor(accent)
-        text_color = "#1a1a1a"
+        text_color = W_TEXT
         btn.setStyleSheet(f"""
             QPushButton {{
                 background: {QColor(c.red(), c.green(), c.blue(), 50).name()};
                 color: {text_color}; 
-                border: 2px solid #000000;
+                border: 1px solid {accent};
                 border-left: 3px solid {accent};
                 border-radius: 3px; 
                 text-align: center; 
@@ -1400,7 +1460,7 @@ class FaultInjectionPanel(QWidget):
             }}
             QPushButton:hover {{ 
                 background: {QColor(c.red(), c.green(), c.blue(), 65).name()}; 
-                border: 2px solid #000000;
+                border: 1px solid {accent};
                 border-left: 3px solid {accent};
             }}
         """)
@@ -1411,43 +1471,43 @@ class FaultInjectionPanel(QWidget):
         btn.setFixedHeight(h)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
-        text_color = "#1a1a1a"
+        text_color = W_TEXT
         bg_a = QColor(c.red(), c.green(), c.blue(), 15).name()
         btn.setStyleSheet(f"""
             QPushButton {{
                 background: {bg_a}; 
                 color: {text_color};
-                border: 2px solid #000000;
+                border: 1px solid {_BORDER};
                 border-radius: 3px;
                 padding: 0 12px; 
             }}
             QPushButton:hover {{
                 background: {QColor(c.red(), c.green(), c.blue(), 40).name()};
-                border: 2px solid #000000;
+                border: 1px solid {accent};
                 color: {text_color};
             }}
             QPushButton:pressed {{ 
                 background: {QColor(c.red(), c.green(), c.blue(), 65).name()}; 
-                border: 2px solid #000000;
+                border: 1px solid {accent};
             }}
         """)
         return btn
 
     def _pill_btn_active(self, btn, accent):
         c = QColor(accent)
-        text_color = "#1a1a1a"
+        text_color = W_TEXT
         btn.setStyleSheet(f"""
             QPushButton {{
                 background: {QColor(c.red(), c.green(), c.blue(), 55).name()};
                 color: {text_color}; 
-                border: 2px solid #000000;
+                border: 1px solid {accent};
                 border-radius: 3px;
                 padding: 0 12px; 
                 font-weight: 900;
             }}
             QPushButton:hover {{ 
                 background: {QColor(c.red(), c.green(), c.blue(), 70).name()}; 
-                border: 2px solid #000000;
+                border: 1px solid {accent};
             }}
         """)
 
@@ -1455,11 +1515,11 @@ class FaultInjectionPanel(QWidget):
         lbl = QLabel(text)
         lbl.setFont(QFont(_FONT_HMI, 7, QFont.Weight.Bold))
         c = QColor(color)
-        text_color = "#1a1a1a"
+        text_color = W_TEXT
         lbl.setStyleSheet(f"""
             color: {text_color};
             background: {QColor(c.red(), c.green(), c.blue(), 25).name()};
-            border: 2px solid #000000;
+            border: 1px solid {_BORDER};
             border-radius: 3px; padding: 2px 6px;
         """)
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1496,7 +1556,7 @@ class FaultInjectionPanel(QWidget):
         t2 = QLabel("PUMP | HIL")
         t2.setFont(QFont(_FONT_HMI, 7))
         t2.setStyleSheet(f"color: rgba(255,255,255,0.4); letter-spacing: 2px; background: transparent;")
-        self._title_mode = QLabel("[NRM] NORMAL")
+        self._title_mode = QLabel("NORMAL")
         self._title_mode.setFont(QFont(_FONT_HMI, 8, QFont.Weight.Bold))
         self._title_mode.setStyleSheet(f"color: {_KPIT}; letter-spacing: 2px; background: transparent;")
         tb_lay.addWidget(t1)
@@ -1522,7 +1582,7 @@ class FaultInjectionPanel(QWidget):
         status_bar.setFixedHeight(20)
         status_bar.setStyleSheet(f"""
             QWidget#sb {{
-                background: {_TOOLBAR}; border-top: 2px solid {_BORDER};
+                background:#000000; border-top: 2px solid {_BORDER};
                 border-radius: 0 0 3px 3px;
             }}
         """)
@@ -1606,7 +1666,7 @@ class FaultInjectionPanel(QWidget):
         self._lbl_alert.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._lbl_alert.setStyleSheet(f"""
             color: {_TEXT_DIM}; background: transparent;
-            border: 2px solid #000000; border-radius: 3px; padding: 4px;
+            border: 1px solid {_BORDER}; border-radius: 3px; padding: 4px;
         """)
         b4.addWidget(self._lbl_alert)
         lay.addWidget(s4)
@@ -1698,7 +1758,7 @@ class FaultInjectionPanel(QWidget):
                 background: {_PANEL2}; width: 5px; border-radius: 2px;
             }}
             QScrollBar::handle:vertical {{
-                background: {_KPIT}; border-radius: 2px; min-height: 20px;
+                background: transparent; border-radius: 2px; min-height: 20px;
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
         """)
@@ -1878,11 +1938,11 @@ class FaultInjectionPanel(QWidget):
         col = _COL_VLOAD if is_motor else _COL_NORMAL
         txt = f"TARGET: {t}"
         c = QColor(col)
-        text_color = "#1a1a1a"
+        text_color = W_TEXT
         self._lbl_tgt_active.setText(txt)
         self._lbl_tgt_active.setStyleSheet(f"""
             color: {text_color}; background: {QColor(c.red(), c.green(), c.blue(), 25).name()};
-            border: 2px solid #000000;
+            border: 1px solid {_BORDER};
             border-radius: 3px; padding: 2px 6px;
             font-size: 7pt; font-weight: bold;
         """)
@@ -1892,19 +1952,19 @@ class FaultInjectionPanel(QWidget):
                 self._pill_btn_active(btn, tc)
             else:
                 c2 = QColor(tc)
-                text_color_btn = "#1a1a1a"
+                text_color_btn = W_TEXT
                 bg_a = QColor(c2.red(), c2.green(), c2.blue(), 15).name()
                 btn.setStyleSheet(f"""
                     QPushButton {{
                         background: {bg_a}; color: {text_color_btn};
-                        border: 2px solid #000000;
+                        border: 1px solid {_BORDER};
                         border-radius: 3px;
                         padding: 0 10px;
                         font-size: 7pt; font-weight: bold;
                     }}
                     QPushButton:hover {{
                         background: {QColor(c2.red(), c2.green(), c2.blue(), 40).name()};
-                        border: 2px solid #000000;
+                        border: 1px solid {tc};
                         color: {text_color_btn};
                     }}
                 """)
@@ -1914,22 +1974,22 @@ class FaultInjectionPanel(QWidget):
         col, _, _ = _MODE_COLORS.get(m, (_TEXT_DIM, _TEXT_DIM, _PANEL))
         c = QColor(col)
         tag = _MODE_TAGS.get(m, "---")
-        txt = f"MODE: [{tag}] {m}" + (f" {self._vload_duty:.0f}%" if m == "VARIABLE LOAD" else "")
-        text_color = "#1a1a1a"
+        txt = f"MODE: {m}" + (f" {self._vload_duty:.0f}%" if m == "VARIABLE LOAD" else "")
+        text_color = W_TEXT
         self._lbl_mode_active.setText(txt)
         self._lbl_mode_active.setStyleSheet(f"""
             color: {text_color}; background: {QColor(c.red(), c.green(), c.blue(), 25).name()};
-            border: 2px solid #000000;
+            border: 1px solid {_BORDER};
             border-radius: 3px; padding: 2px 6px;
             font-size: 7pt; font-weight: bold;
         """)
-        self._title_mode.setText(f"[{tag}] {m}")
+        self._title_mode.setText(f"{m}" + (f" {self._vload_duty:.0f}%" if m == "VARIABLE LOAD" else ""))
         self._title_mode.setStyleSheet(f"color: {col}; letter-spacing: 2px; font-weight: bold;")
 
         for key, btn in self._combined_btns.items():
             label, mode, duty = key
             accent = next((c2 for l, m2, d, c2 in _MODES_COMBINED if (l, m2, d) == key), _COL_NORMAL)
-            btn_text_color = "#1a1a1a"
+            btn_text_color = W_TEXT
             if key == self._active_btn_key:
                 self._mode_card_active(btn, accent)
             else:
@@ -1939,7 +1999,7 @@ class FaultInjectionPanel(QWidget):
                     QPushButton {{
                         background: {bg2}; 
                         color: {btn_text_color};
-                        border: 2px solid #000000;
+                        border: 1px solid {_BORDER};
                         border-left: 3px solid {accent};
                         border-radius: 3px; 
                         text-align: center; 
@@ -1949,24 +2009,24 @@ class FaultInjectionPanel(QWidget):
                     }}
                     QPushButton:hover {{
                         background: {QColor(c2.red(), c2.green(), c2.blue(), 55).name()};
-                        border: 2px solid #000000;
+                        border: 1px solid {accent};
                         border-left: 3px solid {accent}; 
                         color: {btn_text_color};
                     }}
                     QPushButton:pressed {{ 
                         background: {QColor(c2.red(), c2.green(), c2.blue(), 70).name()}; 
-                        border: 2px solid #000000;
+                        border: 1px solid {accent};
                         border-left: 3px solid {accent};
                     }}
                 """)
 
     def _show_alert(self, msg, color=_COL_SHORTVCC):
         c = QColor(color)
-        text_color = "#1a1a1a"
+        text_color = W_TEXT
         self._lbl_alert.setText(f"! {msg}")
         self._lbl_alert.setStyleSheet(f"""
             color: {text_color}; background: {QColor(c.red(), c.green(), c.blue(), 20).name()};
-            border: 2px solid #000000;
+            border: 1px solid {_BORDER};
             border-left: 3px solid {color}; border-radius: 3px;
             padding: 4px; font-weight: bold; font-size: 7pt;
         """)
@@ -1975,7 +2035,7 @@ class FaultInjectionPanel(QWidget):
         self._lbl_alert.setText("No alerts")
         self._lbl_alert.setStyleSheet(f"""
             color: {_TEXT_DIM}; background: transparent;
-            border: 2px solid #000000; border-radius: 3px;
+            border: 1px solid {_BORDER}; border-radius: 3px;
             padding: 4px; font-size: 7pt;
         """)
 
