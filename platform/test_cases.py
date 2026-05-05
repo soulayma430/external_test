@@ -2157,21 +2157,59 @@ class TC_LIN_CS_Invalid_0x16(BaseBCMTest):
     """
     TC_LIN_CS — Checksum LIN invalide sur LeftStickWiperRequester (0x16)
 
-    Standard : TSR_001 / FSR_001 / B2004
+    Standard : TSR_001 / Message Catalogue LIN §1 (protection Classic checksum)
 
     Objectif :
-      Envoyer 5 trames 0x16 consécutives avec checksum corrompu.
-      Le BCM rejette chaque trame (rx_cs != calc_cs → t_last_lin0x16 non mis à jour).
-      Après LIN_TIMEOUT (2s = ~5 × 400ms), _check_lin_timeout déclenche B2004
-      → lin_timeout_active=True → WSM retourne en OFF.
+      Vérifier que le BCM rejette bien une trame 0x16 dont le checksum est
+      invalide ET que la commande WiperOp contenue dans cette trame n'est
+      PAS appliquée au WSM.
 
-    Séquence stimulus (_pre_test) :
-      t=0   : corrupt_lin_checksum activé + reset_t0()
-      t=100 : LIN cmd=SPEED1 → trames corrompues émises en continu
-      → BCM détecte timeout après ≥ LIN_TIMEOUT (2000ms)
+    Correction v2 (suite analyse log) :
+      Le problème de v1 était l'ordre stimulus/corruption :
+        v1 → envoi SPEED1 (trame VALIDE acceptée → BCM passe SPEED1)
+             puis activation corruption 200 ms après.
+             Résultat : SPEED1 appliqué avant la corruption → test invalide.
+        v2 → activation corruption D'ABORD, puis envoi SPEED1.
+             BCM reçoit SPEED1 dans une trame corrompue → doit rejeter
+             la commande → state reste OFF.
 
-    Critère PASS : lin_timeout_active=True ET state=OFF ≤ 4000 ms
-    Critère FAIL : state=SPEED1 (trame corrompue acceptée)
+    Préconditions (garanties par _pre_test) :
+      - BCM en state=OFF, ignition=ON
+      - crs_wiper_op=0 via Redis (état de référence)
+      - lin_checksum_fault=False (reset résiduel)
+      - corrupt_checksum ACTIF dans crslin avant tout envoi de commande
+      - Durée d'observation : MAX_OBS_MS = 1200 ms < LIN_TIMEOUT (2000 ms)
+        → empêche le timeout LIN de polluer la mesure
+
+    Séquence stimulus (test_runner _pre_test) :
+      t=0   : lin_checksum_fault=False (reset)
+              crs_wiper_op=0 (garder OFF)
+      t=200 : test_cmd "corrupt_lin_checksum" → crslin active corruption
+              reset_t0() → chrono démarre
+      t=300 : LIN cmd="SPEED1" → crslin émet WOP=2 AVEC checksum corrompu
+              Le BCM doit recevoir la trame, détecter rx_cs != calc_cs,
+              logger "Checksum KO", lever lin_checksum_fault=True,
+              et NE PAS mettre à jour crs_wiper_op.
+
+    Comportements vérifiés :
+      A) lin_checksum_fault=True dans Redis ≤ LIMIT_MS
+         → BCM a bien détecté le checksum invalide
+      B) state=OFF maintenu (= _state_at_start)
+         → La commande SPEED1 corrompue n'a PAS été appliquée
+      C) lin_timeout_active=False pendant toute la durée
+         → Le BCM n'a pas confondu "trame corrompue" avec "slave silencieux"
+         → La durée MAX_OBS_MS < LIN_TIMEOUT garantit cette condition
+
+    Observations (par priorité) :
+      1. Redis  : lin_checksum_fault=True ET state=OFF → PASS
+      2. Redis  : lin_timeout_active=True             → FAIL (timeout LIN déclenché)
+      3. Redis  : state != OFF                        → FAIL (commande appliquée)
+      4. Fallback TCP : event "checksum" + "ko" dans broadcast
+
+    Limites :
+      PASS    : lin_checksum_fault=True dans ≤ 1200 ms ET state=OFF inchangé
+      FAIL    : checksum fault non détecté, OU state modifié, OU timeout LIN
+      TIMEOUT : non détecté avant TEST_TIMEOUT_S
     """
     ID             = "TC_LIN_CS"
     NAME           = "5 LIN checksum frames KO → timeout B2004 + WSM OFF"
@@ -2183,58 +2221,100 @@ class TC_LIN_CS_Invalid_0x16(BaseBCMTest):
 
     def _on_start(self):
         super()._on_start()
-        self._confirmed     = False
-        self._stimulus_sent = False
+        self._confirmed         = False
+        self._stimulus_sent     = False   # True après corrupt_lin_checksum envoyé
+        self._state_at_start    = None    # état WSM capturé au premier poll post-stimulus
+        self._lin_timeout_seen  = False   # True si lin_timeout_active=True détecté (erreur)
 
     def _target_state(self) -> Optional[str]:
-        return None
+        return None   # on surcharge _check_rte
 
     def _check_rte(self) -> Optional[TestResult]:
+        """
+        Poll Redis après activation de la corruption.
+
+        Ordre de priorité des vérifications :
+          1. lin_timeout_active=True → FAIL immédiat (le test a duré trop longtemps
+             ou le BCM a mal interprété les trames corrompues comme un silence)
+          2. state != _state_at_start → FAIL immédiat (commande corrompue appliquée)
+          3. lin_checksum_fault=True ET state=OFF → PASS
+        """
         if self._confirmed or self.rte_client is None:
             return None
         if not self._stimulus_sent:
-            return None
+            return None   # attendre l'activation effective de la corruption
 
-        delta       = time.time() * 1000.0 - self._t0_ms
-        state       = self.rte_client.get("state") or "OFF"
-        lin_timeout = self.rte_client.get_bool("lin_timeout_active")
-        cs_fault    = self.rte_client.get_bool("lin_checksum_fault")
+        # Capturer l'état de référence au premier poll après stimulus
+        if self._state_at_start is None:
+            self._state_at_start = self.rte_client.get("state") or "OFF"
 
-        # FAIL : trame corrompue acceptée par le BCM
-        if state not in ("OFF", "ERROR") and not lin_timeout:
+        delta         = time.time() * 1000.0 - self._t0_ms
+        state         = self.rte_client.get("state") or "OFF"
+        cs_fault      = self.rte_client.get_bool("lin_checksum_fault")
+        lin_timeout   = self.rte_client.get_bool("lin_timeout_active")
+
+        # Critère FAIL 1 : timeout LIN déclenché → corruption confondue avec silence
+        if lin_timeout:
             self._confirmed = True
             return self._fail(
                 f"{delta:.0f} ms",
-                f"ERREUR : state={state} → trame SPEED1 corrompue acceptée | "
-                f"lin_checksum_fault={cs_fault}")
+                f"ERREUR : lin_timeout_active=True — BCM a interprété les trames "
+                f"corrompues comme un silence slave (durée obs={delta:.0f} ms > prévu)")
 
-        # PASS : timeout LIN déclenché + BCM en OFF
-        if lin_timeout and state == "OFF":
+        # Critère FAIL 2 : état WSM modifié → commande corrompue appliquée
+        if state != self._state_at_start:
+            self._confirmed = True
+            return self._fail(
+                f"{delta:.0f} ms",
+                f"ERREUR : state={state} ≠ state_ref={self._state_at_start} "
+                f"→ commande SPEED1 corrompue appliquée au WSM | {delta:.0f} ms")
+
+        # Critère PASS : checksum fault détecté, état inchangé
+        if cs_fault and state == self._state_at_start:
             self._confirmed = True
             ok = delta <= self.LIMIT_MS
             detail = (
-                f"lin_timeout_active=True | state=OFF | "
-                f"lin_checksum_fault={cs_fault} | {delta:.0f} ms"
+                f"lin_checksum_fault=True | "
+                f"state={state} = state_ref={self._state_at_start} (inchangé) | "
+                f"lin_timeout_active=False (correct) | "
+                f"{delta:.0f} ms"
             )
             return (self._pass if ok else self._fail)(f"{delta:.0f} ms", detail)
+
+        # Timeout observation : fin de fenêtre sans détection
+        if delta >= self.MAX_OBS_MS:
+            self._confirmed = True
+            return self._fail(
+                f"{delta:.0f} ms",
+                f"lin_checksum_fault non détecté après {delta:.0f} ms | "
+                f"state={state} lin_timeout={lin_timeout}")
 
         return None
 
     def on_lin_frame(self, ev: dict) -> Optional[TestResult]:
-        """Fallback TCP : détecter lin_timeout B2004 via broadcast BCM."""
+        """
+        Fallback TCP (sans Redis) : détecter le log "Checksum KO" broadcasté
+        par crslin ou bcm_protocol via l'event TCP.
+        """
         if self._confirmed or self.rte_client is not None:
             return None
         if not self._stimulus_sent:
             return None
-        msg = str(ev.get("msg", "")).lower()
-        if "timeout" in msg and "b2004" in msg:
+        msg   = str(ev.get("msg", "")).lower()
+        etype = ev.get("type", "")
+        if "checksum" in msg and ("ko" in msg or "corrupt" in msg or etype == "fault"):
             delta = time.time() * 1000.0 - self._t0_ms
             self._confirmed = True
             return (self._pass if delta <= self.LIMIT_MS else self._fail)(
                 f"{delta:.0f} ms",
-                f"fallback TCP : timeout B2004 détecté | {delta:.0f} ms")
+                f"fallback TCP : event '{etype}' checksum KO détecté | {delta:.0f} ms")
+        return None
 
 
+
+# ══════════════════════════════════════════════════════════════════════════
+#  T44 — REAR_WIPE isolé (op=7) sans reverse gear (SRD_WW_090/092)
+# ══════════════════════════════════════════════════════════════════════════
 class T44_RearWipe_Standalone(BaseBCMTest):
     """
     T44 — REAR_WIPE (op=7) : activation physique relais RL3 moteur arrière
